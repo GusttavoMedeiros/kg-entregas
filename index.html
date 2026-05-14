@@ -3,617 +3,358 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<meta name="theme-color" content="#1a3a2a">
+<meta name="theme-color" content="#0d2218">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KG Entregas">
 <link rel="manifest" href="manifest.json">
 <title>KG Entregas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --verde: #1a3a2a;
-  --verde-medio: #2d5a40;
-  --verde-claro: #3d7a56;
-  --dourado: #c8960c;
-  --dourado-claro: #e8b020;
-  --dourado-suave: #f5d060;
-  --creme: #faf7f0;
-  --cinza-claro: #f0ede6;
-  --cinza: #9a9590;
-  --texto: #1a1a18;
-  --texto-suave: #5a5750;
-  --branco: #ffffff;
-  --vermelho: #c0392b;
-  --vermelho-claro: #fff0ee;
-  --verde-ok: #27ae60;
-  --verde-ok-claro: #edf7f1;
-  --amarelo: #e67e22;
-  --amarelo-claro: #fff8ee;
-  --sombra: 0 2px 12px rgba(0,0,0,0.08);
-  --sombra-forte: 0 4px 24px rgba(0,0,0,0.14);
-  --raio: 12px;
-  --raio-grande: 18px;
+  --v0: #0a1a10; --v1: #0d2218; --v2: #112b1e; --v3: #1a3a2a; --v4: #244d38; --v5: #2e6347;
+  --o0: #c8960c; --o1: #e4aa14; --o2: #f5cc40; --o3: #f9e4a0;
+  --ob: rgba(200,150,12,0.30); --ol: rgba(200,150,12,0.15); --oo: rgba(200,150,12,0.08);
+  --go: linear-gradient(135deg,#c8960c 0%,#e4aa14 45%,#f5cc40 65%,#c8960c 100%);
+  --gv: linear-gradient(180deg,#1a3a2a 0%,#0a1a10 100%);
+  --gc: linear-gradient(145deg,#1e4030 0%,#112b1e 100%);
+  --creme: #faf6ec; --c1: #f0eadc; --c2: rgba(250,246,236,0.6); --c3: rgba(250,246,236,0.35);
+  --r: 14px; --rg: 20px; --rxl: 28px;
+  --sv: 0 2px 16px rgba(0,0,0,0.35); --so: 0 4px 20px rgba(200,150,12,0.18);
+  --rm: #c0392b; --rmb: rgba(192,57,43,0.12);
+  --gn: #27ae60; --gnb: rgba(39,174,96,0.12);
+  --am: #d4791a; --amb: rgba(212,121,26,0.12);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100dvh;overflow-x:hidden}
+
+/* ── FUNDO DECORATIVO ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 5%,rgba(200,150,12,0.05) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 70% at 85% 90%,rgba(46,99,71,0.12) 0%,transparent 60%);
+}
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cg opacity='.025' fill='%23c8960c'%3E%3Cellipse cx='40' cy='20' rx='3' ry='10'/%3E%3Cellipse cx='40' cy='20' rx='10' ry='3' transform='rotate(45 40 20)'/%3E%3Cellipse cx='40' cy='20' rx='10' ry='3' transform='rotate(-45 40 20)'/%3E%3C/g%3E%3C/svg%3E");
+  background-size:80px 80px;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* ── LOGIN ── */
+#tela-login{
+  min-height:100dvh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 24px;position:relative;
+  background:var(--gv);overflow:hidden;z-index:1;
+}
+#tela-login svg.deco{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 
-body {
-  font-family: 'DM Sans', sans-serif;
-  background: var(--creme);
-  color: var(--texto);
-  min-height: 100dvh;
-  overflow-x: hidden;
+.logo-login{text-align:center;margin-bottom:32px;position:relative;z-index:1;animation:fadeD .6s ease-out both}
+@keyframes fadeD{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
+
+.logo-login img{
+  width:110px;height:110px;border-radius:50%;display:block;margin:0 auto 18px;
+  box-shadow:0 0 0 2.5px var(--o0),0 0 0 6px var(--ol),0 8px 32px rgba(0,0,0,0.55);
+  animation:pulse 3s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 0 2.5px var(--o0),0 0 0 6px var(--ol),0 8px 32px rgba(0,0,0,0.55)}
+  50%{box-shadow:0 0 0 2.5px var(--o1),0 0 0 10px rgba(200,150,12,0.2),0 8px 40px rgba(0,0,0,0.55)}
+}
+.logo-login h1{
+  font-family:'Cinzel',serif;font-size:26px;font-weight:700;letter-spacing:3px;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.linha-ouro{width:56px;height:1px;background:var(--go);margin:10px auto 10px;border-radius:1px}
+.logo-login p{color:var(--c3);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;font-weight:300}
+
+.card-login{
+  background:linear-gradient(145deg,rgba(30,64,48,.95) 0%,rgba(16,38,26,.98) 100%);
+  border:1px solid var(--ob);border-radius:var(--rxl);padding:32px 26px;
+  width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(200,150,12,.12);
+  position:relative;z-index:1;animation:fadeU .6s .18s ease-out both;
+}
+@keyframes fadeU{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.card-login::before{
+  content:'';position:absolute;top:0;left:20%;right:20%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--o1),transparent);
+}
+.card-login h2{
+  font-family:'Cinzel',serif;font-size:14px;color:var(--o1);margin-bottom:22px;
+  letter-spacing:2px;text-transform:uppercase;text-align:center;font-weight:600;
 }
 
-/* ========== LOGIN ========== */
-#tela-login {
-  min-height: 100dvh;
-  background: var(--verde);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 24px;
+/* ── CAMPOS ── */
+.campo{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.campo label{font-size:10px;font-weight:700;color:var(--o0);letter-spacing:1.5px;text-transform:uppercase}
+.campo input,.campo select,.campo textarea{
+  border:1px solid rgba(200,150,12,.22);border-radius:10px;padding:11px 13px;
+  font-size:14px;font-family:'Nunito',sans-serif;color:var(--creme);
+  background:rgba(10,26,16,.65);transition:border-color .2s,box-shadow .2s;width:100%;
+}
+.campo input::placeholder,.campo textarea::placeholder{color:var(--c3)}
+.campo select option{background:var(--v3);color:var(--creme)}
+.campo input:focus,.campo select:focus,.campo textarea:focus{
+  outline:none;border-color:var(--o0);box-shadow:0 0 0 3px rgba(200,150,12,.1)
+}
+.campo textarea{resize:vertical;min-height:80px}
+
+/* ── BOTÕES ── */
+.btn-primario{
+  background:var(--go);color:var(--v1);border:none;border-radius:10px;
+  padding:13px 24px;font-size:13px;font-family:'Nunito',sans-serif;font-weight:700;
+  cursor:pointer;width:100%;letter-spacing:1px;text-transform:uppercase;
+  box-shadow:0 4px 16px rgba(200,150,12,.28);transition:opacity .2s,transform .1s,box-shadow .2s;
+}
+.btn-primario:hover{opacity:.9;box-shadow:0 6px 20px rgba(200,150,12,.38)}
+.btn-primario:active{transform:scale(.98)}
+.btn-secundario{
+  background:var(--oo);color:var(--o3);border:1px solid var(--ob);border-radius:10px;
+  padding:11px 18px;font-size:13px;font-family:'Nunito',sans-serif;font-weight:600;
+  cursor:pointer;transition:background .2s;width:100%;
+}
+.btn-secundario:hover{background:rgba(200,150,12,.13)}
+.btn-perigo{
+  background:var(--rmb);color:#e05a4e;border:1px solid rgba(192,57,43,.28);
+  border-radius:10px;padding:10px 16px;font-size:13px;font-family:'Nunito',sans-serif;
+  font-weight:600;cursor:pointer;width:100%;
+}
+.btn-entregar{
+  flex:1;background:var(--go);color:var(--v1);border:none;border-radius:8px;padding:10px;
+  font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;
+  letter-spacing:.5px;text-transform:uppercase;box-shadow:0 2px 8px rgba(200,150,12,.22);
+}
+.btn-obs{
+  background:var(--oo);color:var(--o1);border:1px solid var(--ob);
+  border-radius:8px;padding:10px 14px;font-size:15px;cursor:pointer;
+}
+.erro-login{color:#e05a4e;font-size:13px;text-align:center;margin-top:12px;display:none}
+
+/* ── APP ── */
+#app{display:none;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
+
+.header{
+  background:linear-gradient(180deg,#0d2218 0%,#0a1a10 100%);
+  border-bottom:1px solid var(--ob);padding:13px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
+}
+.header-logo{display:flex;align-items:center;gap:10px}
+.header-logo img{
+  width:34px;height:34px;border-radius:50%;
+  border:1.5px solid var(--o0);box-shadow:0 0 10px rgba(200,150,12,.28);
+}
+.header-logo-texto{
+  font-family:'Cinzel',serif;font-size:15px;font-weight:600;letter-spacing:1px;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.header-titulo{font-size:10px;color:var(--c3);font-weight:400;letter-spacing:1px;text-transform:uppercase;margin-top:1px}
+.btn-sair{
+  background:var(--oo);color:var(--o3);border:1px solid var(--ob);
+  border-radius:8px;padding:7px 12px;font-size:11px;cursor:pointer;
+  font-family:'Nunito',sans-serif;font-weight:600;letter-spacing:.5px;
 }
 
-.logo-login {
-  text-align: center;
-  margin-bottom: 48px;
+/* NAV */
+.nav-bottom{
+  background:linear-gradient(0deg,#0a1a10 0%,#0d2218 100%);
+  border-top:1px solid var(--ob);display:flex;position:fixed;
+  bottom:0;left:0;right:0;z-index:100;
+  padding-bottom:env(safe-area-inset-bottom);
+  box-shadow:0 -4px 20px rgba(0,0,0,.4);
+}
+.nav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:10px 4px 8px;cursor:pointer;border:none;background:transparent;
+  gap:4px;position:relative;transition:all .2s;
+}
+.nav-item.ativo::before{
+  content:'';position:absolute;top:0;left:25%;right:25%;height:2px;
+  background:var(--go);border-radius:0 0 2px 2px;
+}
+.nav-icon{font-size:20px;transition:transform .2s}
+.nav-item.ativo .nav-icon{transform:scale(1.12)}
+.nav-item:not(.ativo) .nav-icon{opacity:.3}
+.nav-label{
+  font-size:9px;font-family:'Nunito',sans-serif;font-weight:700;
+  letter-spacing:.8px;text-transform:uppercase;color:var(--c3);transition:color .2s;
+}
+.nav-item.ativo .nav-label{
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
 }
 
-.logo-login h1 {
-  font-family: 'Cinzel', serif;
-  font-size: 28px;
-  color: var(--dourado-claro);
-  letter-spacing: 2px;
+.conteudo{padding:18px 14px 100px;flex:1;position:relative;z-index:1}
+.tela{display:none}.tela.ativa{display:block}
+
+/* ── GRID RESUMO ── */
+.grid-resumo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.card-resumo{
+  background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:18px 14px;text-align:center;box-shadow:var(--sv);position:relative;overflow:hidden;
+}
+.card-resumo::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--go);opacity:.45;
+}
+.resumo-numero{
+  font-family:'Cinzel',serif;font-size:34px;font-weight:700;line-height:1;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.card-resumo.alerta .resumo-numero{background:none;-webkit-text-fill-color:#e05a4e}
+.card-resumo.atencao .resumo-numero{background:none;-webkit-text-fill-color:var(--am)}
+.resumo-label{font-size:10px;color:var(--c3);margin-top:6px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.badge-pendente{background:var(--amb);color:var(--am);border:1px solid rgba(212,121,26,.25)}
+.badge-entregue{background:var(--gnb);color:var(--gn);border:1px solid rgba(39,174,96,.25)}
+.badge-atrasado{background:var(--rmb);color:#e05a4e;border:1px solid rgba(192,57,43,.28)}
+.badge-em-dia{background:var(--gnb);color:var(--gn);border:1px solid rgba(39,174,96,.25)}
+.badge-devendo{background:var(--amb);color:var(--am);border:1px solid rgba(212,121,26,.25)}
+
+/* ── ITENS ENTREGA ── */
+.item-entrega{
+  background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:16px;margin-bottom:10px;box-shadow:var(--sv);border-left:3px solid transparent;
+}
+.item-entrega.pendente{border-left-color:var(--am)}
+.item-entrega.entregue{border-left-color:var(--gn);opacity:.6}
+.item-entrega.atrasado{border-left-color:#e05a4e}
+.item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.item-cliente{font-size:14px;font-weight:700;color:var(--creme)}
+.item-descricao{font-size:12px;color:var(--c3);margin-bottom:10px;line-height:1.5}
+.item-valor{font-size:14px;font-weight:700;color:var(--o1)}
+.item-acoes{display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--ol);padding-top:12px}
+
+/* ── CLIENTE CARD ── */
+.item-cliente-card{
+  background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:16px;margin-bottom:10px;box-shadow:var(--sv);
+  display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+  transition:border-color .2s,box-shadow .2s;
+}
+.item-cliente-card:active{border-color:var(--o0);box-shadow:var(--so)}
+.cliente-nome{font-size:14px;font-weight:700;margin-bottom:4px;color:var(--creme)}
+.cliente-info{font-size:11px;color:var(--c3)}
+
+/* ── MODAL ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);
+  z-index:200;display:none;align-items:flex-end;justify-content:center;
+}
+.modal-overlay.aberto{display:flex}
+.modal-sheet{
+  background:linear-gradient(180deg,#1e4030 0%,#0f2419 100%);
+  border:1px solid var(--ob);border-bottom:none;
+  border-radius:var(--rg) var(--rg) 0 0;padding:22px 18px 40px;
+  width:100%;max-width:480px;max-height:92dvh;overflow-y:auto;
+  animation:slideU .28s cubic-bezier(.32,.72,0,1);
+  box-shadow:0 -8px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(200,150,12,.18);
+}
+@keyframes slideU{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-handle{width:36px;height:3px;background:var(--ob);border-radius:2px;margin:0 auto 20px}
+.modal-titulo{
+  font-family:'Cinzel',serif;font-size:16px;font-weight:600;margin-bottom:18px;letter-spacing:1px;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
 }
 
-.logo-login p {
-  color: rgba(255,255,255,0.5);
-  font-size: 13px;
-  margin-top: 6px;
-  letter-spacing: 1px;
+/* ── VAZIO ── */
+.vazio{text-align:center;padding:52px 20px;color:var(--c3)}
+.vazio-icone{font-size:42px;margin-bottom:12px;opacity:.4}
+.vazio p{font-size:13px;letter-spacing:.5px}
+
+/* ── SEPARADOR ── */
+.separador{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--o0);
+  margin:18px 0 10px;display:flex;align-items:center;gap:10px;
 }
+.separador::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--ob),transparent)}
 
-.logo-folha {
-  font-size: 48px;
-  margin-bottom: 16px;
-  display: block;
+/* ── SEARCH ── */
+.search-bar{
+  display:flex;align-items:center;background:rgba(10,26,16,.75);
+  border:1px solid var(--ob);border-radius:var(--r);padding:10px 14px;
+  gap:10px;margin-bottom:16px;
 }
+.search-bar input{border:none;background:transparent;font-size:14px;font-family:'Nunito',sans-serif;color:var(--creme);flex:1}
+.search-bar input::placeholder{color:var(--c3)}
+.search-bar input:focus{outline:none}
+.search-icon{font-size:16px;color:var(--o0);opacity:.7}
 
-.card-login {
-  background: var(--branco);
-  border-radius: var(--raio-grande);
-  padding: 32px 28px;
-  width: 100%;
-  max-width: 380px;
-  box-shadow: var(--sombra-forte);
+/* ── FINANCEIRO ── */
+.resumo-financeiro{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.card-financeiro{
+  background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:16px;text-align:center;box-shadow:var(--sv);
 }
+.fin-valor{font-family:'Cinzel',serif;font-size:18px;font-weight:700}
+.fin-label{font-size:10px;color:var(--c3);margin-top:4px;letter-spacing:.5px;text-transform:uppercase}
+.fin-devendo{color:#e05a4e}.fin-recebido{color:var(--gn)}
 
-.card-login h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--verde);
-  margin-bottom: 24px;
+/* ── ABAS ── */
+.abas{
+  display:flex;background:rgba(10,26,16,.6);border:1px solid var(--ol);
+  border-radius:var(--r);padding:3px;margin-bottom:16px;gap:3px;
 }
-
-.campo {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+.aba{
+  flex:1;padding:8px 4px;text-align:center;font-size:11px;font-weight:700;
+  border-radius:10px;cursor:pointer;border:none;background:transparent;
+  color:var(--c3);font-family:'Nunito',sans-serif;letter-spacing:.5px;
+  text-transform:uppercase;transition:all .2s;
 }
+.aba.ativa{background:var(--go);color:var(--v1);box-shadow:0 2px 8px rgba(200,150,12,.28)}
 
-.campo label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--texto-suave);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+/* ── UTILS ── */
+.flex-entre{display:flex;justify-content:space-between;align-items:center}
+.mt-8{margin-top:8px}.mt-16{margin-top:16px}.w100{width:100%}
+.tag-perfil{
+  background:var(--oo);color:var(--o1);border:1px solid var(--ob);
+  border-radius:20px;padding:4px 12px;font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;
 }
-
-.campo input, .campo select, .campo textarea {
-  border: 1.5px solid #e0ddd6;
-  border-radius: var(--raio);
-  padding: 12px 14px;
-  font-size: 15px;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--texto);
-  background: var(--creme);
-  transition: border-color 0.2s;
-  width: 100%;
+.loading{display:flex;align-items:center;justify-content:center;padding:48px;color:var(--c3);gap:10px;font-size:13px}
+.spinner{
+  width:20px;height:20px;border:2px solid rgba(200,150,12,.15);
+  border-top-color:var(--o0);border-radius:50%;animation:spin .7s linear infinite;
 }
-
-.campo input:focus, .campo select:focus, .campo textarea:focus {
-  outline: none;
-  border-color: var(--verde-claro);
+@keyframes spin{to{transform:rotate(360deg)}}
+.alerta-config{
+  background:var(--oo);border:1px solid var(--ob);border-radius:var(--r);
+  padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--o3);
 }
-
-.campo textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.btn-primario {
-  background: var(--verde);
-  color: var(--dourado-claro);
-  border: none;
-  border-radius: var(--raio);
-  padding: 14px 24px;
-  font-size: 15px;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-  letter-spacing: 0.5px;
-  transition: background 0.2s, transform 0.1s;
-}
-
-.btn-primario:active { transform: scale(0.98); }
-.btn-primario:hover { background: var(--verde-medio); }
-
-.btn-secundario {
-  background: var(--cinza-claro);
-  color: var(--texto-suave);
-  border: none;
-  border-radius: var(--raio);
-  padding: 12px 20px;
-  font-size: 14px;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-secundario:hover { background: #e0ddd6; }
-
-.btn-perigo {
-  background: var(--vermelho-claro);
-  color: var(--vermelho);
-  border: 1px solid #f5c6c2;
-  border-radius: var(--raio);
-  padding: 10px 16px;
-  font-size: 13px;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.erro-login {
-  color: var(--vermelho);
-  font-size: 13px;
-  text-align: center;
-  margin-top: 12px;
-  display: none;
-}
-
-/* ========== LAYOUT PRINCIPAL ========== */
-#app { display: none; min-height: 100dvh; flex-direction: column; }
-
-/* HEADER */
-.header {
-  background: var(--verde);
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-
-.header-logo {
-  font-family: 'Cinzel', serif;
-  color: var(--dourado-claro);
-  font-size: 16px;
-  letter-spacing: 1px;
-}
-
-.header-titulo {
-  color: rgba(255,255,255,0.9);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.btn-sair {
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.7);
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-}
-
-/* NAV BOTTOM */
-.nav-bottom {
-  background: var(--branco);
-  border-top: 1px solid #e8e4da;
-  display: flex;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.nav-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-  background: transparent;
-  gap: 3px;
-}
-
-.nav-icon { font-size: 22px; }
-.nav-label { font-size: 10px; font-family: 'DM Sans', sans-serif; color: var(--cinza); font-weight: 500; }
-.nav-item.ativo .nav-label { color: var(--verde); }
-.nav-item.ativo .nav-icon { filter: none; }
-.nav-item:not(.ativo) .nav-icon { opacity: 0.45; }
-
-/* CONTEÚDO */
-.conteudo {
-  padding: 20px 16px 100px;
-  flex: 1;
-}
-
-/* TELAS */
-.tela { display: none; }
-.tela.ativa { display: block; }
-
-/* ========== CARDS ========== */
-.card {
-  background: var(--branco);
-  border-radius: var(--raio);
-  padding: 18px;
-  margin-bottom: 12px;
-  box-shadow: var(--sombra);
-}
-
-.card-titulo {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--cinza);
-  margin-bottom: 12px;
-}
-
-/* ========== DASHBOARD ========== */
-.grid-resumo {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.card-resumo {
-  background: var(--branco);
-  border-radius: var(--raio);
-  padding: 16px;
-  box-shadow: var(--sombra);
-  text-align: center;
-}
-
-.resumo-numero {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--verde);
-  line-height: 1;
-}
-
-.resumo-label {
-  font-size: 11px;
-  color: var(--cinza);
-  margin-top: 4px;
-  font-weight: 500;
-}
-
-.card-resumo.alerta .resumo-numero { color: var(--vermelho); }
-.card-resumo.atencao .resumo-numero { color: var(--amarelo); }
-
-/* ========== BADGES ========== */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.badge-pendente { background: var(--amarelo-claro); color: var(--amarelo); }
-.badge-entregue { background: var(--verde-ok-claro); color: var(--verde-ok); }
-.badge-atrasado { background: var(--vermelho-claro); color: var(--vermelho); }
-.badge-em-dia { background: var(--verde-ok-claro); color: var(--verde-ok); }
-.badge-devendo { background: var(--amarelo-claro); color: var(--amarelo); }
-
-/* ========== ITEM DE ENTREGA ========== */
-.item-entrega {
-  background: var(--branco);
-  border-radius: var(--raio);
-  padding: 16px;
-  margin-bottom: 10px;
-  box-shadow: var(--sombra);
-  border-left: 4px solid transparent;
-}
-
-.item-entrega.pendente { border-left-color: var(--amarelo); }
-.item-entrega.entregue { border-left-color: var(--verde-ok); opacity: 0.7; }
-.item-entrega.atrasado { border-left-color: var(--vermelho); }
-
-.item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-.item-cliente { font-size: 15px; font-weight: 600; color: var(--texto); }
-.item-data { font-size: 12px; color: var(--cinza); }
-.item-descricao { font-size: 13px; color: var(--texto-suave); margin-bottom: 10px; }
-.item-valor { font-size: 14px; font-weight: 600; color: var(--verde); }
-.item-acoes { display: flex; gap: 8px; margin-top: 12px; }
-
-.btn-entregar {
-  flex: 1;
-  background: var(--verde);
-  color: var(--dourado-claro);
-  border: none;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 13px;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-obs {
-  background: var(--cinza-claro);
-  color: var(--texto-suave);
-  border: none;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-family: 'DM Sans', sans-serif;
-  cursor: pointer;
-}
-
-/* ========== CLIENTE CARD ========== */
-.item-cliente-card {
-  background: var(--branco);
-  border-radius: var(--raio);
-  padding: 16px;
-  margin-bottom: 10px;
-  box-shadow: var(--sombra);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-}
-
-.cliente-nome { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.cliente-info { font-size: 12px; color: var(--cinza); }
-
-/* ========== MODAL ========== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 200;
-  display: none;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.modal-overlay.aberto { display: flex; }
-
-.modal-sheet {
-  background: var(--branco);
-  border-radius: var(--raio-grande) var(--raio-grande) 0 0;
-  padding: 24px 20px 40px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 92dvh;
-  overflow-y: auto;
-  animation: slideUp 0.25s ease-out;
-}
-
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-.modal-handle {
-  width: 40px;
-  height: 4px;
-  background: #e0ddd6;
-  border-radius: 2px;
-  margin: 0 auto 20px;
-}
-
-.modal-titulo {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--verde);
-  margin-bottom: 20px;
-}
-
-/* ========== VAZIO ========== */
-.vazio {
-  text-align: center;
-  padding: 48px 20px;
-  color: var(--cinza);
-}
-
-.vazio-icone { font-size: 48px; margin-bottom: 12px; }
-.vazio p { font-size: 14px; }
-
-/* ========== SEPARADOR ========== */
-.separador {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--cinza);
-  margin: 20px 0 10px;
-}
-
-/* ========== SEARCH ========== */
-.search-bar {
-  display: flex;
-  align-items: center;
-  background: var(--branco);
-  border: 1.5px solid #e0ddd6;
-  border-radius: var(--raio);
-  padding: 10px 14px;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.search-bar input {
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--texto);
-  flex: 1;
-}
-
-.search-bar input:focus { outline: none; }
-.search-icon { font-size: 18px; color: var(--cinza); }
-
-/* ========== FINANCEIRO ========== */
-.resumo-financeiro {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.card-financeiro {
-  background: var(--branco);
-  border-radius: var(--raio);
-  padding: 14px;
-  box-shadow: var(--sombra);
-  text-align: center;
-}
-
-.fin-valor { font-size: 20px; font-weight: 700; }
-.fin-label { font-size: 11px; color: var(--cinza); margin-top: 2px; }
-.fin-devendo { color: var(--vermelho); }
-.fin-recebido { color: var(--verde-ok); }
-
-/* ========== TOGGLE ABAS ========== */
-.abas {
-  display: flex;
-  background: var(--cinza-claro);
-  border-radius: var(--raio);
-  padding: 3px;
-  margin-bottom: 16px;
-  gap: 3px;
-}
-
-.aba {
-  flex: 1;
-  padding: 8px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 9px;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  color: var(--cinza);
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.2s;
-}
-
-.aba.ativa {
-  background: var(--branco);
-  color: var(--verde);
-  box-shadow: var(--sombra);
-}
-
-/* ========== UTILIDADES ========== */
-.flex-entre { display: flex; justify-content: space-between; align-items: center; }
-.mt-8 { margin-top: 8px; }
-.mt-16 { margin-top: 16px; }
-.gap-8 { gap: 8px; }
-.w100 { width: 100%; }
-
-.tag-perfil {
-  background: rgba(200,150,12,0.15);
-  color: var(--dourado);
-  border-radius: 20px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-/* ========== LOADING ========== */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: var(--cinza);
-  gap: 10px;
-  font-size: 14px;
-}
-
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--cinza-claro);
-  border-top-color: var(--verde);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ========== CONFIG SUPABASE ========== */
-.alerta-config {
-  background: #fff8ee;
-  border: 1.5px solid #f5d060;
-  border-radius: var(--raio);
-  padding: 16px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  color: #8a6800;
-}
-
-.alerta-config strong { display: block; margin-bottom: 4px; }
-.alerta-config code {
-  background: rgba(0,0,0,0.06);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  word-break: break-all;
-}
+.alerta-config strong{display:block;margin-bottom:4px;color:var(--o1)}
+.alerta-config code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;color:var(--o2)}
 </style>
 </head>
 <body>
 
-<!-- ===== TELA DE LOGIN ===== -->
+<!-- LOGIN -->
 <div id="tela-login">
+  <svg class="deco" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 800" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">
+    <g opacity=".055" fill="#c8960c">
+      <ellipse cx="28" cy="115" rx="5" ry="20" transform="rotate(-30 28 115)"/>
+      <ellipse cx="22" cy="98" rx="4" ry="16" transform="rotate(18 22 98)"/>
+      <ellipse cx="372" cy="610" rx="5" ry="20" transform="rotate(30 372 610)"/>
+      <ellipse cx="378" cy="628" rx="4" ry="16" transform="rotate(-18 378 628)"/>
+      <ellipse cx="355" cy="75" rx="3.5" ry="14" transform="rotate(-22 355 75)"/>
+      <ellipse cx="48" cy="710" rx="3.5" ry="14" transform="rotate(22 48 710)"/>
+    </g>
+    <g opacity=".035" stroke="#c8960c" fill="none" stroke-width="1">
+      <circle cx="200" cy="390" r="175"/><circle cx="200" cy="390" r="215"/>
+    </g>
+  </svg>
+
   <div class="logo-login">
-    <picture>
-      <source srcset="logo.webp" type="image/webp">
-      <img src="logo.png" alt="KG Agropet" style="width:120px;height:120px;border-radius:50%;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-    </picture>
+    <picture><source srcset="logo.webp" type="image/webp"><img src="logo.png" alt="KG Agropet"></picture>
     <h1>KG Entregas</h1>
-    <p>AGROPET · SISTEMA DE ENTREGAS</p>
+    <div class="linha-ouro"></div>
+    <p>Sistema de Gestão de Entregas</p>
   </div>
+
   <div class="card-login">
-    <h2>Entrar no sistema</h2>
+    <h2>Acesso ao Sistema</h2>
     <div class="campo">
       <label>Usuário</label>
       <input type="text" id="input-usuario" placeholder="seu usuário" autocomplete="username">
@@ -627,14 +368,15 @@ body {
   </div>
 </div>
 
-<!-- ===== APP PRINCIPAL ===== -->
+<!-- APP -->
 <div id="app">
-
-  <!-- Header -->
   <div class="header">
-    <div>
-      <div class="header-logo" style="display:flex;align-items:center;gap:8px;"><picture><source srcset="logo.webp" type="image/webp"><img src="logo.png" alt="KG" style="width:28px;height:28px;border-radius:50%;"></picture> KG Entregas</div>
-      <div class="header-titulo" id="header-titulo">Dashboard</div>
+    <div class="header-logo">
+      <picture><source srcset="logo.webp" type="image/webp"><img src="logo.png" alt="KG"></picture>
+      <div>
+        <div class="header-logo-texto">KG Entregas</div>
+        <div class="header-titulo" id="header-titulo">Dashboard</div>
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span class="tag-perfil" id="tag-perfil">Admin</span>
@@ -642,186 +384,122 @@ body {
     </div>
   </div>
 
-  <!-- Conteúdo -->
   <div class="conteudo">
     <div id="alerta-config" class="alerta-config" style="display:none">
       <strong>⚙️ Configuração necessária</strong>
-      Configure as credenciais do Supabase no arquivo <code>app.js</code> para ativar o banco de dados.
+      Configure as credenciais do Supabase no arquivo <code>app.js</code>.
     </div>
 
-    <!-- TELA: DASHBOARD (admin) -->
+    <!-- DASHBOARD -->
     <div class="tela ativa" id="tela-dashboard">
       <div class="grid-resumo">
-        <div class="card-resumo" id="res-hoje">
-          <div class="resumo-numero" id="num-hoje">–</div>
-          <div class="resumo-label">Entregas hoje</div>
-        </div>
-        <div class="card-resumo" id="res-pendentes">
-          <div class="resumo-numero atencao" id="num-pendentes">–</div>
-          <div class="resumo-label">Pendentes</div>
-        </div>
-        <div class="card-resumo alerta" id="res-atrasados">
-          <div class="resumo-numero" id="num-atrasados">–</div>
-          <div class="resumo-label">Lojas atrasadas</div>
-        </div>
-        <div class="card-resumo" id="res-clientes">
-          <div class="resumo-numero" id="num-clientes">–</div>
-          <div class="resumo-label">Clientes ativos</div>
-        </div>
+        <div class="card-resumo" id="res-hoje"><div class="resumo-numero" id="num-hoje">–</div><div class="resumo-label">Entregas hoje</div></div>
+        <div class="card-resumo atencao" id="res-pendentes"><div class="resumo-numero" id="num-pendentes">–</div><div class="resumo-label">Pendentes</div></div>
+        <div class="card-resumo alerta" id="res-atrasados"><div class="resumo-numero" id="num-atrasados">–</div><div class="resumo-label">Atrasadas</div></div>
+        <div class="card-resumo" id="res-clientes"><div class="resumo-numero" id="num-clientes">–</div><div class="resumo-label">Clientes</div></div>
       </div>
-
       <div class="separador">Próximas entregas</div>
-      <div id="lista-proximas">
-        <div class="loading"><div class="spinner"></div> Carregando...</div>
-      </div>
-
-      <button class="btn-primario mt-16" onclick="abrirModalNovoPedido()">+ Novo pedido</button>
+      <div id="lista-proximas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+      <button class="btn-primario mt-16" onclick="abrirModalNovoPedido()">+ Novo Pedido</button>
     </div>
 
-    <!-- TELA: ENTREGAS (roteiro do dia) -->
+    <!-- ENTREGAS -->
     <div class="tela" id="tela-entregas">
       <div class="abas">
-        <button class="aba ativa" onclick="filtrarEntregas('pendente', this)">Pendentes</button>
-        <button class="aba" onclick="filtrarEntregas('entregue', this)">Entregues</button>
-        <button class="aba" onclick="filtrarEntregas('todos', this)">Todas</button>
+        <button class="aba ativa" onclick="filtrarEntregas('pendente',this)">Pendentes</button>
+        <button class="aba" onclick="filtrarEntregas('entregue',this)">Entregues</button>
+        <button class="aba" onclick="filtrarEntregas('todos',this)">Todas</button>
       </div>
-      <div id="lista-entregas">
-        <div class="loading"><div class="spinner"></div> Carregando...</div>
-      </div>
+      <div id="lista-entregas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
     </div>
 
-    <!-- TELA: CLIENTES (admin) -->
+    <!-- CLIENTES -->
     <div class="tela" id="tela-clientes">
       <div class="search-bar">
         <span class="search-icon">🔍</span>
         <input type="text" placeholder="Buscar cliente..." oninput="buscarCliente(this.value)" id="busca-cliente">
       </div>
-      <div id="lista-clientes">
-        <div class="loading"><div class="spinner"></div> Carregando...</div>
-      </div>
-      <button class="btn-primario mt-16" onclick="abrirModalNovoCliente()">+ Novo cliente</button>
+      <div id="lista-clientes"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+      <button class="btn-primario mt-16" onclick="abrirModalNovoCliente()">+ Novo Cliente</button>
     </div>
 
-    <!-- TELA: FINANCEIRO (admin) -->
+    <!-- FINANCEIRO -->
     <div class="tela" id="tela-financeiro">
       <div class="resumo-financeiro">
-        <div class="card-financeiro">
-          <div class="fin-valor fin-devendo" id="fin-total-devendo">R$ –</div>
-          <div class="fin-label">Total em aberto</div>
-        </div>
-        <div class="card-financeiro">
-          <div class="fin-valor fin-recebido" id="fin-total-recebido">R$ –</div>
-          <div class="fin-label">Recebido no mês</div>
-        </div>
+        <div class="card-financeiro"><div class="fin-valor fin-devendo" id="fin-total-devendo">R$ –</div><div class="fin-label">Em aberto</div></div>
+        <div class="card-financeiro"><div class="fin-valor fin-recebido" id="fin-total-recebido">R$ –</div><div class="fin-label">Recebido no mês</div></div>
       </div>
       <div class="abas">
-        <button class="aba ativa" onclick="filtrarFinanceiro('atrasado', this)">Atrasados</button>
-        <button class="aba" onclick="filtrarFinanceiro('devendo', this)">Em aberto</button>
-        <button class="aba" onclick="filtrarFinanceiro('em-dia', this)">Em dia</button>
+        <button class="aba ativa" onclick="filtrarFinanceiro('atrasado',this)">Atrasados</button>
+        <button class="aba" onclick="filtrarFinanceiro('devendo',this)">Em aberto</button>
+        <button class="aba" onclick="filtrarFinanceiro('em-dia',this)">Em dia</button>
       </div>
-      <div id="lista-financeiro">
-        <div class="loading"><div class="spinner"></div> Carregando...</div>
-      </div>
+      <div id="lista-financeiro"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
     </div>
   </div>
 
-  <!-- Nav Bottom -->
-  <nav class="nav-bottom" id="nav-bottom">
-    <!-- preenchida por JS conforme perfil -->
-  </nav>
+  <nav class="nav-bottom" id="nav-bottom"></nav>
 </div>
 
-<!-- ===== MODAL: NOVO PEDIDO ===== -->
+<!-- MODAL NOVO PEDIDO -->
 <div class="modal-overlay" id="modal-pedido">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-titulo">Novo pedido</div>
-    <div class="campo">
-      <label>Cliente</label>
-      <select id="pedido-cliente">
-        <option value="">Selecionar cliente...</option>
-      </select>
-    </div>
-    <div class="campo">
-      <label>Descrição do pedido</label>
-      <textarea id="pedido-descricao" placeholder="Ex: 2 sacos ração Golden 15kg, 1 vacinação..."></textarea>
-    </div>
-    <div class="campo">
-      <label>Valor (R$)</label>
-      <input type="number" id="pedido-valor" placeholder="0,00" step="0.01" min="0">
-    </div>
-    <div class="campo">
-      <label>Data de entrega</label>
-      <input type="date" id="pedido-data-entrega">
-    </div>
-    <div class="campo">
-      <label>Data de vencimento (pagamento)</label>
-      <input type="date" id="pedido-data-vencimento">
-    </div>
-    <button class="btn-primario mt-16" onclick="salvarPedido()">Salvar pedido</button>
-    <button class="btn-secundario w100 mt-8" onclick="fecharModal('modal-pedido')">Cancelar</button>
+    <div class="modal-titulo">Novo Pedido</div>
+    <div class="campo"><label>Cliente</label><select id="pedido-cliente"><option value="">Selecionar cliente...</option></select></div>
+    <div class="campo"><label>Descrição do pedido</label><textarea id="pedido-descricao" placeholder="Ex: 2 sacos ração Golden 15kg..."></textarea></div>
+    <div class="campo"><label>Valor (R$)</label><input type="number" id="pedido-valor" placeholder="0,00" step="0.01" min="0"></div>
+    <div class="campo"><label>Data de entrega</label><input type="date" id="pedido-data-entrega"></div>
+    <div class="campo"><label>Data de vencimento (pagamento)</label><input type="date" id="pedido-data-vencimento"></div>
+    <button class="btn-primario mt-16" onclick="salvarPedido()">Salvar Pedido</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-pedido')">Cancelar</button>
   </div>
 </div>
 
-<!-- ===== MODAL: NOVO CLIENTE ===== -->
+<!-- MODAL NOVO CLIENTE -->
 <div class="modal-overlay" id="modal-cliente">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-titulo">Novo cliente</div>
-    <div class="campo">
-      <label>Nome da loja</label>
-      <input type="text" id="cliente-nome" placeholder="Ex: Agropet São João">
-    </div>
-    <div class="campo">
-      <label>Responsável</label>
-      <input type="text" id="cliente-responsavel" placeholder="Nome do dono/contato">
-    </div>
-    <div class="campo">
-      <label>WhatsApp</label>
-      <input type="tel" id="cliente-whatsapp" placeholder="(81) 99999-9999">
-    </div>
-    <div class="campo">
-      <label>Endereço / Cidade</label>
-      <input type="text" id="cliente-endereco" placeholder="Ex: Rua das Flores, 123 - Caruaru">
-    </div>
-    <button class="btn-primario mt-16" onclick="salvarCliente()">Salvar cliente</button>
-    <button class="btn-secundario w100 mt-8" onclick="fecharModal('modal-cliente')">Cancelar</button>
+    <div class="modal-titulo">Novo Cliente</div>
+    <div class="campo"><label>Nome da loja</label><input type="text" id="cliente-nome" placeholder="Ex: Agropet São João"></div>
+    <div class="campo"><label>Responsável</label><input type="text" id="cliente-responsavel" placeholder="Nome do dono/contato"></div>
+    <div class="campo"><label>WhatsApp</label><input type="tel" id="cliente-whatsapp" placeholder="(81) 99999-9999"></div>
+    <div class="campo"><label>Endereço / Cidade</label><input type="text" id="cliente-endereco" placeholder="Ex: Rua das Flores, 123 - Caruaru"></div>
+    <button class="btn-primario mt-16" onclick="salvarCliente()">Salvar Cliente</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-cliente')">Cancelar</button>
   </div>
 </div>
 
-<!-- ===== MODAL: OBSERVAÇÃO / MARCAR ENTREGUE ===== -->
+<!-- MODAL CONFIRMAR ENTREGA -->
 <div class="modal-overlay" id="modal-entrega">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-titulo" id="modal-entrega-titulo">Confirmar entrega</div>
-    <div id="modal-entrega-info" style="background:var(--cinza-claro);border-radius:var(--raio);padding:14px;margin-bottom:16px;font-size:14px;color:var(--texto-suave)"></div>
-    <div class="campo">
-      <label>Observação (opcional)</label>
-      <textarea id="entrega-obs" placeholder="Ex: Recebeu o auxiliar. Produto entregue na porta..."></textarea>
-    </div>
-    <button class="btn-primario" onclick="confirmarEntrega()">✓ Confirmar entrega</button>
-    <button class="btn-secundario w100 mt-8" onclick="fecharModal('modal-entrega')">Cancelar</button>
+    <div class="modal-titulo" id="modal-entrega-titulo">Confirmar Entrega</div>
+    <div id="modal-entrega-info" style="background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:14px;margin-bottom:16px;font-size:13px;color:var(--creme)"></div>
+    <div class="campo"><label>Observação (opcional)</label><textarea id="entrega-obs" placeholder="Ex: Recebeu o auxiliar. Produto entregue na porta..."></textarea></div>
+    <button class="btn-primario" onclick="confirmarEntrega()">✓ Confirmar Entrega</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-entrega')">Cancelar</button>
   </div>
 </div>
 
-<!-- ===== MODAL: DETALHE CLIENTE ===== -->
+<!-- MODAL DETALHE CLIENTE -->
 <div class="modal-overlay" id="modal-detalhe-cliente">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-titulo" id="detalhe-cliente-nome">-</div>
     <div id="detalhe-cliente-conteudo"></div>
-    <button class="btn-secundario w100 mt-16" onclick="fecharModal('modal-detalhe-cliente')">Fechar</button>
+    <button class="btn-secundario mt-16" onclick="fecharModal('modal-detalhe-cliente')">Fechar</button>
   </div>
 </div>
 
-<!-- ===== MODAL: DETALHE FINANCEIRO CLIENTE ===== -->
+<!-- MODAL FINANCEIRO CLIENTE -->
 <div class="modal-overlay" id="modal-fin-cliente">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-titulo" id="fin-cliente-nome">-</div>
     <div id="fin-cliente-conteudo"></div>
-    <button class="btn-primario mt-16" onclick="marcarPagoCliente()">✓ Marcar como pago</button>
-    <button class="btn-secundario w100 mt-8" onclick="fecharModal('modal-fin-cliente')">Fechar</button>
+    <button class="btn-primario mt-16" onclick="marcarPagoCliente()">✓ Marcar como Pago</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-fin-cliente')">Fechar</button>
   </div>
 </div>
 
