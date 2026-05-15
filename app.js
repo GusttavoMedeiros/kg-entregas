@@ -342,11 +342,15 @@ function cardEntrega(p, mostrarBotoes) {
 
   const podeEditar = p.status==='pendente' && podeEditarPedido(p);
   const podeEntregar = p.status==='pendente' && (usuario.perfil==='admin' || usuario.perfil==='entregador');
+  const podeExcluir = p.status==='pendente' && podeEditarPedido(p);
   const botaoEditar = podeEditar
     ? `<button class="btn-azul" onclick="abrirModalNovoPedido(${p.id})" title="Editar pedido">✏️</button>`
     : '';
   const botaoEntregar = podeEntregar
     ? `<button class="btn-entregar" onclick="abrirModalEntrega(${p.id})">✓ Marcar entregue</button>`
+    : '';
+  const botaoExcluir = podeExcluir
+    ? `<button class="btn-perigo" style="width:auto;padding:8px 12px;font-size:14px" onclick="excluirPedido(${p.id})" title="Excluir pedido">🗑️</button>`
     : '';
 
   const botoes = (mostrarBotoes && p.status==='pendente') ? `
@@ -354,6 +358,7 @@ function cardEntrega(p, mostrarBotoes) {
       ${botaoEntregar}
       ${botaoEditar}
       <button class="btn-obs" onclick="verDetalhePedido(${p.id})">👁</button>
+      ${botaoExcluir}
     </div>` : (mostrarBotoes && p.status==='entregue'
     ? `<div class="item-acoes"><button class="btn-sm" onclick="verDetalhePedido(${p.id})">Ver detalhes</button></div>` : '');
 
@@ -986,6 +991,46 @@ async function confirmarEntrega() {
   renderizarDashboard();
   renderizarEntregas(filtroEntregas);
   if (usuario.perfil==='admin') renderizarFinanceiro(filtroFinanceiro);
+}
+
+// ============================================================
+// EXCLUIR PEDIDO
+// ============================================================
+async function excluirPedido(id) {
+  const p = todosOsPedidos.find(x => x.id === id);
+  if (!p) return;
+  if (p.status === 'entregue') {
+    alert('Pedido já entregue não pode ser excluído.');
+    return;
+  }
+  if (!podeEditarPedido(p)) {
+    alert('Você não tem permissão para excluir este pedido.');
+    return;
+  }
+
+  const confirmacao = confirm(
+    `Excluir o pedido de "${p.cliente_nome}" no valor de ${moeda(p.valor)}?\n\n` +
+    `Esta ação não pode ser desfeita.`
+  );
+  if (!confirmacao) return;
+
+  if (!MODO_DEMO) {
+    // Apaga os itens primeiro (mesmo com on delete cascade, garantimos)
+    await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${id}`);
+    // Apaga o pedido
+    const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
+    if (!res.ok) {
+      alert('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+      return;
+    }
+  }
+
+  todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
+
+  renderizarDashboard();
+  renderizarEntregas(filtroEntregas);
+  if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
+  if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
 }
 
 // ============================================================
