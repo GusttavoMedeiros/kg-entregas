@@ -19,6 +19,7 @@ const USUARIOS = {
 // ============================================================
 let usuario            = null;
 let pedidoSelecionado  = null;
+let pedidoEmEdicao     = null;   // pedido sendo editado (null = novo pedido)
 let clienteSelecionado = null;
 let produtoSelecionado = null;
 let filtroEntregas     = 'pendente';
@@ -339,9 +340,19 @@ function cardEntrega(p, mostrarBotoes) {
   const vendedorHtml = usuario.perfil==='admin' && p.vendedor
     ? `<span style="font-size:11px;color:var(--c3)">por ${esc(p.vendedor)}</span>` : '';
 
+  const podeEditar = p.status==='pendente' && podeEditarPedido(p);
+  const podeEntregar = p.status==='pendente' && (usuario.perfil==='admin' || usuario.perfil==='entregador');
+  const botaoEditar = podeEditar
+    ? `<button class="btn-azul" onclick="abrirModalNovoPedido(${p.id})" title="Editar pedido">✏️</button>`
+    : '';
+  const botaoEntregar = podeEntregar
+    ? `<button class="btn-entregar" onclick="abrirModalEntrega(${p.id})">✓ Marcar entregue</button>`
+    : '';
+
   const botoes = (mostrarBotoes && p.status==='pendente') ? `
     <div class="item-acoes">
-      <button class="btn-entregar" onclick="abrirModalEntrega(${p.id})">✓ Marcar entregue</button>
+      ${botaoEntregar}
+      ${botaoEditar}
       <button class="btn-obs" onclick="verDetalhePedido(${p.id})">👁</button>
     </div>` : (mostrarBotoes && p.status==='entregue'
     ? `<div class="item-acoes"><button class="btn-sm" onclick="verDetalhePedido(${p.id})">Ver detalhes</button></div>` : '');
@@ -385,7 +396,7 @@ function renderizarMeusPedidos(filtro) {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">📋</div><p>Nenhum pedido aqui</p></div>`;
     return;
   }
-  el.innerHTML = lista.map(p => cardEntrega(p, false)).join('');
+  el.innerHTML = lista.map(p => cardEntrega(p, true)).join('');
 }
 
 function filtrarMeusPedidos(filtro, btn) {
@@ -722,19 +733,56 @@ async function marcarPagoCliente() {
 // ============================================================
 // MODAL NOVO PEDIDO
 // ============================================================
-function abrirModalNovoPedido() {
-  carrinho = [];
+function abrirModalNovoPedido(idEdit) {
   const hoje = fmt(new Date());
-  document.getElementById('pedido-data-entrega').value    = hoje;
-  document.getElementById('pedido-data-vencimento').value = hoje;
-  document.getElementById('pedido-cliente').value = '';
-  document.getElementById('pedido-obs').value = '';
   document.getElementById('busca-produto-modal').value = '';
   document.getElementById('lista-produto-modal').innerHTML = '';
+
+  if (idEdit) {
+    // Modo edição
+    const p = todosOsPedidos.find(x => x.id === idEdit);
+    if (!p) { alert('Pedido não encontrado.'); return; }
+    if (p.status === 'entregue') { alert('Pedido já entregue não pode ser editado.'); return; }
+    if (!podeEditarPedido(p)) { alert('Você não tem permissão para editar este pedido.'); return; }
+
+    pedidoEmEdicao = p;
+    document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
+    document.getElementById('pedido-data-entrega').value    = p.data_entrega || hoje;
+    document.getElementById('pedido-data-vencimento').value = p.data_vencimento || hoje;
+    document.getElementById('pedido-cliente').value         = p.cliente_id || '';
+    document.getElementById('pedido-obs').value             = p.observacao || '';
+
+    // Carrinho com os itens atuais do pedido
+    carrinho = (p.itens || []).map(it => {
+      const prod = todosOsProdutos.find(x => x.id === it.produto_id);
+      return {
+        produto: prod || { id: it.produto_id, nome: it.nome, preco: it.preco_unit },
+        qtd: it.qtd
+      };
+    });
+  } else {
+    // Modo novo pedido
+    pedidoEmEdicao = null;
+    carrinho = [];
+    document.getElementById('modal-pedido-titulo').textContent = 'Novo Pedido';
+    document.getElementById('pedido-data-entrega').value    = hoje;
+    document.getElementById('pedido-data-vencimento').value = hoje;
+    document.getElementById('pedido-cliente').value = '';
+    document.getElementById('pedido-obs').value = '';
+  }
+
   renderizarCarrinho();
   popularSelectClientes();
   buscarProdutoModal('');
   abrirModal('modal-pedido');
+}
+
+// Regra: admin edita tudo, vendedor só os pedidos dele
+function podeEditarPedido(p) {
+  if (!usuario) return false;
+  if (usuario.perfil === 'admin') return true;
+  if (usuario.perfil === 'vendedor') return p.vendedor === usuario.login;
+  return false;
 }
 
 function popularSelectClientes() {
@@ -758,6 +806,68 @@ async function salvarPedido() {
   const cliente  = todosOsClientes.find(c=>c.id===cliente_id);
   const itens    = carrinho.map(c=>({ produto_id:c.produto.id, nome:c.produto.nome, qtd:c.qtd, preco_unit:c.produto.preco }));
 
+  // === EDIÇÃO ===
+  if (pedidoEmEdicao) {
+    if (pedidoEmEdicao.status === 'entregue') {
+      alert('Pedido já entregue não pode ser editado.');
+      return;
+    }
+    if (!podeEditarPedido(pedidoEmEdicao)) {
+      alert('Você não tem permissão para editar este pedido.');
+      return;
+    }
+    const pedido_id = pedidoEmEdicao.id;
+
+    if (!MODO_DEMO) {
+      // Atualiza o pedido
+      const resPed = await supabase('pedidos','PATCH',{
+        cliente_id, descricao, valor,
+        data_entrega, data_vencimento: data_vencimento||null,
+        observacao: obs,
+      }, `?id=eq.${pedido_id}`);
+      if (!resPed.ok) {
+        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        return;
+      }
+      // Apaga itens antigos
+      const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
+      if (!resDel.ok) {
+        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
+        return;
+      }
+      // Insere itens novos
+      const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
+      })));
+      if (resItens.some(r => !r.ok)) {
+        alert('Erro ao salvar itens atualizados. Verifique no banco.');
+        return;
+      }
+    }
+
+    // Atualiza local
+    const idx = todosOsPedidos.findIndex(p => p.id === pedido_id);
+    if (idx >= 0) {
+      Object.assign(todosOsPedidos[idx], {
+        cliente_id,
+        cliente_nome: cliente ? cliente.nome : todosOsPedidos[idx].cliente_nome,
+        descricao, valor, data_entrega,
+        data_vencimento: data_vencimento || null,
+        observacao: obs,
+        itens,
+      });
+    }
+
+    pedidoEmEdicao = null;
+    fecharModal('modal-pedido');
+    renderizarDashboard();
+    renderizarEntregas(filtroEntregas);
+    if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
+    if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
+    return;
+  }
+
+  // === NOVO PEDIDO ===
   const novoPedido = {
     id: Date.now(), cliente_id, cliente_nome: cliente?.nome||'–',
     descricao, valor, status:'pendente', data_entrega,
@@ -771,7 +881,10 @@ async function salvarPedido() {
       data_entrega, data_vencimento:data_vencimento||null,
       observacao:obs, vendedor:usuario.login,
     });
-    if (!resPed.ok||!resPed.dados?.[0]) { alert('Erro ao salvar pedido. Tente novamente.'); return; }
+    if (!resPed.ok||!resPed.dados?.[0]) {
+      alert('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
+      return;
+    }
     const pedido_id = resPed.dados[0].id;
     novoPedido.id = pedido_id;
     // Salvar itens do pedido e VERIFICAR cada um
