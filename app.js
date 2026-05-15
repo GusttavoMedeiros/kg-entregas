@@ -131,7 +131,9 @@ function fazerLogin() {
   usuario = { login:u, ...user };
   document.getElementById('erro-login').style.display = 'none';
   document.getElementById('tela-login').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
+  const appEl = document.getElementById('app');
+  appEl.style.display = 'flex';
+  appEl.classList.add('ativo-desktop');
   document.getElementById('tag-perfil').textContent =
     user.perfil==='admin' ? '👑 Admin' :
     user.perfil==='vendedor' ? '🤝 Vendedor' : '📦 Entregador';
@@ -157,7 +159,9 @@ function sair() {
   usuario=null; todosOsPedidos=[]; todosOsClientes=[]; todosOsProdutos=[]; carrinho=[];
   filtroEntregas='pendente'; filtroFinanceiro='atrasado'; filtroCatalogo='todos'; filtroMeusPedidos='pendente';
   document.getElementById('tela-login').style.display='flex';
-  document.getElementById('app').style.display='none';
+  const appEl = document.getElementById('app');
+  appEl.style.display='none';
+  appEl.classList.remove('ativo-desktop');
   document.getElementById('input-usuario').value='';
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';

@@ -285,55 +285,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* =============================================
-   COMPORTAMENTO DE APP NATIVO
+   DETECÇÃO DE PLATAFORMA: MOBILE vs DESKTOP
    ============================================= */
 
-/* App SEMPRE com largura de celular, mesmo em tela grande */
-/* Em tablet/desktop, fica centralizado como um celular virtual */
-@media (min-width: 600px) {
-  body {
-    background: #050d08;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  #tela-login, #app {
-    max-width: 440px;
-    margin: 0 auto;
-    height: 100dvh;
-    box-shadow: 0 0 60px rgba(0,0,0,.6), 0 0 0 1px rgba(200,150,12,.15);
-    border-radius: 0;
-  }
-  .nav-bottom {
-    max-width: 440px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-  /* Modal preso no fundo do "celular virtual" */
-  .modal-overlay { max-width: 440px; left: 50%; transform: translateX(-50%); }
-}
-
-/* Em tablet/desktop muito largos, simula a moldura de um celular */
-@media (min-width: 900px) {
-  #tela-login, #app {
-    border-radius: 32px;
-    height: 92dvh;
-    max-height: 900px;
-    overflow: hidden;
-  }
-  #tela-login { overflow-y: auto; }
-  .nav-bottom {
-    bottom: 4dvh;
-    border-radius: 0 0 32px 32px;
-  }
-  .modal-overlay {
-    border-radius: 32px;
-    overflow: hidden;
-  }
-  .modal-sheet { border-radius: 24px 24px 0 0; }
-}
-
-/* Mobile pequeno (320-380px) — ajustes finos para não cortar texto */
+/* Mobile pequeno (320-380px) — ajustes para não cortar */
 @media (max-width: 380px) {
   .header { padding: 11px 12px; }
   .header-logo-texto { font-size: 13px; }
@@ -346,9 +301,225 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   .nav-icon { font-size: 18px; }
 }
 
-/* Comportamento touch: sem hover, sem efeitos de mouse */
-@media (hover: none), (pointer: coarse) {
-  *:hover { transform: none !important; }
+/* TABLET MÉDIO (600-899px) — versão app centralizada */
+@media (min-width: 600px) and (max-width: 899px) {
+  body {
+    background: #050d08;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #tela-login, #app {
+    max-width: 480px;
+    margin: 0 auto;
+    height: 100dvh;
+    box-shadow: 0 0 60px rgba(0,0,0,.6), 0 0 0 1px rgba(200,150,12,.15);
+  }
+  .nav-bottom { max-width: 480px; left: 50%; transform: translateX(-50%); }
+  .modal-overlay { max-width: 480px; left: 50%; transform: translateX(-50%); }
+}
+
+/* =============================================
+   DESKTOP (≥900px) — LAYOUT DASHBOARD COMPLETO
+   ============================================= */
+@media (min-width: 900px) {
+  body { background: #050d08; }
+
+  /* LOGIN no desktop — card maior, centralizado, com brand panel */
+  #tela-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+  }
+  .logo-login img { width: 140px; height: 140px; }
+  .logo-login h1 { font-size: 32px; }
+  .card-login { max-width: 440px; padding: 40px 36px; }
+  .card-login h2 { font-size: 15px; }
+
+  /* APP DESKTOP — tela cheia, layout dashboard */
+  #app {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  #app.ativo-desktop { display: flex; }
+
+  /* Header maior e amplo */
+  .header {
+    padding: 16px 40px;
+    border-bottom: 1px solid var(--ob);
+  }
+  .header-logo img { width: 42px; height: 42px; }
+  .header-logo-texto { font-size: 18px; letter-spacing: 1.5px; }
+  .header-titulo { font-size: 12px; letter-spacing: 1.5px; }
+  .tag-perfil { padding: 6px 14px; font-size: 11px; }
+  .btn-sair { padding: 9px 16px; font-size: 12px; }
+
+  /* Conteúdo principal: scroll interno, padding generoso */
+  .conteudo {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 32px 48px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* DASHBOARD: cards de resumo grandes (4 colunas) */
+  .grid-resumo {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+  }
+  .card-resumo { padding: 28px 18px; }
+  .resumo-numero { font-size: 48px; }
+  .resumo-label { font-size: 12px; }
+
+  /* LISTAS em GRID: cards lado a lado */
+  #lista-proximas {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  #lista-entregas, #lista-meus-pedidos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  #lista-clientes, #lista-financeiro {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  #lista-catalogo {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  /* Cards mais espaçados */
+  .item-card, .item-cliente-card, .item-produto-card {
+    margin-bottom: 0;
+    padding: 20px;
+  }
+  .item-nome, .cliente-nome, .produto-nome { font-size: 16px; }
+  .item-sub, .cliente-info { font-size: 13px; }
+  .item-valor, .produto-preco { font-size: 16px; }
+
+  /* Hover sutil nos cards */
+  .item-card, .item-cliente-card, .item-produto-card {
+    transition: transform .18s cubic-bezier(.4,0,.2,1), border-color .18s, box-shadow .18s;
+  }
+  .item-cliente-card:hover, .item-card:hover, .item-produto-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--ob);
+    box-shadow: 0 12px 30px rgba(0,0,0,.4), 0 0 0 1px rgba(200,150,12,.1);
+    cursor: pointer;
+  }
+
+  /* Resumo financeiro com colunas grandes */
+  .resumo-financeiro {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  .card-financeiro { padding: 26px; }
+  .fin-valor { font-size: 28px; }
+  .fin-label { font-size: 12px; }
+
+  /* Search e abas mais amplas */
+  .search-bar { padding: 14px 18px; margin-bottom: 20px; max-width: 600px; }
+  .search-bar input { font-size: 15px; }
+  .abas { padding: 4px; margin-bottom: 20px; max-width: 600px; }
+  .aba { padding: 11px 8px; font-size: 12px; }
+
+  /* Separador maior */
+  .separador {
+    font-size: 11px;
+    margin: 28px 0 14px;
+    letter-spacing: 2.5px;
+  }
+
+  /* NAV BOTTOM vira NAV LATERAL FIXA NA ESQUERDA — visual de app desktop */
+  .nav-bottom {
+    position: fixed;
+    top: 0; bottom: 0; left: 0;
+    flex-direction: column;
+    width: 240px;
+    height: 100dvh;
+    border-top: none;
+    border-right: 1px solid var(--ob);
+    background: linear-gradient(180deg,#0a1a10 0%,#0d2218 100%);
+    padding: 120px 18px 32px;
+    box-shadow: 4px 0 24px rgba(0,0,0,.3);
+    z-index: 90;
+    overflow-y: auto;
+  }
+  .nav-item {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    width: 100%;
+    padding: 14px 18px;
+    gap: 14px;
+    border-radius: 12px;
+    margin-bottom: 6px;
+    transition: background .15s, color .15s;
+  }
+  .nav-item:hover { background: var(--oo); }
+  .nav-item.ativo {
+    background: var(--oo);
+    border: 1px solid var(--ob);
+  }
+  .nav-item.ativo::before { display: none; }
+  .nav-icon { font-size: 22px; opacity: 1 !important; filter: none !important; }
+  .nav-item:not(.ativo) .nav-icon { opacity: .55 !important; }
+  .nav-label {
+    font-size: 13px;
+    letter-spacing: .5px;
+    text-transform: none;
+    font-weight: 600;
+  }
+
+  /* Header e conteúdo deslocam para acomodar nav lateral */
+  .header { padding-left: 280px; }
+  .conteudo { padding-left: 280px; padding-right: 48px; padding-bottom: 32px; }
+
+  /* MODAIS no desktop: centralizados e amplos */
+  .modal-overlay {
+    align-items: center;
+    padding: 32px;
+  }
+  .modal-sheet {
+    border-radius: var(--rxl);
+    border: 1px solid var(--ob);
+    border-bottom: 1px solid var(--ob);
+    max-width: 580px;
+    padding: 32px 32px 36px;
+    animation: modalFade .25s cubic-bezier(.4,0,.2,1);
+  }
+  @keyframes modalFade {
+    from { opacity: 0; transform: scale(.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-handle { display: none; }
+  .modal-titulo { font-size: 22px; margin-bottom: 22px; }
+}
+
+/* DESKTOP GRANDE (≥1400px) — aproveita ainda mais espaço */
+@media (min-width: 1400px) {
+  #lista-catalogo { grid-template-columns: repeat(5, 1fr); }
+  #lista-clientes, #lista-financeiro, #lista-entregas, #lista-meus-pedidos {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .grid-resumo { gap: 22px; }
+  .card-resumo { padding: 32px 20px; }
+  .resumo-numero { font-size: 56px; }
 }
 
 /* Acessibilidade — reduzir movimento se o sistema pedir */
@@ -358,6 +529,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Touch: sem hover */
+@media (hover: none), (pointer: coarse) {
+  *:hover { transform: none !important; box-shadow: var(--sv) !important; }
 }
 
 </style>
