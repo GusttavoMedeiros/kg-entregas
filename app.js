@@ -103,12 +103,16 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     const opts = { method:metodo, headers };
     if (dados) opts.body = JSON.stringify(dados);
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
+      return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
+    }
     if (metodo==='DELETE') return { ok:true, dados:true };
     return { ok:true, dados: await res.json() };
   } catch(e) {
-    console.error('Supabase:', e);
-    return { ok:false, erro:e.message };
+    console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
+    return { ok:false, erro: e.message };
   }
 }
 
@@ -404,9 +408,10 @@ function renderizarCatalogo(filtro) {
   }
   const isAdmin = usuario.perfil==='admin';
   el.innerHTML = lista.map(p => {
-    const estoqueAv = p.estoque <= 5
-      ? `<span class="badge badge-low">⚠ Estoque baixo (${p.estoque})</span>`
-      : `<span class="produto-estoque">${p.estoque} un.</span>`;
+    const est = Number(p.estoque) || 0;
+    const estoqueAv = est <= 5
+      ? `<span class="badge badge-low">⚠ Estoque baixo (${est})</span>`
+      : `<span class="produto-estoque">${est} un.</span>`;
     const botoesAdmin = isAdmin ? `
       <div class="row-gap" style="margin-top:10px">
         <button class="btn-sm" onclick="abrirModalProduto(${p.id})">✏️ Editar</button>
@@ -445,9 +450,10 @@ function buscarProduto(termo) {
   }
   const isAdmin = usuario.perfil==='admin';
   el.innerHTML = lista.map(p => {
-    const estoqueAv = p.estoque<=5
-      ? `<span class="badge badge-low">⚠ Estoque baixo (${p.estoque})</span>`
-      : `<span class="produto-estoque">${p.estoque} un.</span>`;
+    const est = Number(p.estoque) || 0;
+    const estoqueAv = est <= 5
+      ? `<span class="badge badge-low">⚠ Estoque baixo (${est})</span>`
+      : `<span class="produto-estoque">${est} un.</span>`;
     const botoesAdmin = isAdmin ? `
       <div class="row-gap" style="margin-top:10px">
         <button class="btn-sm" onclick="abrirModalProduto(${p.id})">✏️ Editar</button>
@@ -765,13 +771,20 @@ async function salvarPedido() {
       data_entrega, data_vencimento:data_vencimento||null,
       observacao:obs, vendedor:usuario.login,
     });
-    if (!resPed.ok||!resPed.dados?.[0]) { alert('Erro ao salvar. Tente novamente.'); return; }
+    if (!resPed.ok||!resPed.dados?.[0]) { alert('Erro ao salvar pedido. Tente novamente.'); return; }
     const pedido_id = resPed.dados[0].id;
     novoPedido.id = pedido_id;
-    // Salvar itens do pedido
-    await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+    // Salvar itens do pedido e VERIFICAR cada um
+    const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
       pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
     })));
+    const falhouItens = resItens.some(r => !r.ok);
+    if (falhouItens) {
+      // Rollback: deleta o pedido criado
+      await supabase('pedidos','DELETE',null,`?id=eq.${pedido_id}`);
+      alert('Erro ao salvar itens do pedido. Tente novamente.');
+      return;
+    }
   }
 
   todosOsPedidos.push(novoPedido);
@@ -898,9 +911,13 @@ async function salvarProduto() {
   if (idEdit) {
     // Editar
     const id = Number(idEdit);
+    if (!id) { alert('ID inválido.'); return; }
     if (!MODO_DEMO) {
       const res = await supabase('produtos','PATCH',{nome,categoria,preco,estoque},`?id=eq.${id}`);
-      if (!res.ok) { alert('Erro ao salvar. Tente novamente.'); return; }
+      if (!res.ok) {
+        alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+        return;
+      }
     }
     const idx = todosOsProdutos.findIndex(p=>p.id===id);
     if (idx>=0) Object.assign(todosOsProdutos[idx],{nome,categoria,preco,estoque});
@@ -909,7 +926,10 @@ async function salvarProduto() {
     const novo = { id:Date.now(), nome, categoria, preco, estoque };
     if (!MODO_DEMO) {
       const res = await supabase('produtos','POST',{nome,categoria,preco,estoque});
-      if (!res.ok||!res.dados?.[0]) { alert('Erro ao salvar. Tente novamente.'); return; }
+      if (!res.ok||!res.dados?.[0]) {
+        alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+        return;
+      }
       novo.id = res.dados[0].id;
     }
     todosOsProdutos.push(novo);
