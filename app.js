@@ -1224,8 +1224,30 @@ function isAtrasado(p) {
 }
 
 function abrirModal(id) { const m=document.getElementById(id); if(m) m.classList.add('aberto'); }
-function fecharModal(id) { const m=document.getElementById(id); if(m) m.classList.remove('aberto'); }
+function fecharModal(id) {
+  const m=document.getElementById(id);
+  if(m) m.classList.remove('aberto');
+  // Limpa o estado de edição quando fecha o modal de pedido
+  if (id === 'modal-pedido') pedidoEmEdicao = null;
+}
 
+// Fecha modal ao clicar fora dele
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  o.addEventListener('click', e => { if(e.target===o) o.classList.remove('aberto'); });
+  o.addEventListener('click', e => {
+    if(e.target===o) {
+      o.classList.remove('aberto');
+      if (o.id === 'modal-pedido') pedidoEmEdicao = null;
+    }
+  });
+});
+
+// Fecha modal aberto ao pressionar ESC
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const aberto = document.querySelector('.modal-overlay.aberto');
+    if (aberto) {
+      aberto.classList.remove('aberto');
+      if (aberto.id === 'modal-pedido') pedidoEmEdicao = null;
+    }
+  }
 });
