@@ -27,6 +27,7 @@ let filtroFinanceiro   = 'atrasado';
 let filtroCatalogo     = 'todos';
 let filtroMeusPedidos  = 'pendente';
 let carrinho           = [];      // [{produto, qtd}]
+let autoRefreshTimer   = null;    // timer de sincronização automática
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
@@ -156,6 +157,7 @@ document.getElementById('input-senha').addEventListener('keyup', e => { if(e.key
 document.getElementById('input-usuario').addEventListener('keyup', e => { if(e.key==='Enter') document.getElementById('input-senha').focus(); });
 
 function sair() {
+  pararAutoRefresh();
   usuario=null; todosOsPedidos=[]; todosOsClientes=[]; todosOsProdutos=[]; carrinho=[];
   filtroEntregas='pendente'; filtroFinanceiro='atrasado'; filtroCatalogo='todos'; filtroMeusPedidos='pendente';
   document.getElementById('tela-login').style.display='flex';
@@ -282,7 +284,79 @@ async function carregarTudo() {
   renderizarCatalogo(filtroCatalogo);
   if (usuario.perfil==='vendedor') renderizarMeusPedidos(filtroMeusPedidos);
   popularSelectClientes();
+
+  // Inicia sincronização automática a cada 30 segundos
+  iniciarAutoRefresh();
 }
+
+// ============================================================
+// SINCRONIZAÇÃO AUTOMÁTICA (a cada 30s)
+// Pega pedidos/clientes/produtos novos sem o usuário precisar recarregar
+// ============================================================
+async function sincronizarDados() {
+  // Não sincroniza em modo demo ou com modais abertos (não quebrar a UX)
+  if (MODO_DEMO || !usuario) return;
+  if (document.querySelector('.modal-overlay.aberto')) return;
+
+  try {
+    const [resPed, resCli, resProd] = await Promise.all([
+      supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
+      supabase('clientes','GET',null,'?order=nome.asc'),
+      supabase('produtos','GET',null,'?order=nome.asc'),
+    ]);
+
+    if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
+
+    // Detecta se algo mudou (comparando quantidade ou IDs)
+    const novosPedidos = (resPed.dados || []).map(p => ({
+      ...p,
+      cliente_nome: p.clientes?.nome || '–',
+      itens: p.itens_pedido || [],
+      descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
+    }));
+
+    const mudou = JSON.stringify(novosPedidos.map(p=>({id:p.id,status:p.status,valor:p.valor}))) !==
+                  JSON.stringify(todosOsPedidos.map(p=>({id:p.id,status:p.status,valor:p.valor})));
+
+    todosOsPedidos  = novosPedidos;
+    todosOsClientes = resCli.dados || [];
+    todosOsProdutos = resProd.dados || [];
+
+    // Re-renderiza só se algo mudou (para não causar flicker)
+    if (mudou) {
+      renderizarDashboard();
+      renderizarEntregas(filtroEntregas);
+      renderizarCatalogo(filtroCatalogo);
+      if (usuario.perfil==='vendedor') renderizarMeusPedidos(filtroMeusPedidos);
+      if (usuario.perfil==='admin')    renderizarFinanceiro(filtroFinanceiro);
+    }
+  } catch (e) {
+    console.warn('Sincronização falhou:', e);
+  }
+}
+
+function iniciarAutoRefresh() {
+  pararAutoRefresh();
+  // Atualiza a cada 30 segundos
+  autoRefreshTimer = setInterval(sincronizarDados, 30000);
+  // Também atualiza quando o app volta a ficar visível (usuário trocou de aba e voltou)
+  document.addEventListener('visibilitychange', handleVisibility);
+}
+
+function pararAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  document.removeEventListener('visibilitychange', handleVisibility);
+}
+
+function handleVisibility() {
+  if (document.visibilityState === 'visible' && usuario) {
+    sincronizarDados();
+  }
+}
+
 
 // ============================================================
 // DASHBOARD (admin)
@@ -312,13 +386,15 @@ function renderizarDashboard() {
 // ============================================================
 function renderizarEntregas(filtro) {
   filtroEntregas = filtro;
-  const fmtHoje = fmt(new Date());
   let lista;
   if (usuario.perfil==='entregador') {
-    lista = todosOsPedidos.filter(p => p.status==='pendente' && p.data_entrega===fmtHoje);
+    // Entregador vê TODOS os pedidos pendentes (não só os de hoje)
+    // Assim, quando o vendedor lança um pedido, o entregador vê na hora
+    lista = todosOsPedidos.filter(p => p.status==='pendente');
   } else {
     lista = filtro==='todos' ? todosOsPedidos.slice() : todosOsPedidos.filter(p => p.status===filtro);
   }
+  // Ordena: pendentes primeiro, depois por data de entrega
   lista.sort((a,b) => (a.data_entrega||'').localeCompare(b.data_entrega||''));
   const el = document.getElementById('lista-entregas');
   if (!lista.length) {
