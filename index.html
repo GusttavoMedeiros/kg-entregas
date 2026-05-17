@@ -197,13 +197,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);
-  z-index:200;display:none;align-items:flex-end;justify-content:center}
+  z-index:200;display:none;align-items:flex-end;justify-content:center;overflow:hidden}
 .modal-overlay.aberto{display:flex}
 .modal-sheet{background:linear-gradient(180deg,#1e4030 0%,#0f2419 100%);
   border:1px solid var(--ob);border-bottom:none;border-radius:var(--rg) var(--rg) 0 0;
-  padding:20px 18px 40px;width:100%;max-width:480px;max-height:92dvh;overflow-y:auto;
+  padding:20px 18px 40px;width:100%;max-width:480px;max-height:92dvh;
+  overflow-y:auto;overflow-x:hidden;
   animation:slideU .28s cubic-bezier(.32,.72,0,1);
   box-shadow:0 -8px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(200,150,12,.18)}
+/* Conteúdos internos do modal não podem ultrapassar a largura */
+.modal-sheet *{max-width:100%;box-sizing:border-box}
+.modal-sheet textarea,.modal-sheet input,.modal-sheet select{width:100%}
+#lista-produto-modal,#carrinho-lista{width:100%;overflow-x:hidden}
 @keyframes slideU{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .modal-handle{width:36px;height:3px;background:var(--ob);border-radius:2px;margin:0 auto 18px}
 .modal-close-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;
@@ -216,13 +221,30 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* CARRINHO */
-.carrinho-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--ol)}
-.carrinho-nome{flex:1;font-size:13px;color:var(--creme);font-weight:600}
-.carrinho-qtd{display:flex;align-items:center;gap:8px}
-.btn-qtd{background:var(--oo);color:var(--o1);border:1px solid var(--ob);border-radius:6px;
-  width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.qtd-num{font-size:14px;font-weight:700;color:var(--creme);min-width:20px;text-align:center}
-.carrinho-preco{font-size:13px;color:var(--o1);font-weight:700;min-width:60px;text-align:right}
+/* CARRINHO — layout em 2 linhas, com qtd editável */
+.carrinho-item{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--ol)}
+.carrinho-info{display:flex;flex-direction:column;gap:2px}
+.carrinho-nome{font-size:13px;color:var(--creme);font-weight:600;line-height:1.3}
+.carrinho-preco-unit{font-size:11px;color:var(--c3)}
+.carrinho-controle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.carrinho-qtd{display:flex;align-items:center;gap:6px;background:rgba(10,26,16,.65);border:1px solid var(--ob);border-radius:10px;padding:3px}
+.btn-qtd{background:transparent;color:var(--o1);border:none;border-radius:6px;
+  width:30px;height:30px;font-size:18px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .15s;padding:0}
+.btn-qtd:hover{background:var(--oo)}
+.btn-qtd:active{background:rgba(200,150,12,.18)}
+.qtd-input{width:54px;height:30px;background:transparent;border:none;color:var(--creme);
+  font-size:14px;font-weight:700;text-align:center;font-family:'Nunito',sans-serif;
+  -moz-appearance:textfield;padding:0}
+.qtd-input::-webkit-outer-spin-button,.qtd-input::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+.qtd-input:focus{outline:none;background:rgba(200,150,12,.08);border-radius:6px}
+.carrinho-acoes{display:flex;align-items:center;gap:10px}
+.carrinho-subtotal{font-size:14px;color:var(--o1);font-weight:700;min-width:80px;text-align:right;font-family:'Cinzel',serif}
+.btn-remover{background:var(--rmb);color:#e05a4e;border:1px solid rgba(192,57,43,.25);
+  border-radius:8px;padding:6px 10px;font-size:14px;cursor:pointer;line-height:1;transition:background .15s}
+.btn-remover:hover{background:rgba(192,57,43,.2)}
+.btn-remover:active{transform:scale(.95)}
 
 /* VAZIO */
 .vazio{text-align:center;padding:48px 20px;color:var(--c3)}
