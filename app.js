@@ -761,6 +761,90 @@ function cobrarTodosAtrasados() {
 }
 
 // ============================================================
+// RESET HISTÓRICO DE PEDIDOS (admin only, dupla confirmação)
+// ============================================================
+function abrirModalReset() {
+  if (usuario?.perfil !== 'admin') {
+    alert('Apenas o admin pode executar essa ação.');
+    return;
+  }
+  // Mostra quantidade no modal
+  const qtd = todosOsPedidos.length;
+  document.getElementById('reset-qtd-pedidos').textContent = qtd;
+  document.getElementById('confirma-reset').value = '';
+  abrirModal('modal-reset');
+}
+
+async function executarResetPedidos() {
+  if (salvando) return;
+  if (usuario?.perfil !== 'admin') {
+    alert('Apenas o admin pode executar essa ação.');
+    return;
+  }
+
+  // CONFIRMAÇÃO 1: precisa digitar LIMPAR
+  const confirma = document.getElementById('confirma-reset').value.trim().toUpperCase();
+  if (confirma !== 'LIMPAR') {
+    alert('Você precisa digitar exatamente a palavra "LIMPAR" para confirmar.');
+    return;
+  }
+
+  // CONFIRMAÇÃO 2: prompt nativo do navegador
+  const qtd = todosOsPedidos.length;
+  if (qtd === 0) {
+    alert('Não há pedidos para apagar.');
+    fecharModal('modal-reset');
+    return;
+  }
+  const ok = confirm(
+    `⚠️ ÚLTIMA CONFIRMAÇÃO\n\n` +
+    `Você vai apagar ${qtd} pedido(s) PERMANENTEMENTE.\n\n` +
+    `Esta ação não pode ser desfeita.\n\n` +
+    `Tem certeza absoluta?`
+  );
+  if (!ok) return;
+
+  salvando = true;
+  const btn = document.getElementById('btn-confirmar-reset');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Apagando, aguarde...'; }
+
+  try {
+    if (!MODO_DEMO) {
+      // 1º apaga TODOS os itens_pedido
+      const resItens = await supabase('itens_pedido','DELETE',null,'?id=gt.0');
+      if (!resItens.ok) {
+        alert('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
+        return;
+      }
+      // 2º apaga TODOS os pedidos
+      const resPed = await supabase('pedidos','DELETE',null,'?id=gt.0');
+      if (!resPed.ok) {
+        alert('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        return;
+      }
+    }
+
+    // Limpa estado local
+    todosOsPedidos = [];
+
+    fecharModal('modal-reset');
+
+    // Atualiza tudo
+    renderizarDashboard();
+    renderizarEntregas(filtroEntregas);
+    renderizarFinanceiro(filtroFinanceiro);
+
+    alert(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
+  } catch (e) {
+    console.error('Erro ao resetar:', e);
+    alert('Erro inesperado ao resetar: ' + e.message);
+  } finally {
+    salvando = false;
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Sim, apagar tudo definitivamente'; }
+  }
+}
+
+// ============================================================
 // ENTREGAS (admin + entregador)
 // ============================================================
 function renderizarEntregas(filtro) {
