@@ -637,16 +637,46 @@ function renderizarCarrinho() {
     total += subtotal;
     return `
       <div class="carrinho-item">
-        <div class="carrinho-nome">${esc(c.produto.nome)}</div>
-        <div class="carrinho-qtd">
-          <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},-1)">−</button>
-          <span class="qtd-num">${c.qtd}</span>
-          <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},1)">+</button>
+        <div class="carrinho-info">
+          <div class="carrinho-nome">${esc(c.produto.nome)}</div>
+          <div class="carrinho-preco-unit">${moeda(c.produto.preco)} cada</div>
         </div>
-        <div class="carrinho-preco">${moeda(subtotal)}</div>
+        <div class="carrinho-controle">
+          <div class="carrinho-qtd">
+            <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},-1)" aria-label="Diminuir 1">−</button>
+            <input type="number" class="qtd-input" value="${c.qtd}" min="1" step="1"
+                   inputmode="numeric"
+                   onchange="definirQtdCarrinho(${c.produto.id}, this.value)"
+                   onfocus="this.select()">
+            <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},1)" aria-label="Aumentar 1">+</button>
+          </div>
+          <div class="carrinho-acoes">
+            <div class="carrinho-subtotal">${moeda(subtotal)}</div>
+            <button class="btn-remover" onclick="removerDoCarrinho(${c.produto.id})" aria-label="Remover produto">🗑️</button>
+          </div>
+        </div>
       </div>`;
   }).join('');
   totalEl.textContent = moeda(total);
+}
+
+// Permite definir quantidade exata digitando
+function definirQtdCarrinho(produtoId, valorStr) {
+  const idx = carrinho.findIndex(c => c.produto.id === produtoId);
+  if (idx < 0) return;
+  const qtd = Math.max(1, Math.floor(Number(valorStr) || 1));
+  carrinho[idx].qtd = qtd;
+  renderizarCarrinho();
+  const termo = document.getElementById('busca-produto-modal').value;
+  buscarProdutoModal(termo);
+}
+
+// Remove totalmente o produto do carrinho
+function removerDoCarrinho(produtoId) {
+  carrinho = carrinho.filter(c => c.produto.id !== produtoId);
+  renderizarCarrinho();
+  const termo = document.getElementById('busca-produto-modal').value;
+  buscarProdutoModal(termo);
 }
 
 // ============================================================
