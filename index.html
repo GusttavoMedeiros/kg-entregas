@@ -177,6 +177,97 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .resumo-label{font-size:10px;color:var(--c3);margin-top:5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
 .grid-resumo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 
+/* ========== NOVO DASHBOARD ========== */
+.card-icone{font-size:24px;margin-bottom:8px;opacity:.85}
+.card-resumo.card-faturamento::before{background:linear-gradient(90deg,var(--gn),#7ec850);opacity:.7}
+.card-resumo.card-receber::before{background:linear-gradient(90deg,var(--az),#5dade2);opacity:.7}
+.card-resumo.card-atrasados::before{background:linear-gradient(90deg,#e05a4e,#f5a59a);opacity:.7}
+.card-resumo.card-atrasados .resumo-numero{background:none;-webkit-text-fill-color:#e05a4e}
+.card-resumo.card-clientes::before{background:var(--go);opacity:.6}
+.resumo-tendencia{font-size:11px;color:var(--c3);margin-top:6px;font-weight:600}
+.resumo-tendencia.alta{color:var(--gn)}
+.resumo-tendencia.baixa{color:#e05a4e}
+.resumo-tendencia.neutro{color:var(--c3)}
+
+/* Atalhos rápidos */
+.atalhos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
+.atalho-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);padding:14px 10px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+  transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;
+  font-family:'Nunito',sans-serif}
+.atalho-card:hover{transform:translateY(-2px);border-color:var(--ob);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.atalho-card:active{transform:scale(.98)}
+.atalho-icone{font-size:22px}
+.atalho-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--creme);text-align:center;line-height:1.3}
+.atalho-novo .atalho-icone{filter:drop-shadow(0 0 6px rgba(200,150,12,.5))}
+.atalho-cobrar{border-color:rgba(212,121,26,.25)}
+.atalho-estoque{border-color:rgba(192,57,43,.25)}
+.atalho-badge{position:absolute;top:6px;right:8px;background:#e05a4e;color:#fff;
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center}
+.atalho-badge:empty,.atalho-badge[data-count="0"]{display:none}
+
+/* Gráfico de vendas */
+.card-grafico{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:16px;margin-bottom:16px;box-shadow:var(--sv)}
+.card-grafico-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.card-grafico-titulo{font-size:13px;font-weight:700;color:var(--creme);letter-spacing:.5px}
+.card-grafico-total{font-family:'Cinzel',serif;font-size:16px;font-weight:700;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.grafico-barras{display:flex;align-items:flex-end;gap:3px;height:90px;padding-top:8px}
+.grafico-barra{flex:1;background:linear-gradient(180deg,var(--o2),var(--o0));
+  border-radius:3px 3px 0 0;min-height:2px;transition:opacity .15s;cursor:pointer;position:relative}
+.grafico-barra:hover{opacity:.7}
+.grafico-barra.zero{background:rgba(200,150,12,.15)}
+.grafico-tooltip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);
+  background:var(--v0);color:var(--creme);padding:4px 8px;border-radius:6px;
+  font-size:11px;white-space:nowrap;margin-bottom:4px;border:1px solid var(--ob);
+  display:none;z-index:5;pointer-events:none}
+.grafico-barra:hover .grafico-tooltip{display:block}
+
+/* Rankings (top clientes / top produtos) */
+.grid-rankings{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px}
+.card-ranking{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:14px 16px;box-shadow:var(--sv);margin-bottom:12px}
+.card-ranking-header{font-size:13px;font-weight:700;color:var(--creme);
+  letter-spacing:.5px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--ol)}
+.ranking-lista{display:flex;flex-direction:column;gap:8px}
+.ranking-item{display:flex;align-items:center;gap:10px;padding:7px 0}
+.ranking-pos{font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:var(--o1);
+  min-width:24px;text-align:center}
+.ranking-pos.pos-1{font-size:18px}
+.ranking-info{flex:1;min-width:0}
+.ranking-nome{font-size:13px;font-weight:600;color:var(--creme);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ranking-sub{font-size:11px;color:var(--c3);margin-top:2px}
+.ranking-valor{font-size:13px;font-weight:700;color:var(--o1);font-family:'Cinzel',serif;text-align:right}
+.ranking-vazio{font-size:12px;color:var(--c3);text-align:center;padding:14px;font-style:italic}
+
+/* Resumo entregador */
+.resumo-entregador{display:none;margin-bottom:14px}
+.resumo-entregador.ativo{display:block}
+.resumo-entregador-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.resumo-entregador-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:12px 8px;text-align:center;box-shadow:var(--sv)}
+.resumo-entregador-num{font-family:'Cinzel',serif;font-size:20px;font-weight:700;
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.resumo-entregador-lbl{font-size:9px;color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px}
+.aba-rota{flex:1;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:10px;
+  padding:9px 8px;font-size:11px;font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
+  letter-spacing:.5px;transition:all .15s}
+.aba-rota.ativa{background:var(--go);color:var(--v1);border-color:transparent}
+.bairro-grupo{margin-bottom:14px}
+.bairro-header{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--o1);margin:14px 0 8px;display:flex;align-items:center;gap:8px}
+.bairro-header::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--ob),transparent)}
+.btn-maps{background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.3);
+  border-radius:8px;padding:7px 11px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:600;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none}
+.btn-whatsapp-aviso{background:rgba(39,174,96,.15);color:var(--gn);border:1px solid rgba(39,174,96,.3);
+  border-radius:8px;padding:7px 11px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:600;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none}
+
+
 /* BADGES */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 .badge-pendente{background:var(--amb);color:var(--am);border:1px solid rgba(212,121,26,.25)}
@@ -246,6 +337,120 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .modal-close-x:active{transform:scale(.95)}
 .modal-titulo{font-family:'Cinzel',serif;font-size:16px;font-weight:600;margin-bottom:16px;letter-spacing:1px;
   background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* =============================================
+   MODAL COMPACTO PARA CELULAR (até 599px)
+   ============================================= */
+@media (max-width: 599px) {
+  .modal-overlay { padding: 8px; align-items: center; }
+
+  .modal-sheet {
+    padding: 14px 14px 16px;
+    border-radius: 18px;
+    max-height: calc(100dvh - 16px);
+  }
+
+  /* Botão X bem destacado e fácil de alcançar com o polegar */
+  .modal-close-x {
+    top: 10px;
+    right: 10px;
+    width: 38px;
+    height: 38px;
+    background: var(--go);
+    color: var(--v1);
+    border: none;
+    box-shadow: 0 2px 10px rgba(200,150,12,.4);
+    font-size: 22px;
+  }
+  .modal-close-x:hover { background: var(--go); transform: scale(1.05); }
+
+  /* Título mais compacto, com espaço para o X */
+  .modal-titulo {
+    font-size: 15px;
+    margin-bottom: 12px;
+    margin-right: 44px;
+    margin-top: 2px;
+  }
+
+  /* Campos mais compactos */
+  .campo { gap: 4px; margin-bottom: 10px; }
+  .campo label { font-size: 9px; letter-spacing: 1.2px; }
+  .campo input, .campo select, .campo textarea {
+    padding: 9px 11px;
+    font-size: 13px;
+    border-radius: 9px;
+  }
+  .campo input[type="date"] {
+    min-height: 38px;
+    height: 38px;
+  }
+  .campo textarea { min-height: 56px; }
+
+  /* Separadores compactos */
+  .separador { margin: 12px 0 8px; font-size: 9px; letter-spacing: 1.5px; }
+
+  /* Busca de produto compacta */
+  .modal-sheet .search-bar {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 9px;
+  }
+  .modal-sheet .search-bar input { font-size: 13px; }
+
+  /* Lista de produtos no modal: itens mais compactos */
+  #lista-produto-modal {
+    max-height: 160px !important;
+    margin-bottom: 10px !important;
+  }
+  #lista-produto-modal > div {
+    padding: 7px 9px !important;
+    margin-bottom: 5px !important;
+    border-radius: 9px !important;
+  }
+  #lista-produto-modal > div > div:first-child > div:first-child {
+    font-size: 12px !important;
+  }
+  #lista-produto-modal > div > div:first-child > div:last-child {
+    font-size: 11px !important;
+  }
+  .btn-azul {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  /* Carrinho compacto */
+  .carrinho-item { padding: 9px 0; gap: 6px; }
+  .carrinho-nome { font-size: 12px; }
+  .carrinho-preco-unit { font-size: 10px; }
+  .qtd-input { width: 48px; height: 28px; font-size: 13px; }
+  .btn-qtd { width: 28px; height: 28px; font-size: 16px; }
+  .carrinho-subtotal { font-size: 13px; min-width: 70px; }
+  .btn-remover { padding: 5px 8px; font-size: 13px; }
+
+  /* Total compacto */
+  .total-carrinho {
+    padding: 10px 12px;
+    margin: 8px 0;
+    border-radius: 10px;
+  }
+  .total-label { font-size: 12px; }
+  .total-valor { font-size: 17px; }
+
+  /* Botões finais compactos */
+  .modal-sheet .btn-primario {
+    padding: 11px 18px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+  .modal-sheet .btn-secundario {
+    padding: 9px 16px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+  .mt-12 { margin-top: 8px; }
+  .mt-16 { margin-top: 10px; }
+  .mt-8 { margin-top: 6px; }
+}
 
 /* CARRINHO */
 /* CARRINHO — layout em 2 linhas, com qtd editável */
@@ -580,6 +785,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   }
   .modal-handle { display: none; }
   .modal-titulo { font-size: 22px; margin-bottom: 22px; }
+
+  /* Dashboard responsivo */
+  .atalhos-row { grid-template-columns: repeat(3, 1fr); max-width: 720px; }
+  .grid-rankings { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grafico-barras { height: 130px; }
+  .resumo-entregador-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .resumo-entregador-num { font-size: 28px; }
+  .card-icone { font-size: 32px; margin-bottom: 10px; }
 }
 
 /* DESKTOP GRANDE (≥1400px) — aproveita ainda mais espaço */
@@ -590,7 +803,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   }
   .grid-resumo { gap: 22px; }
   .card-resumo { padding: 32px 20px; }
-  .resumo-numero { font-size: 56px; }
+  .resumo-numero { font-size: 48px; }
+  .grafico-barras { height: 160px; }
 }
 
 /* Acessibilidade — reduzir movimento se o sistema pedir */
@@ -665,19 +879,107 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
     <!-- DASHBOARD (admin) -->
     <div class="tela ativa" id="tela-dashboard">
+      <!-- CARDS PRINCIPAIS (4 grandes com ícones e tendência) -->
       <div class="grid-resumo">
-        <div class="card-resumo"><div class="resumo-numero" id="num-hoje">–</div><div class="resumo-label">Entregas hoje</div></div>
-        <div class="card-resumo atencao"><div class="resumo-numero" id="num-pendentes">–</div><div class="resumo-label">Pendentes</div></div>
-        <div class="card-resumo alerta"><div class="resumo-numero" id="num-atrasados">–</div><div class="resumo-label">Atrasadas</div></div>
-        <div class="card-resumo"><div class="resumo-numero" id="num-clientes">–</div><div class="resumo-label">Clientes</div></div>
+        <div class="card-resumo card-faturamento">
+          <div class="card-icone">💰</div>
+          <div class="resumo-numero" id="num-faturamento">R$ 0</div>
+          <div class="resumo-label">Faturamento do mês</div>
+          <div class="resumo-tendencia" id="tendencia-faturamento"></div>
+        </div>
+        <div class="card-resumo card-receber">
+          <div class="card-icone">📥</div>
+          <div class="resumo-numero" id="num-areceber">R$ 0</div>
+          <div class="resumo-label">A receber</div>
+          <div class="resumo-tendencia" id="info-areceber"></div>
+        </div>
+        <div class="card-resumo card-atrasados">
+          <div class="card-icone">⚠️</div>
+          <div class="resumo-numero" id="num-atrasados">0</div>
+          <div class="resumo-label">Atrasadas</div>
+          <div class="resumo-tendencia" id="info-atrasados"></div>
+        </div>
+        <div class="card-resumo card-clientes">
+          <div class="card-icone">🏪</div>
+          <div class="resumo-numero" id="num-clientes">0</div>
+          <div class="resumo-label">Clientes ativos</div>
+          <div class="resumo-tendencia" id="info-clientes"></div>
+        </div>
       </div>
-      <div class="separador">Próximas entregas</div>
+
+      <!-- ATALHOS RÁPIDOS -->
+      <div class="atalhos-row">
+        <button class="atalho-card atalho-novo" onclick="abrirModalNovoPedido()">
+          <span class="atalho-icone">➕</span>
+          <span class="atalho-label">Novo Pedido</span>
+        </button>
+        <button class="atalho-card atalho-cobrar" onclick="cobrarTodosAtrasados()">
+          <span class="atalho-icone">📲</span>
+          <span class="atalho-label">Cobrar Atrasados</span>
+          <span class="atalho-badge" id="badge-cobrar">0</span>
+        </button>
+        <button class="atalho-card atalho-estoque" onclick="navegarPara('catalogo')">
+          <span class="atalho-icone">📦</span>
+          <span class="atalho-label">Estoque Baixo</span>
+          <span class="atalho-badge" id="badge-estoque">0</span>
+        </button>
+      </div>
+
+      <!-- GRÁFICO DE VENDAS 30 DIAS -->
+      <div class="card-grafico">
+        <div class="card-grafico-header">
+          <span class="card-grafico-titulo">📊 Vendas dos últimos 30 dias</span>
+          <span class="card-grafico-total" id="grafico-total-30d">R$ 0</span>
+        </div>
+        <div class="grafico-barras" id="grafico-vendas"></div>
+      </div>
+
+      <!-- TOP CLIENTES + TOP PRODUTOS lado a lado -->
+      <div class="grid-rankings">
+        <div class="card-ranking">
+          <div class="card-ranking-header">🏆 Top Clientes do mês</div>
+          <div class="ranking-lista" id="top-clientes"></div>
+        </div>
+        <div class="card-ranking">
+          <div class="card-ranking-header">⭐ Top Produtos do mês</div>
+          <div class="ranking-lista" id="top-produtos"></div>
+        </div>
+      </div>
+
+      <!-- PERFORMANCE DOS VENDEDORES -->
+      <div class="card-ranking" id="card-vendedores">
+        <div class="card-ranking-header">👥 Performance da equipe (mês)</div>
+        <div class="ranking-lista" id="performance-vendedores"></div>
+      </div>
+
+      <!-- PRÓXIMAS ENTREGAS (compacto) -->
+      <div class="separador">📅 Próximas entregas</div>
       <div id="lista-proximas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
-      <button class="btn-primario mt-16" onclick="abrirModalNovoPedido()">+ Novo Pedido</button>
     </div>
 
     <!-- ENTREGAS -->
     <div class="tela" id="tela-entregas">
+      <!-- RESUMO DO DIA (visível só para entregador) -->
+      <div id="resumo-entregador" class="resumo-entregador">
+        <div class="resumo-entregador-grid">
+          <div class="resumo-entregador-card">
+            <div class="resumo-entregador-num" id="ent-num-pendentes">0</div>
+            <div class="resumo-entregador-lbl">Pendentes</div>
+          </div>
+          <div class="resumo-entregador-card">
+            <div class="resumo-entregador-num" id="ent-num-hoje">0</div>
+            <div class="resumo-entregador-lbl">Para hoje</div>
+          </div>
+          <div class="resumo-entregador-card">
+            <div class="resumo-entregador-num" id="ent-valor-total">R$ 0</div>
+            <div class="resumo-entregador-lbl">Valor a receber</div>
+          </div>
+        </div>
+        <div class="resumo-entregador-abas">
+          <button class="aba-rota ativa" onclick="alternarModoRota('lista',this)">📋 Lista</button>
+          <button class="aba-rota" onclick="alternarModoRota('rota',this)">🗺️ Rota por bairro</button>
+        </div>
+      </div>
       <div class="abas" id="abas-entregas">
         <button class="aba ativa" onclick="filtrarEntregas('pendente',this)">Pendentes</button>
         <button class="aba" onclick="filtrarEntregas('entregue',this)">Entregues</button>
@@ -723,6 +1025,66 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       </div>
       <div id="lista-catalogo"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
       <div id="btn-add-produto"></div>
+    </div>
+
+    <!-- INÍCIO VENDEDOR (dashboard pessoal) -->
+    <div class="tela" id="tela-inicio-vendedor">
+      <div class="grid-resumo">
+        <div class="card-resumo card-faturamento">
+          <div class="card-icone">💵</div>
+          <div class="resumo-numero" id="v-vendas-mes">R$ 0</div>
+          <div class="resumo-label">Minhas vendas (mês)</div>
+          <div class="resumo-tendencia" id="v-tendencia"></div>
+        </div>
+        <div class="card-resumo card-receber">
+          <div class="card-icone">📋</div>
+          <div class="resumo-numero" id="v-pendentes">0</div>
+          <div class="resumo-label">Meus pedidos pendentes</div>
+        </div>
+        <div class="card-resumo card-clientes">
+          <div class="card-icone">✅</div>
+          <div class="resumo-numero" id="v-entregues">0</div>
+          <div class="resumo-label">Entregues no mês</div>
+        </div>
+        <div class="card-resumo card-atrasados">
+          <div class="card-icone">🔔</div>
+          <div class="resumo-numero" id="v-inativos">0</div>
+          <div class="resumo-label">Clientes sem comprar +30d</div>
+        </div>
+      </div>
+
+      <!-- ATALHOS VENDEDOR -->
+      <div class="atalhos-row">
+        <button class="atalho-card atalho-novo" onclick="abrirModalNovoPedido()">
+          <span class="atalho-icone">➕</span>
+          <span class="atalho-label">Novo Pedido</span>
+        </button>
+        <button class="atalho-card atalho-cobrar" onclick="navegarPara('clientes')">
+          <span class="atalho-icone">🏪</span>
+          <span class="atalho-label">Meus Clientes</span>
+        </button>
+      </div>
+
+      <!-- GRÁFICO VENDAS PESSOAL -->
+      <div class="card-grafico">
+        <div class="card-grafico-header">
+          <span class="card-grafico-titulo">📊 Minhas vendas (últimos 30 dias)</span>
+          <span class="card-grafico-total" id="v-grafico-total">R$ 0</span>
+        </div>
+        <div class="grafico-barras" id="v-grafico-vendas"></div>
+      </div>
+
+      <!-- MEUS MELHORES CLIENTES -->
+      <div class="card-ranking">
+        <div class="card-ranking-header">🏆 Meus melhores clientes</div>
+        <div class="ranking-lista" id="v-top-clientes"></div>
+      </div>
+
+      <!-- CLIENTES INATIVOS (re-engajamento) -->
+      <div class="card-ranking">
+        <div class="card-ranking-header">🔔 Clientes que não compram há mais de 30 dias</div>
+        <div class="ranking-lista" id="v-clientes-inativos"></div>
+      </div>
     </div>
 
     <!-- MEUS PEDIDOS (vendedor) -->
