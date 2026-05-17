@@ -31,23 +31,30 @@
   --az:#2980b9;--azb:rgba(41,128,185,.12);
   --r:14px;--rg:20px;--rxl:28px;
   --sv:0 2px 16px rgba(0,0,0,.35);--so:0 4px 20px rgba(200,150,12,.18);
+  /* Espaçamento fluido (clamp: min, preferido, max) */
+  --pad-lat:clamp(14px, 4.5vw, 22px);
+  --pad-vert:clamp(14px, 4vw, 20px);
+  --gap-cards:clamp(8px, 2.5vw, 14px);
+  --gap-stack:clamp(10px, 3vw, 16px);
+  /* Safe-area helpers */
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bot:env(safe-area-inset-bottom, 0px);
+  --safe-left:env(safe-area-inset-left, 0px);
+  --safe-right:env(safe-area-inset-right, 0px);
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
   -webkit-touch-callout:none}
 /* Inputs e textareas precisam permitir seleção e edição */
 input,textarea,select,[contenteditable]{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%}
 body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100dvh;overflow-x:hidden;
-  padding-top:env(safe-area-inset-top);
-  padding-left:env(safe-area-inset-left);
-  padding-right:env(safe-area-inset-right);
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  overscroll-behavior:none;
-  position:fixed;width:100%;height:100%;height:100dvh;overflow:hidden}
+  overscroll-behavior-y:contain;
+  width:100%}
 
 /* Container interno que rola — comportamento de app nativo */
-#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;height:100dvh}
+#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;min-height:100dvh}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 70% 50% at 15% 5%,rgba(200,150,12,.05) 0%,transparent 60%),
              radial-gradient(ellipse 60% 70% at 85% 90%,rgba(46,99,71,.12) 0%,transparent 60%)}
@@ -82,7 +89,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .campo{display:flex;flex-direction:column;gap:6px;margin-bottom:13px}
 .campo label{font-size:10px;font-weight:700;color:var(--o0);letter-spacing:1.5px;text-transform:uppercase}
 .campo input,.campo select,.campo textarea{border:1px solid rgba(200,150,12,.22);border-radius:10px;
-  padding:11px 13px;font-size:14px;font-family:'Nunito',sans-serif;color:var(--creme);
+  padding:11px 13px;font-size:16px;font-family:'Nunito',sans-serif;color:var(--creme);
   background:rgba(10,26,16,.65);transition:border-color .2s,box-shadow .2s;width:100%}
 .campo input::placeholder,.campo textarea::placeholder{color:var(--c3)}
 .campo select option{background:var(--v3);color:var(--creme)}
@@ -136,34 +143,47 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 /* APP */
 #app{display:none;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
 .header{background:linear-gradient(180deg,#0d2218 0%,#0a1a10 100%);border-bottom:1px solid var(--ob);
-  padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
+  padding:12px var(--pad-lat);display:flex;align-items:center;justify-content:space-between;
   position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
-  padding-top:max(12px,env(safe-area-inset-top))}
-.header-logo{display:flex;align-items:center;gap:10px}
-.header-logo img{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--o0);box-shadow:0 0 10px rgba(200,150,12,.28)}
+  padding-top:calc(12px + var(--safe-top));
+  padding-left:calc(var(--pad-lat) + var(--safe-left));
+  padding-right:calc(var(--pad-lat) + var(--safe-right))}
+.header-logo{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.header-logo img{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--o0);box-shadow:0 0 10px rgba(200,150,12,.28);flex-shrink:0}
+.header-logo > div{min-width:0;flex:1;overflow:hidden}
 .header-logo-texto{font-family:'Cinzel',serif;font-size:14px;font-weight:600;letter-spacing:1px;
-  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.header-titulo{font-size:10px;color:var(--c3);font-weight:400;letter-spacing:1px;text-transform:uppercase;margin-top:1px}
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.header-titulo{font-size:10px;color:var(--c3);font-weight:400;letter-spacing:1px;text-transform:uppercase;margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .btn-sair{background:var(--oo);color:var(--o3);border:1px solid var(--ob);border-radius:8px;
-  padding:7px 10px;font-size:11px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600}
+  padding:7px 10px;font-size:11px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;flex-shrink:0}
 
-/* NAV BOTTOM */
+/* NAV BOTTOM — flex 1 1 0 distribui igualmente mesmo com conteúdo de tamanhos diferentes */
 .nav-bottom{background:linear-gradient(0deg,#0a1a10 0%,#0d2218 100%);border-top:1px solid var(--ob);
   display:flex;position:fixed;bottom:0;left:0;right:0;z-index:100;
-  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -4px 20px rgba(0,0,0,.4)}
-.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 8px;
-  cursor:pointer;border:none;background:transparent;gap:4px;position:relative;transition:all .2s}
+  padding-bottom:calc(4px + var(--safe-bot));
+  padding-left:var(--safe-left);
+  padding-right:var(--safe-right);
+  box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+.nav-item{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:10px 2px 8px;
+  cursor:pointer;border:none;background:transparent;gap:4px;position:relative;transition:all .2s;
+  overflow:hidden}
 .nav-item.ativo::before{content:'';position:absolute;top:0;left:25%;right:25%;height:2px;
   background:var(--go);border-radius:0 0 2px 2px}
-.nav-icon{font-size:20px;transition:transform .2s}
+.nav-icon{font-size:clamp(18px, 5vw, 22px);transition:transform .2s;line-height:1}
 .nav-item.ativo .nav-icon{transform:scale(1.12)}
 .nav-item:not(.ativo) .nav-icon{opacity:.3}
-.nav-label{font-size:9px;font-family:'Nunito',sans-serif;font-weight:700;letter-spacing:.8px;
-  text-transform:uppercase;color:var(--c3);transition:color .2s}
+.nav-label{font-size:clamp(8px, 2.4vw, 10px);font-family:'Nunito',sans-serif;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--c3);transition:color .2s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center}
 .nav-item.ativo .nav-label{background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* CONTEÚDO */
-.conteudo{padding:16px 14px 100px;flex:1;position:relative;z-index:1}
+.conteudo{padding:var(--pad-vert) var(--pad-lat) 100px;flex:1;position:relative;z-index:1;
+  padding-left:calc(var(--pad-lat) + var(--safe-left));
+  padding-right:calc(var(--pad-lat) + var(--safe-right))}
 .tela{display:none}.tela.ativa{display:block}
 
 /* CARDS */
@@ -267,6 +287,27 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   border-radius:8px;padding:7px 11px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:600;
   cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none}
 
+/* ========== ZONA DE PERIGO ========== */
+.zona-perigo{background:rgba(192,57,43,.06);border:1px dashed rgba(192,57,43,.3);
+  border-radius:var(--r);padding:18px;margin-top:28px;margin-bottom:20px}
+.zona-perigo-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.zona-perigo-icone{font-size:24px;flex-shrink:0}
+.zona-perigo-titulo{font-size:13px;font-weight:700;color:#e05a4e;letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:3px}
+.zona-perigo-sub{font-size:11px;color:var(--c3);line-height:1.4}
+.btn-zona-perigo{background:rgba(192,57,43,.12);color:#e05a4e;border:1px solid rgba(192,57,43,.35);
+  border-radius:10px;padding:11px 18px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;
+  cursor:pointer;letter-spacing:.5px;text-transform:uppercase;width:100%;
+  transition:background .15s,border-color .15s}
+.btn-zona-perigo:hover{background:rgba(192,57,43,.2);border-color:#e05a4e}
+.btn-zona-perigo:active{transform:scale(.98)}
+.btn-zona-perigo:disabled{opacity:.5;cursor:not-allowed}
+
+.alerta-perigo{background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);
+  border-radius:var(--r);padding:13px 14px;margin-bottom:14px;font-size:12px;
+  color:var(--creme);line-height:1.5}
+.alerta-perigo strong{display:block;color:#e05a4e;margin-bottom:5px;font-size:13px}
+
 
 /* BADGES */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
@@ -310,15 +351,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);
-  z-index:200;display:none;align-items:center;justify-content:center;overflow:hidden;padding:16px}
+  z-index:200;display:none;align-items:center;justify-content:center;overflow:hidden;
+  padding:calc(8px + var(--safe-top)) calc(8px + var(--safe-right))
+          calc(8px + var(--safe-bot)) calc(8px + var(--safe-left))}
 .modal-overlay.aberto{display:flex}
 /* MOBILE: modal flutuante (cartão arredondado centralizado) */
 .modal-sheet{background:linear-gradient(180deg,#1e4030 0%,#0f2419 100%);
   border:1px solid var(--ob);
   border-radius:var(--rxl);
-  padding:22px 18px 24px;
+  padding:calc(var(--pad-vert) + 4px) var(--pad-lat) var(--pad-vert);
   width:100%;max-width:480px;
-  max-height:calc(100dvh - 32px);
+  max-height:calc(100dvh - var(--safe-top) - var(--safe-bot) - 16px);
   overflow-y:auto;overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
   animation:fadeScale .25s cubic-bezier(.32,.72,0,1);
@@ -336,7 +379,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .modal-close-x:hover{background:rgba(200,150,12,.2);transform:scale(1.05)}
 .modal-close-x:active{transform:scale(.95)}
 .modal-titulo{font-family:'Cinzel',serif;font-size:16px;font-weight:600;margin-bottom:16px;letter-spacing:1px;
-  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  padding-right:46px;line-height:1.3}
 
 /* =============================================
    MODAL COMPACTO PARA CELULAR (até 599px)
@@ -372,17 +416,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     margin-top: 2px;
   }
 
-  /* Campos mais compactos */
+  /* Campos mais compactos (mas fonte 16px para iOS não dar zoom) */
   .campo { gap: 4px; margin-bottom: 10px; }
   .campo label { font-size: 9px; letter-spacing: 1.2px; }
   .campo input, .campo select, .campo textarea {
-    padding: 9px 11px;
-    font-size: 13px;
+    padding: 10px 12px;
+    font-size: 16px;
     border-radius: 9px;
   }
   .campo input[type="date"] {
-    min-height: 38px;
-    height: 38px;
+    min-height: 42px;
+    height: 42px;
   }
   .campo textarea { min-height: 56px; }
 
@@ -422,7 +466,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   .carrinho-item { padding: 9px 0; gap: 6px; }
   .carrinho-nome { font-size: 12px; }
   .carrinho-preco-unit { font-size: 10px; }
-  .qtd-input { width: 48px; height: 28px; font-size: 13px; }
+  .qtd-input { width: 52px; height: 32px; font-size: 16px; }
   .btn-qtd { width: 28px; height: 28px; font-size: 16px; }
   .carrinho-subtotal { font-size: 13px; min-width: 70px; }
   .btn-remover { padding: 5px 8px; font-size: 13px; }
@@ -465,8 +509,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   display:flex;align-items:center;justify-content:center;transition:background .15s;padding:0}
 .btn-qtd:hover{background:var(--oo)}
 .btn-qtd:active{background:rgba(200,150,12,.18)}
-.qtd-input{width:54px;height:30px;background:transparent;border:none;color:var(--creme);
-  font-size:14px;font-weight:700;text-align:center;font-family:'Nunito',sans-serif;
+.qtd-input{width:60px;height:34px;background:transparent;border:none;color:var(--creme);
+  font-size:16px;font-weight:700;text-align:center;font-family:'Nunito',sans-serif;
   -moz-appearance:textfield;padding:0}
 .qtd-input::-webkit-outer-spin-button,.qtd-input::-webkit-inner-spin-button{
   -webkit-appearance:none;margin:0}
@@ -491,7 +535,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 /* SEARCH */
 .search-bar{display:flex;align-items:center;background:rgba(10,26,16,.75);
   border:1px solid var(--ob);border-radius:var(--r);padding:9px 13px;gap:10px;margin-bottom:14px}
-.search-bar input{border:none;background:transparent;font-size:14px;font-family:'Nunito',sans-serif;color:var(--creme);flex:1}
+.search-bar input{border:none;background:transparent;font-size:16px;font-family:'Nunito',sans-serif;color:var(--creme);flex:1;min-width:0}
 .search-bar input::placeholder{color:var(--c3)}
 .search-bar input:focus{outline:none}
 .search-icon{font-size:15px;color:var(--o0);opacity:.7}
@@ -955,6 +999,20 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <!-- PRÓXIMAS ENTREGAS (compacto) -->
       <div class="separador">📅 Próximas entregas</div>
       <div id="lista-proximas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+
+      <!-- ZONA DE PERIGO -->
+      <div class="zona-perigo">
+        <div class="zona-perigo-header">
+          <span class="zona-perigo-icone">⚠️</span>
+          <div>
+            <div class="zona-perigo-titulo">Zona de Perigo</div>
+            <div class="zona-perigo-sub">Ações irreversíveis — use com muito cuidado</div>
+          </div>
+        </div>
+        <button class="btn-zona-perigo" onclick="abrirModalReset()">
+          🗑️ Limpar histórico de pedidos
+        </button>
+      </div>
     </div>
 
     <!-- ENTREGAS -->
@@ -1227,6 +1285,46 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=4"></script>
+<!-- MODAL RESET HISTÓRICO (admin only) -->
+<div class="modal-overlay" id="modal-reset">
+  <div class="modal-sheet">
+    <button class="modal-close-x" onclick="fecharModal('modal-reset')" aria-label="Fechar">×</button>
+    <div class="modal-handle"></div>
+    <div class="modal-titulo" style="-webkit-text-fill-color:#e05a4e;background:none">⚠️ Limpar Histórico</div>
+
+    <div class="alerta-perigo">
+      <strong>Esta ação NÃO pode ser desfeita!</strong>
+      Ao confirmar, todos os pedidos (entregues e pendentes) serão <b>permanentemente excluídos</b> do banco de dados.
+    </div>
+
+    <div style="background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--c2);margin-bottom:8px"><strong style="color:var(--o1)">O que será mantido:</strong></div>
+      <div style="font-size:13px;color:var(--c2);line-height:1.7">
+        ✓ Todos os <b>clientes</b> cadastrados<br>
+        ✓ Todo o <b>catálogo de produtos</b><br>
+        ✓ Configurações do sistema
+      </div>
+      <div style="font-size:12px;color:var(--c2);margin:12px 0 8px"><strong style="color:#e05a4e">O que será apagado:</strong></div>
+      <div style="font-size:13px;color:var(--c2);line-height:1.7">
+        ✗ <b id="reset-qtd-pedidos">0</b> pedido(s) no banco<br>
+        ✗ Todos os itens dos pedidos<br>
+        ✗ Histórico de vendas, gráficos e métricas
+      </div>
+    </div>
+
+    <div class="campo">
+      <label style="color:#e05a4e">Para confirmar, digite <b>LIMPAR</b> abaixo:</label>
+      <input type="text" id="confirma-reset" placeholder="Digite LIMPAR" autocomplete="off"
+             style="border-color:#e05a4e;text-transform:uppercase">
+    </div>
+
+    <button class="btn-zona-perigo" id="btn-confirmar-reset" onclick="executarResetPedidos()">
+      🗑️ Sim, apagar tudo definitivamente
+    </button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-reset')">Cancelar</button>
+  </div>
+</div>
+
+<script src="app.js?v=6"></script>
 </body>
 </html>
