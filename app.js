@@ -28,6 +28,7 @@ let filtroCatalogo     = 'todos';
 let filtroMeusPedidos  = 'pendente';
 let carrinho           = [];      // [{produto, qtd}]
 let autoRefreshTimer   = null;    // timer de sincronização automática
+let salvando           = false;   // trava anti double-submit em operações async
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
@@ -158,8 +159,22 @@ document.getElementById('input-usuario').addEventListener('keyup', e => { if(e.k
 
 function sair() {
   pararAutoRefresh();
-  usuario=null; todosOsPedidos=[]; todosOsClientes=[]; todosOsProdutos=[]; carrinho=[];
-  filtroEntregas='pendente'; filtroFinanceiro='atrasado'; filtroCatalogo='todos'; filtroMeusPedidos='pendente';
+  // Reset completo de TODOS os estados
+  usuario = null;
+  todosOsPedidos = []; todosOsClientes = []; todosOsProdutos = [];
+  carrinho = [];
+  pedidoSelecionado = null;
+  pedidoEmEdicao = null;
+  clienteSelecionado = null;
+  produtoSelecionado = null;
+  filtroEntregas = 'pendente';
+  filtroFinanceiro = 'atrasado';
+  filtroCatalogo = 'todos';
+  filtroMeusPedidos = 'pendente';
+
+  // Fecha qualquer modal aberto
+  document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
+
   document.getElementById('tela-login').style.display='flex';
   const appEl = document.getElementById('app');
   appEl.style.display='none';
@@ -167,7 +182,7 @@ function sair() {
   document.getElementById('input-usuario').value='';
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';
-  // Restaura telas
+  // Restaura telas que podem ter sido escondidas por outro perfil
   ['tela-dashboard','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-entregas']
     .forEach(id => { document.getElementById(id).style.display=''; });
   const abasEl = document.getElementById('abas-entregas');
@@ -437,7 +452,7 @@ function cardEntrega(p, mostrarBotoes) {
     <div class="item-acoes">
       ${botaoEntregar}
       ${botaoEditar}
-      <button class="btn-obs" onclick="verDetalhePedido(${p.id})">👁</button>
+      <button class="btn-obs" onclick="verDetalhePedido(${p.id})" aria-label="Ver detalhes do pedido" title="Ver detalhes">👁</button>
       ${botaoExcluir}
     </div>` : (mostrarBotoes && p.status==='entregue'
     ? `<div class="item-acoes"><button class="btn-sm" onclick="verDetalhePedido(${p.id})">Ver detalhes</button></div>` : '');
@@ -510,8 +525,8 @@ function renderizarCatalogo(filtro) {
       : `<span class="produto-estoque">${est} un.</span>`;
     const botoesAdmin = isAdmin ? `
       <div class="row-gap" style="margin-top:10px">
-        <button class="btn-sm" onclick="abrirModalProduto(${p.id})">✏️ Editar</button>
-        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})">🗑️</button>
+        <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
+        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
       </div>` : '';
     return `
       <div class="item-produto-card">
@@ -552,8 +567,8 @@ function buscarProduto(termo) {
       : `<span class="produto-estoque">${est} un.</span>`;
     const botoesAdmin = isAdmin ? `
       <div class="row-gap" style="margin-top:10px">
-        <button class="btn-sm" onclick="abrirModalProduto(${p.id})">✏️ Editar</button>
-        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})">🗑️</button>
+        <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
+        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
       </div>` : '';
     return `
       <div class="item-produto-card">
@@ -831,18 +846,24 @@ function verFinanceiroCliente(id) {
 }
 
 async function marcarPagoCliente() {
+  if (salvando) return;
   if (!clienteSelecionado) return;
   const paraPagar = todosOsPedidos.filter(p => p.cliente_id===clienteSelecionado.id && p.status!=='entregue');
   if (!paraPagar.length) { fecharModal('modal-fin-cliente'); return; }
-  if (!MODO_DEMO) {
-    const res = await Promise.all(paraPagar.map(p => supabase('pedidos','PATCH',{status:'entregue'},`?id=eq.${p.id}`)));
-    if (res.some(r=>!r.ok)) { alert('Erro ao atualizar. Tente novamente.'); return; }
+  salvando = true;
+  try {
+    if (!MODO_DEMO) {
+      const res = await Promise.all(paraPagar.map(p => supabase('pedidos','PATCH',{status:'entregue'},`?id=eq.${p.id}`)));
+      if (res.some(r=>!r.ok)) { alert('Erro ao atualizar. Tente novamente.'); return; }
+    }
+    paraPagar.forEach(p => { p.status='entregue'; });
+    fecharModal('modal-fin-cliente');
+    renderizarFinanceiro(filtroFinanceiro);
+    renderizarDashboard();
+    renderizarEntregas(filtroEntregas);
+  } finally {
+    salvando = false;
   }
-  paraPagar.forEach(p => { p.status='entregue'; });
-  fecharModal('modal-fin-cliente');
-  renderizarFinanceiro(filtroFinanceiro);
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
 }
 
 // ============================================================
@@ -908,6 +929,7 @@ function popularSelectClientes() {
 }
 
 async function salvarPedido() {
+  if (salvando) return;  // bloqueia double-click
   const cliente_id      = Number(document.getElementById('pedido-cliente').value);
   const data_entrega    = document.getElementById('pedido-data-entrega').value;
   const data_vencimento = document.getElementById('pedido-data-vencimento').value;
@@ -916,6 +938,15 @@ async function salvarPedido() {
   if (!cliente_id || !data_entrega) { alert('Selecione o cliente e a data de entrega.'); return; }
   if (!carrinho.length) { alert('Adicione pelo menos um produto ao carrinho.'); return; }
 
+  salvando = true;
+  try {
+    await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs);
+  } finally {
+    salvando = false;
+  }
+}
+
+async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs) {
   const valor    = carrinho.reduce((s,c)=>s+(c.produto.preco*c.qtd),0);
   const descricao= carrinho.map(c=>`${c.qtd}x ${c.produto.nome}`).join(', ');
   const cliente  = todosOsClientes.find(c=>c.id===cliente_id);
@@ -1008,8 +1039,11 @@ async function salvarPedido() {
     })));
     const falhouItens = resItens.some(r => !r.ok);
     if (falhouItens) {
-      // Rollback: deleta o pedido criado
-      await supabase('pedidos','DELETE',null,`?id=eq.${pedido_id}`);
+      // Rollback: deleta o pedido criado (best-effort, loga se falhar)
+      const rollback = await supabase('pedidos','DELETE',null,`?id=eq.${pedido_id}`);
+      if (!rollback.ok) {
+        console.warn(`Rollback do pedido ${pedido_id} falhou. Verifique manualmente no banco.`);
+      }
       alert('Erro ao salvar itens do pedido. Tente novamente.');
       return;
     }
@@ -1033,42 +1067,54 @@ function abrirModalNovoCliente() {
 }
 
 async function salvarCliente() {
+  if (salvando) return;
   const nome        = document.getElementById('cliente-nome').value.trim();
   const responsavel = document.getElementById('cliente-responsavel').value.trim();
   const whatsapp    = document.getElementById('cliente-whatsapp').value.trim();
   const endereco    = document.getElementById('cliente-endereco').value.trim();
   if (!nome) { alert('Informe o nome da loja.'); return; }
-  const novo = { id:Date.now(), nome, responsavel, whatsapp, endereco };
-  if (!MODO_DEMO) {
-    const res = await supabase('clientes','POST',{nome,responsavel,whatsapp,endereco});
-    if (!res.ok||!res.dados?.[0]) { alert('Erro ao salvar. Tente novamente.'); return; }
-    novo.id = res.dados[0].id;
+  salvando = true;
+  try {
+    const novo = { id:Date.now(), nome, responsavel, whatsapp, endereco };
+    if (!MODO_DEMO) {
+      const res = await supabase('clientes','POST',{nome,responsavel,whatsapp,endereco});
+      if (!res.ok||!res.dados?.[0]) { alert('Erro ao salvar. Tente novamente.'); return; }
+      novo.id = res.dados[0].id;
+    }
+    todosOsClientes.push(novo);
+    fecharModal('modal-cliente');
+    renderizarClientes(todosOsClientes);
+    popularSelectClientes();
+    const numCli = document.getElementById('num-clientes');
+    if (numCli) numCli.textContent = todosOsClientes.length;
+  } finally {
+    salvando = false;
   }
-  todosOsClientes.push(novo);
-  fecharModal('modal-cliente');
-  renderizarClientes(todosOsClientes);
-  popularSelectClientes();
-  const numCli = document.getElementById('num-clientes');
-  if (numCli) numCli.textContent = todosOsClientes.length;
 }
 
 async function excluirCliente(id) {
+  if (salvando) return;
   const vinculados = todosOsPedidos.filter(p=>p.cliente_id===id);
   if (vinculados.length>0) {
     alert(`Este cliente tem ${vinculados.length} pedido(s) registrado(s) e não pode ser excluído. Isso preserva o histórico.`);
     return;
   }
   if (!confirm('Excluir este cliente? Esta ação não pode ser desfeita.')) return;
-  if (!MODO_DEMO) {
-    const res = await supabase('clientes','DELETE',null,`?id=eq.${id}`);
-    if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+  salvando = true;
+  try {
+    if (!MODO_DEMO) {
+      const res = await supabase('clientes','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+    }
+    todosOsClientes = todosOsClientes.filter(c=>c.id!==id);
+    fecharModal('modal-detalhe-cliente');
+    renderizarClientes(todosOsClientes);
+    popularSelectClientes();
+    const numCli = document.getElementById('num-clientes');
+    if (numCli) numCli.textContent = todosOsClientes.length;
+  } finally {
+    salvando = false;
   }
-  todosOsClientes = todosOsClientes.filter(c=>c.id!==id);
-  fecharModal('modal-detalhe-cliente');
-  renderizarClientes(todosOsClientes);
-  popularSelectClientes();
-  const numCli = document.getElementById('num-clientes');
-  if (numCli) numCli.textContent = todosOsClientes.length;
 }
 
 // ============================================================
@@ -1088,25 +1134,32 @@ function abrirModalEntrega(id) {
 }
 
 async function confirmarEntrega() {
+  if (salvando) return;
   if (!pedidoSelecionado) return;
   const obs = document.getElementById('entrega-obs').value.trim();
   const id  = pedidoSelecionado.id;
-  if (!MODO_DEMO) {
-    const res = await supabase('pedidos','PATCH',{status:'entregue',observacao:obs},`?id=eq.${id}`);
-    if (!res.ok) { alert('Erro ao confirmar. Tente novamente.'); return; }
+  salvando = true;
+  try {
+    if (!MODO_DEMO) {
+      const res = await supabase('pedidos','PATCH',{status:'entregue',observacao:obs},`?id=eq.${id}`);
+      if (!res.ok) { alert('Erro ao confirmar. Tente novamente.'); return; }
+    }
+    const idx = todosOsPedidos.findIndex(p=>p.id===id);
+    if (idx>=0) { todosOsPedidos[idx].status='entregue'; todosOsPedidos[idx].observacao=obs; }
+    fecharModal('modal-entrega');
+    renderizarDashboard();
+    renderizarEntregas(filtroEntregas);
+    if (usuario.perfil==='admin') renderizarFinanceiro(filtroFinanceiro);
+  } finally {
+    salvando = false;
   }
-  const idx = todosOsPedidos.findIndex(p=>p.id===id);
-  if (idx>=0) { todosOsPedidos[idx].status='entregue'; todosOsPedidos[idx].observacao=obs; }
-  fecharModal('modal-entrega');
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  if (usuario.perfil==='admin') renderizarFinanceiro(filtroFinanceiro);
 }
 
 // ============================================================
 // EXCLUIR PEDIDO
 // ============================================================
 async function excluirPedido(id) {
+  if (salvando) return;
   const p = todosOsPedidos.find(x => x.id === id);
   if (!p) return;
   if (p.status === 'entregue') {
@@ -1124,23 +1177,31 @@ async function excluirPedido(id) {
   );
   if (!confirmacao) return;
 
-  if (!MODO_DEMO) {
-    // Apaga os itens primeiro (mesmo com on delete cascade, garantimos)
-    await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${id}`);
-    // Apaga o pedido
-    const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
-    if (!res.ok) {
-      alert('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
-      return;
+  salvando = true;
+  try {
+    if (!MODO_DEMO) {
+      // Apaga os itens primeiro (com on delete cascade já apagaria, mas garantimos)
+      const resItens = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${id}`);
+      if (!resItens.ok) {
+        console.warn(`Falha ao deletar itens do pedido ${id} antes de deletar o pedido.`);
+      }
+      // Apaga o pedido
+      const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok) {
+        alert('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        return;
+      }
     }
+
+    todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
+
+    renderizarDashboard();
+    renderizarEntregas(filtroEntregas);
+    if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
+    if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
+  } finally {
+    salvando = false;
   }
-
-  todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
-
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
-  if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
 }
 
 // ============================================================
@@ -1167,53 +1228,65 @@ function abrirModalProduto(id) {
 }
 
 async function salvarProduto() {
+  if (salvando) return;
   const nome      = document.getElementById('produto-nome').value.trim();
   const categoria = document.getElementById('produto-categoria').value;
   const precoStr  = document.getElementById('produto-preco').value.replace(',','.');
-  const preco     = parseFloat(precoStr)||0;
-  const estoque   = parseInt(document.getElementById('produto-estoque').value)||0;
+  const preco     = Math.max(0, parseFloat(precoStr) || 0);
+  const estoque   = Math.max(0, parseInt(document.getElementById('produto-estoque').value) || 0);
   const idEdit    = document.getElementById('produto-id').value;
 
   if (!nome) { alert('Informe o nome do produto.'); return; }
 
-  if (idEdit) {
-    // Editar
-    const id = Number(idEdit);
-    if (!id) { alert('ID inválido.'); return; }
-    if (!MODO_DEMO) {
-      const res = await supabase('produtos','PATCH',{nome,categoria,preco,estoque},`?id=eq.${id}`);
-      if (!res.ok) {
-        alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
-        return;
+  salvando = true;
+  try {
+    if (idEdit) {
+      // Editar
+      const id = Number(idEdit);
+      if (!id) { alert('ID inválido.'); return; }
+      if (!MODO_DEMO) {
+        const res = await supabase('produtos','PATCH',{nome,categoria,preco,estoque},`?id=eq.${id}`);
+        if (!res.ok) {
+          alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+          return;
+        }
       }
-    }
-    const idx = todosOsProdutos.findIndex(p=>p.id===id);
-    if (idx>=0) Object.assign(todosOsProdutos[idx],{nome,categoria,preco,estoque});
-  } else {
-    // Novo
-    const novo = { id:Date.now(), nome, categoria, preco, estoque };
-    if (!MODO_DEMO) {
-      const res = await supabase('produtos','POST',{nome,categoria,preco,estoque});
-      if (!res.ok||!res.dados?.[0]) {
-        alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
-        return;
+      const idx = todosOsProdutos.findIndex(p=>p.id===id);
+      if (idx>=0) Object.assign(todosOsProdutos[idx],{nome,categoria,preco,estoque});
+    } else {
+      // Novo
+      const novo = { id:Date.now(), nome, categoria, preco, estoque };
+      if (!MODO_DEMO) {
+        const res = await supabase('produtos','POST',{nome,categoria,preco,estoque});
+        if (!res.ok||!res.dados?.[0]) {
+          alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+          return;
+        }
+        novo.id = res.dados[0].id;
       }
-      novo.id = res.dados[0].id;
+      todosOsProdutos.push(novo);
     }
-    todosOsProdutos.push(novo);
+    fecharModal('modal-produto');
+    renderizarCatalogo(filtroCatalogo);
+  } finally {
+    salvando = false;
   }
-  fecharModal('modal-produto');
-  renderizarCatalogo(filtroCatalogo);
 }
 
 async function excluirProduto(id) {
+  if (salvando) return;
   if (!confirm('Excluir este produto do catálogo?')) return;
-  if (!MODO_DEMO) {
-    const res = await supabase('produtos','DELETE',null,`?id=eq.${id}`);
-    if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+  salvando = true;
+  try {
+    if (!MODO_DEMO) {
+      const res = await supabase('produtos','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+    }
+    todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
+    renderizarCatalogo(filtroCatalogo);
+  } finally {
+    salvando = false;
   }
-  todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
-  renderizarCatalogo(filtroCatalogo);
 }
 
 // ============================================================
