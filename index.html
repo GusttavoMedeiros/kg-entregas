@@ -384,6 +384,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .check-item.marcado{background:rgba(39,174,96,.05);border-color:rgba(39,174,96,.18)}
 .check-item.marcado .check-txt{opacity:.55;text-decoration:line-through;text-decoration-color:var(--o1)}
 
+/* ========== CADASTRO DE CLIENTE ========== */
+.campo-obrig{color:#e05a4e;margin-left:3px;font-weight:700}
+.ie-row{display:flex;gap:6px;align-items:stretch}
+.ie-row input{flex:1;min-width:0}
+.btn-isento{background:rgba(200,150,12,.08);color:var(--o1);border:1px solid var(--ob);
+  border-radius:10px;padding:0 14px;font-size:11px;font-weight:700;font-family:'Nunito',sans-serif;
+  letter-spacing:.5px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;
+  flex-shrink:0}
+.btn-isento:hover{background:rgba(200,150,12,.18);color:var(--o0)}
+.btn-isento:active{transform:scale(.97)}
+.btn-isento.ativo{background:var(--go);color:var(--v1);border-color:transparent}
+
 /* ========== ZONA DE PERIGO ========== */
 .zona-perigo{background:rgba(192,57,43,.06);border:1px dashed rgba(192,57,43,.3);
   border-radius:var(--r);padding:18px;margin-top:28px;margin-bottom:20px}
@@ -1326,18 +1338,77 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 <!-- MODAL NOVO CLIENTE -->
 <div class="modal-overlay" id="modal-cliente">
-  <div class="modal-sheet">
+  <div class="modal-sheet" data-tipo-pessoa="juridica">
     <button class="modal-close-x" onclick="fecharModal('modal-cliente')" aria-label="Fechar">×</button>
     <div class="modal-handle"></div>
-    <div class="modal-titulo">Novo Cliente</div>
-    <div class="campo"><label>Nome da loja</label>
-      <input type="text" id="cliente-nome" placeholder="Ex: Agropet São João"></div>
-    <div class="campo"><label>Responsável</label>
-      <input type="text" id="cliente-responsavel" placeholder="Nome do dono/contato"></div>
-    <div class="campo"><label>WhatsApp</label>
-      <input type="tel" id="cliente-whatsapp" placeholder="(81) 99999-9999"></div>
-    <div class="campo"><label>Endereço / Cidade</label>
-      <input type="text" id="cliente-endereco" placeholder="Ex: Rua das Flores, 123 - Caruaru"></div>
+    <div class="modal-titulo" id="cliente-modal-titulo">Novo Cliente</div>
+
+    <!-- Tipo de pessoa -->
+    <div class="campo">
+      <label>Tipo de cadastro</label>
+      <div class="pagto-grupo">
+        <button type="button" class="pagto-opcao ativo" data-valor="juridica" onclick="alternarTipoPessoa('juridica')">
+          <span class="pagto-icone">🏢</span>
+          <span class="pagto-label">Empresa (CNPJ)</span>
+        </button>
+        <button type="button" class="pagto-opcao" data-valor="fisica" onclick="alternarTipoPessoa('fisica')">
+          <span class="pagto-icone">👤</span>
+          <span class="pagto-label">Pessoa Física (CPF)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- IDENTIFICAÇÃO -->
+    <div class="separador">Identificação</div>
+    <div class="campo">
+      <label id="cliente-nome-label">Nome da loja <span class="campo-obrig">*</span></label>
+      <input type="text" id="cliente-nome" placeholder="Ex: Agropet São João">
+    </div>
+    <div class="campo">
+      <label id="cliente-doc-label">CNPJ <span class="campo-obrig">*</span></label>
+      <input type="tel" id="cliente-cnpj-cpf" inputmode="numeric" placeholder="00.000.000/0000-00" autocomplete="off">
+    </div>
+
+    <!-- CONTATO -->
+    <div class="separador">Contato</div>
+    <div class="campo">
+      <label>Responsável (quem atende)</label>
+      <input type="text" id="cliente-responsavel" placeholder="Nome do dono/contato">
+    </div>
+    <div class="campo">
+      <label>WhatsApp <span class="campo-obrig">*</span></label>
+      <input type="tel" id="cliente-whatsapp" inputmode="numeric" placeholder="(81) 99999-9999" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label>Telefone fixo (opcional)</label>
+      <input type="tel" id="cliente-telefone-fixo" inputmode="numeric" placeholder="(81) 3000-0000" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label>E-mail (opcional)</label>
+      <input type="email" id="cliente-email" placeholder="contato@empresa.com.br" autocomplete="off">
+    </div>
+
+    <!-- ENDEREÇO E FISCAL -->
+    <div class="separador">Endereço e fiscal</div>
+    <div class="campo">
+      <label>Endereço completo</label>
+      <input type="text" id="cliente-endereco" placeholder="Rua, número, bairro - Cidade/UF">
+    </div>
+    <div class="campo bloco-ie">
+      <label>Inscrição Estadual (IE)</label>
+      <div class="ie-row">
+        <input type="text" id="cliente-ie" placeholder="000.000.000.000" autocomplete="off">
+        <button type="button" class="btn-isento" onclick="marcarIsento()">ISENTO</button>
+      </div>
+    </div>
+
+    <!-- OBSERVAÇÕES -->
+    <div class="separador">Observações internas</div>
+    <div class="campo">
+      <label>Anotações sobre o cliente (opcional)</label>
+      <textarea id="cliente-observacao" placeholder="Ex: Atende só de tarde, cliente parcelado, etc."></textarea>
+    </div>
+
     <button class="btn-primario mt-12" onclick="salvarCliente()">Salvar Cliente</button>
     <button class="btn-secundario mt-8" onclick="fecharModal('modal-cliente')">Cancelar</button>
   </div>
@@ -1453,6 +1524,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
