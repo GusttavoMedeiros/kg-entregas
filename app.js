@@ -109,6 +109,94 @@ const buscarProdutoModalDebounced = debounce((t) => _buscarProdutoModalImpl(t), 
 const buscarCliente      = debounce((t) => _buscarClienteImpl(t), 150);
 
 // ============================================================
+// CHECKLIST DE CARREGAMENTO (entregador, offline-first)
+// Persiste no localStorage SEM tocar no Supabase a cada clique.
+// Chave: kg-checklist-{pedidoId}  | Valor: {itens:[produto_id...], ts:timestamp}
+// Usa produto_id (estável) em vez de índice do array (que pode mudar se admin edita).
+// ============================================================
+const CHECKLIST_PREFIX = 'kg-checklist-';
+const CHECKLIST_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+
+function getChecklist(pedidoId) {
+  try {
+    const raw = localStorage.getItem(CHECKLIST_PREFIX + pedidoId);
+    if (!raw) return new Set();
+    const obj = JSON.parse(raw);
+    return new Set(Array.isArray(obj?.itens) ? obj.itens : []);
+  } catch(e) {
+    console.warn('Erro ao ler checklist do pedido', pedidoId, e);
+    return new Set();
+  }
+}
+
+function salvarChecklist(pedidoId, marcadosSet) {
+  try {
+    if (marcadosSet.size === 0) {
+      localStorage.removeItem(CHECKLIST_PREFIX + pedidoId);
+      return;
+    }
+    localStorage.setItem(CHECKLIST_PREFIX + pedidoId, JSON.stringify({
+      itens: [...marcadosSet],
+      ts: Date.now(),
+    }));
+  } catch(e) {
+    // localStorage cheio ou indisponível — degrada graciosamente (não persiste)
+    console.warn('Não foi possível salvar checklist:', e);
+  }
+}
+
+// Toggle de um item do checklist (chamado por onclick no <li>)
+function toggleChecklistItem(pedidoId, produtoId, btnEl) {
+  const marcados = getChecklist(pedidoId);
+  produtoId = Number(produtoId);
+  if (marcados.has(produtoId)) marcados.delete(produtoId);
+  else marcados.add(produtoId);
+  salvarChecklist(pedidoId, marcados);
+
+  // Atualiza só o <li> clicado (zero re-render do card)
+  if (btnEl) {
+    btnEl.classList.toggle('marcado', marcados.has(produtoId));
+  }
+  // Atualiza o contador no card (se existir)
+  const cardEl = btnEl?.closest('.item-card');
+  if (cardEl) {
+    const contadorEl = cardEl.querySelector('.checklist-contador');
+    const totalItens = cardEl.querySelectorAll('.check-item').length;
+    if (contadorEl) {
+      contadorEl.textContent = `${marcados.size}/${totalItens}`;
+      contadorEl.classList.toggle('completo', marcados.size === totalItens && totalItens > 0);
+    }
+  }
+}
+
+// Limpa o checklist quando o pedido é entregue (não precisa mais)
+function limparChecklist(pedidoId) {
+  try { localStorage.removeItem(CHECKLIST_PREFIX + pedidoId); } catch(e) {}
+}
+
+// Limpeza automática: remove entradas antigas (>30 dias) e órfãs (pedido deletado)
+function limpezaChecklistAntigos() {
+  try {
+    const idsExistentes = new Set(todosOsPedidos.map(p => String(p.id)));
+    const agora = Date.now();
+    const remover = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(CHECKLIST_PREFIX)) continue;
+      const pedidoId = key.slice(CHECKLIST_PREFIX.length);
+      try {
+        const obj = JSON.parse(localStorage.getItem(key));
+        const expirado = !obj?.ts || (agora - obj.ts) > CHECKLIST_TTL_MS;
+        const orfao = !idsExistentes.has(pedidoId);
+        if (expirado || orfao) remover.push(key);
+      } catch(e) { remover.push(key); }
+    }
+    remover.forEach(k => localStorage.removeItem(k));
+    if (remover.length) console.log(`Checklist: ${remover.length} entradas antigas removidas`);
+  } catch(e) { /* silencioso */ }
+}
+
+// ============================================================
 // DADOS DEMO
 // ============================================================
 const _h = new Date(), _o = new Date(_h), _a = new Date(_h), _s = new Date(_h);
@@ -374,6 +462,9 @@ async function carregarTudo() {
     renderizarMeusPedidos(filtroMeusPedidos);
   }
   popularSelectClientes();
+
+  // Limpa checklists antigos (>30 dias) e órfãos (pedidos deletados)
+  if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
 
   // Inicia sincronização automática a cada 30 segundos
   iniciarAutoRefresh();
@@ -1002,10 +1093,36 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     : atrasado ? `<span class="badge badge-atrasado">⚠ Atrasado</span>`
     : `<span class="badge badge-pendente">Pendente</span>`;
 
-  // Se temos os itens reais (com qtd e nome), preferimos mostrar eles. Senão, usa descricao como fallback.
-  const conteudoLinha = p.itens?.length
-    ? `<div class="item-sub">${p.itens.map(i => esc(`${i.qtd}x ${i.nome || i.produto_nome || ''}`)).join(' · ')}</div>`
-    : `<div class="item-sub">${esc(p.descricao)}</div>`;
+  // Itens do pedido: para ENTREGADOR em pedido PENDENTE, vira CHECKLIST interativo.
+  // Para outros perfis ou pedido entregue, mostra como texto corrido (mesmo de antes).
+  let conteudoLinha;
+  const ehEntregadorChecklist = usuario.perfil === 'entregador' && p.status === 'pendente' && p.itens?.length;
+  if (ehEntregadorChecklist) {
+    const marcados = getChecklist(p.id);
+    const totalItens = p.itens.length;
+    const qtdMarcados = p.itens.filter(i => marcados.has(Number(i.produto_id))).length;
+    const completo = qtdMarcados === totalItens && totalItens > 0;
+    conteudoLinha = `
+      <div class="checklist-header">
+        <span class="checklist-titulo">🚚 Conferência de carga</span>
+        <span class="checklist-contador ${completo ? 'completo' : ''}">${qtdMarcados}/${totalItens}</span>
+      </div>
+      <ul class="checklist-itens">
+        ${p.itens.map(i => {
+          const pid = Number(i.produto_id);
+          const marcado = marcados.has(pid);
+          return `<li class="check-item ${marcado ? 'marcado' : ''}"
+                       onclick="toggleChecklistItem(${p.id}, ${pid}, this)">
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-txt">${esc(`${i.qtd}x ${i.nome || i.produto_nome || ''}`)}</span>
+          </li>`;
+        }).join('')}
+      </ul>`;
+  } else if (p.itens?.length) {
+    conteudoLinha = `<div class="item-sub">${p.itens.map(i => esc(`${i.qtd}x ${i.nome || i.produto_nome || ''}`)).join(' · ')}</div>`;
+  } else {
+    conteudoLinha = `<div class="item-sub">${esc(p.descricao)}</div>`;
+  }
 
   const vendedorHtml = usuario.perfil==='admin' && p.vendedor
     ? `<span style="font-size:11px;color:var(--c3)">por ${esc(p.vendedor)}</span>` : '';
@@ -1901,6 +2018,24 @@ async function confirmarEntrega() {
   if (!pedidoSelecionado) return;
   const obs = document.getElementById('entrega-obs').value.trim();
   const id  = pedidoSelecionado.id;
+
+  // VALIDAÇÃO DO CHECKLIST (só para entregador) — avisa se faltam itens conferidos
+  if (usuario.perfil === 'entregador' && pedidoSelecionado.itens?.length) {
+    const marcados = getChecklist(id);
+    const total = pedidoSelecionado.itens.length;
+    const qtdMarcados = pedidoSelecionado.itens.filter(i => marcados.has(Number(i.produto_id))).length;
+    if (qtdMarcados < total) {
+      const faltam = total - qtdMarcados;
+      const ok = confirm(
+        `⚠ Atenção!\n\n` +
+        `Faltam ${faltam} ${faltam === 1 ? 'item não conferido' : 'itens não conferidos'} ` +
+        `na carga deste pedido.\n\n` +
+        `Confirmar a entrega mesmo assim?`
+      );
+      if (!ok) return;
+    }
+  }
+
   salvando = true;
   try {
     if (!MODO_DEMO) {
@@ -1909,6 +2044,8 @@ async function confirmarEntrega() {
     }
     const idx = todosOsPedidos.findIndex(p=>p.id===id);
     if (idx>=0) { todosOsPedidos[idx].status='entregue'; todosOsPedidos[idx].observacao=obs; }
+    // Pedido entregue: limpa o checklist (não precisa mais)
+    limparChecklist(id);
     fecharModal('modal-entrega');
     agendarRender('dashboard');
     agendarRender('entregas');
@@ -1957,6 +2094,7 @@ async function excluirPedido(id) {
     }
 
     todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
+    limparChecklist(id);
 
     agendarRender('dashboard');
     agendarRender('entregas');
