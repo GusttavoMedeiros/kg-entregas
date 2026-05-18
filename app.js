@@ -197,6 +197,156 @@ function limpezaChecklistAntigos() {
 }
 
 // ============================================================
+// MÁSCARAS DE INPUT (CNPJ, CPF, telefones, IE)
+// ============================================================
+function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+
+// Aplica máscara de CNPJ: 00.000.000/0000-00 (14 dígitos)
+function mascaraCNPJ(v) {
+  const d = soDigitos(v).slice(0, 14);
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+// Aplica máscara de CPF: 000.000.000-00 (11 dígitos)
+function mascaraCPF(v) {
+  const d = soDigitos(v).slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1-$2');
+}
+
+// Aplica máscara de telefone: (00) 00000-0000 ou (00) 0000-0000
+function mascaraTelefone(v) {
+  const d = soDigitos(v).slice(0, 11);
+  if (d.length <= 2)  return d.replace(/^(\d{0,2})/, '($1');
+  if (d.length <= 6)  return d.replace(/^(\d{2})(\d{0,4})/, '($1) $2');
+  if (d.length <= 10) return d.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+  return d.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+}
+
+// Aplica máscara de Inscrição Estadual (formato livre, só pontos e dígitos)
+function mascaraIE(v) {
+  // IE varia muito por estado — vamos manter livre, só limitar a 14 dígitos
+  return soDigitos(v).slice(0, 14);
+}
+
+// Validação real de CNPJ (dígitos verificadores)
+function validarCNPJ(cnpj) {
+  const d = soDigitos(cnpj);
+  if (d.length !== 14) return false;
+  if (/^(\d)\1+$/.test(d)) return false; // todos iguais
+  const calc = (base) => {
+    let soma = 0, pos = base.length - 7;
+    for (let i = base.length; i >= 1; i--) {
+      soma += Number(base[base.length - i]) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(d.slice(0, 12)) === Number(d[12]) && calc(d.slice(0, 13)) === Number(d[13]);
+}
+
+// Validação real de CPF (dígitos verificadores)
+function validarCPF(cpf) {
+  const d = soDigitos(cpf);
+  if (d.length !== 11) return false;
+  if (/^(\d)\1+$/.test(d)) return false;
+  const calc = (base, fator) => {
+    let soma = 0;
+    for (let i = 0; i < base.length; i++) soma += Number(base[i]) * (fator - i);
+    const r = (soma * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return calc(d.slice(0, 9), 10) === Number(d[9]) && calc(d.slice(0, 10), 11) === Number(d[10]);
+}
+
+// Validação simples de e-mail (não exaustiva, só evita erros óbvios)
+function validarEmail(email) {
+  if (!email) return true; // opcional
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Alterna o tipo de pessoa no modal de cliente
+function alternarTipoPessoa(tipo) {
+  const modal = document.querySelector('#modal-cliente .modal-sheet');
+  if (!modal) return;
+  modal.dataset.tipoPessoa = tipo;
+
+  // Atualiza botões
+  document.querySelectorAll('#modal-cliente .pagto-opcao').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.valor === tipo);
+  });
+
+  // Atualiza labels e placeholder do CNPJ/CPF
+  const labelNome = document.getElementById('cliente-nome-label');
+  const labelDoc  = document.getElementById('cliente-doc-label');
+  const inputDoc  = document.getElementById('cliente-cnpj-cpf');
+
+  if (tipo === 'fisica') {
+    labelNome.innerHTML = 'Nome completo <span class="campo-obrig">*</span>';
+    labelDoc.innerHTML  = 'CPF <span class="campo-obrig">*</span>';
+    inputDoc.placeholder = '000.000.000-00';
+  } else {
+    labelNome.innerHTML = 'Nome da loja <span class="campo-obrig">*</span>';
+    labelDoc.innerHTML  = 'CNPJ <span class="campo-obrig">*</span>';
+    inputDoc.placeholder = '00.000.000/0000-00';
+  }
+
+  // Re-aplica máscara correta no que já está digitado
+  if (inputDoc.value) {
+    const formatado = tipo === 'fisica' ? mascaraCPF(inputDoc.value) : mascaraCNPJ(inputDoc.value);
+    inputDoc.value = formatado;
+  }
+}
+
+// Marca/desmarca IE como ISENTO
+function marcarIsento() {
+  const input = document.getElementById('cliente-ie');
+  const btn = document.querySelector('.btn-isento');
+  if (input.value.toUpperCase() === 'ISENTO') {
+    input.value = '';
+    input.disabled = false;
+    btn.classList.remove('ativo');
+  } else {
+    input.value = 'ISENTO';
+    input.disabled = true;
+    btn.classList.add('ativo');
+  }
+}
+
+// Aplica máscaras nos inputs do modal de cliente (delegação por evento)
+function aplicarMascarasCliente() {
+  const inputDoc = document.getElementById('cliente-cnpj-cpf');
+  const inputWa  = document.getElementById('cliente-whatsapp');
+  const inputTel = document.getElementById('cliente-telefone-fixo');
+  const inputIE  = document.getElementById('cliente-ie');
+  if (!inputDoc) return; // modal não está aberto
+
+  // Evita registrar múltiplas vezes
+  if (inputDoc.dataset.maskAttached === '1') return;
+
+  inputDoc.addEventListener('input', e => {
+    const modal = document.querySelector('#modal-cliente .modal-sheet');
+    const tipo = modal?.dataset.tipoPessoa || 'juridica';
+    e.target.value = tipo === 'fisica' ? mascaraCPF(e.target.value) : mascaraCNPJ(e.target.value);
+  });
+  inputWa.addEventListener('input',  e => { e.target.value = mascaraTelefone(e.target.value); });
+  inputTel.addEventListener('input', e => { e.target.value = mascaraTelefone(e.target.value); });
+  inputIE.addEventListener('input',  e => {
+    if (e.target.value.toUpperCase() === 'ISENTO') return;
+    e.target.value = mascaraIE(e.target.value);
+  });
+
+  inputDoc.dataset.maskAttached = '1';
+}
+
+// ============================================================
 // DADOS DEMO
 // ============================================================
 const _h = new Date(), _o = new Date(_h), _a = new Date(_h), _s = new Date(_h);
@@ -1434,12 +1584,30 @@ function verDetalheCliente(id) {
   if (!c) return;
   clienteSelecionado = c;
   const pedidos = todosOsPedidos.filter(p => p.cliente_id===id);
+
+  // Formata documento de acordo com o tipo
+  let docFmt = '';
+  if (c.cnpj_cpf) {
+    docFmt = (c.tipo_pessoa === 'fisica')
+      ? `🆔 CPF: ${mascaraCPF(c.cnpj_cpf)}`
+      : `🏢 CNPJ: ${mascaraCNPJ(c.cnpj_cpf)}`;
+  }
+
+  // Monta linhas só com o que tem (não polui com "–" vazios)
+  const linhas = [];
+  if (docFmt) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">${docFmt}</div>`);
+  if (c.responsavel)        linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">👤 ${esc(c.responsavel)}</div>`);
+  if (c.whatsapp)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📲 ${esc(mascaraTelefone(c.whatsapp))}</div>`);
+  if (c.telefone_fixo)      linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📞 ${esc(mascaraTelefone(c.telefone_fixo))}</div>`);
+  if (c.email)              linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📧 ${esc(c.email)}</div>`);
+  if (c.endereco)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}</div>`);
+  if (c.inscricao_estadual) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">🏷️ IE: ${esc(c.inscricao_estadual)}</div>`);
+  if (c.observacao)         linhas.push(`<div style="font-size:13px;color:var(--c2);margin-top:8px;padding-top:8px;border-top:1px solid var(--ol);font-style:italic">📝 ${esc(c.observacao)}</div>`);
+
   document.getElementById('detalhe-cliente-nome').textContent = c.nome;
   document.getElementById('detalhe-cliente-conteudo').innerHTML = `
     <div style="background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px">
-      <div style="font-size:13px;color:var(--c2);margin-bottom:5px">👤 ${esc(c.responsavel||'–')}</div>
-      <div style="font-size:13px;color:var(--c2);margin-bottom:5px">📱 ${esc(c.whatsapp||'–')}</div>
-      <div style="font-size:13px;color:var(--c2)">📍 ${esc(c.endereco||'–')}</div>
+      ${linhas.length ? linhas.join('') : '<div style="font-size:12px;color:var(--c3);font-style:italic">Sem informações adicionais cadastradas.</div>'}
     </div>
     <div class="separador">Histórico de pedidos</div>
     ${pedidos.length ? pedidos.map(p => `
@@ -1451,7 +1619,8 @@ function verDetalheCliente(id) {
         <div style="font-size:12px;color:var(--c3);margin-top:3px">${moeda(p.valor)} · ${dataBR(p.data_entrega)}</div>
       </div>`).join('')
     : '<div class="vazio" style="padding:20px"><p>Nenhum pedido ainda</p></div>'}
-    ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-12" onclick="excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
+    ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="abrirModalNovoCliente(${c.id})">✏️ Editar cliente</button>` : ''}
+    ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-8" onclick="excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
   abrirModal('modal-detalhe-cliente');
 }
 
@@ -1939,31 +2108,168 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
 // ============================================================
 // MODAL NOVO CLIENTE
 // ============================================================
-function abrirModalNovoCliente() {
-  ['cliente-nome','cliente-responsavel','cliente-whatsapp','cliente-endereco'].forEach(id=>{
-    document.getElementById(id).value='';
-  });
+function abrirModalNovoCliente(idEdit) {
+  const ids = ['cliente-nome','cliente-responsavel','cliente-whatsapp','cliente-telefone-fixo',
+               'cliente-email','cliente-endereco','cliente-cnpj-cpf','cliente-ie','cliente-observacao'];
+
+  if (idEdit) {
+    // Modo edição
+    const c = todosOsClientes.find(x => x.id === idEdit);
+    if (!c) { alert('Cliente não encontrado.'); return; }
+    clienteSelecionado = c;
+    document.getElementById('cliente-modal-titulo').textContent = 'Editar Cliente';
+    alternarTipoPessoa(c.tipo_pessoa || 'juridica');
+    document.getElementById('cliente-nome').value           = c.nome || '';
+    document.getElementById('cliente-responsavel').value    = c.responsavel || '';
+    document.getElementById('cliente-whatsapp').value       = c.whatsapp ? mascaraTelefone(c.whatsapp) : '';
+    document.getElementById('cliente-telefone-fixo').value  = c.telefone_fixo ? mascaraTelefone(c.telefone_fixo) : '';
+    document.getElementById('cliente-email').value          = c.email || '';
+    document.getElementById('cliente-endereco').value       = c.endereco || '';
+    document.getElementById('cliente-observacao').value     = c.observacao || '';
+
+    // CNPJ/CPF: formata pela máscara correta conforme tipo
+    const inputDoc = document.getElementById('cliente-cnpj-cpf');
+    if (c.cnpj_cpf) {
+      inputDoc.value = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
+    } else {
+      inputDoc.value = '';
+    }
+
+    // IE — restaurar estado
+    const inputIE = document.getElementById('cliente-ie');
+    const btnIsento = document.querySelector('.btn-isento');
+    if ((c.inscricao_estadual || '').toUpperCase() === 'ISENTO') {
+      inputIE.value = 'ISENTO';
+      inputIE.disabled = true;
+      btnIsento.classList.add('ativo');
+    } else {
+      inputIE.value = c.inscricao_estadual || '';
+      inputIE.disabled = false;
+      btnIsento.classList.remove('ativo');
+    }
+  } else {
+    // Modo novo
+    clienteSelecionado = null;
+    document.getElementById('cliente-modal-titulo').textContent = 'Novo Cliente';
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const inputIE = document.getElementById('cliente-ie');
+    const btnIsento = document.querySelector('.btn-isento');
+    if (inputIE) inputIE.disabled = false;
+    if (btnIsento) btnIsento.classList.remove('ativo');
+    alternarTipoPessoa('juridica');
+  }
+
   abrirModal('modal-cliente');
+  aplicarMascarasCliente();
 }
 
 async function salvarCliente() {
   if (salvando) return;
+
+  // Lê todos os campos
+  const modal       = document.querySelector('#modal-cliente .modal-sheet');
+  const tipo_pessoa = modal?.dataset.tipoPessoa || 'juridica';
   const nome        = document.getElementById('cliente-nome').value.trim();
   const responsavel = document.getElementById('cliente-responsavel').value.trim();
-  const whatsapp    = document.getElementById('cliente-whatsapp').value.trim();
+  const docRaw      = soDigitos(document.getElementById('cliente-cnpj-cpf').value);
+  const whatsappRaw = soDigitos(document.getElementById('cliente-whatsapp').value);
+  const telefoneRaw = soDigitos(document.getElementById('cliente-telefone-fixo').value);
+  const email       = document.getElementById('cliente-email').value.trim();
   const endereco    = document.getElementById('cliente-endereco').value.trim();
-  if (!nome) { alert('Informe o nome da loja.'); return; }
+  const ieRaw       = document.getElementById('cliente-ie').value.trim();
+  const observacao  = document.getElementById('cliente-observacao').value.trim();
+
+  // ==== VALIDAÇÕES OBRIGATÓRIAS ====
+  if (!nome) {
+    alert(tipo_pessoa === 'fisica' ? 'Informe o nome completo.' : 'Informe o nome da loja.');
+    return;
+  }
+  if (!docRaw) {
+    alert(`Informe o ${tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}.`);
+    return;
+  }
+  if (tipo_pessoa === 'fisica' && !validarCPF(docRaw)) {
+    alert('CPF inválido. Verifique se digitou corretamente.');
+    return;
+  }
+  if (tipo_pessoa === 'juridica' && !validarCNPJ(docRaw)) {
+    alert('CNPJ inválido. Verifique se digitou corretamente.');
+    return;
+  }
+  if (!whatsappRaw) {
+    alert('Informe o WhatsApp do cliente.');
+    return;
+  }
+  if (whatsappRaw.length < 10) {
+    alert('WhatsApp incompleto. Inclua o DDD + número.');
+    return;
+  }
+  if (email && !validarEmail(email)) {
+    alert('E-mail inválido. Verifique se digitou corretamente.');
+    return;
+  }
+
   salvando = true;
   try {
-    const novo = { id:Date.now(), nome, responsavel, whatsapp, endereco };
+    // ==== EDIÇÃO ====
+    if (clienteSelecionado) {
+      const id = clienteSelecionado.id;
+      const payload = {
+        nome, responsavel,
+        whatsapp: whatsappRaw,
+        telefone_fixo: telefoneRaw || null,
+        email: email || null,
+        endereco,
+        cnpj_cpf: docRaw,
+        tipo_pessoa,
+        inscricao_estadual: ieRaw || null,
+        observacao: observacao || null,
+      };
+      if (!MODO_DEMO) {
+        const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
+        if (!res.ok) { alert('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
+      }
+      const idx = todosOsClientes.findIndex(c => c.id === id);
+      if (idx >= 0) Object.assign(todosOsClientes[idx], payload);
+
+      // Atualiza cliente_nome nos pedidos relacionados (para refletir mudança de nome)
+      todosOsClientes.forEach(c => {});
+      todosOsPedidos.forEach(p => { if (p.cliente_id === id) p.cliente_nome = nome; });
+
+      clienteSelecionado = null;
+      fecharModal('modal-cliente');
+      fecharModal('modal-detalhe-cliente');
+      agendarRender('clientes');
+      agendarRender('entregas');
+      agendarRender('dashboard');
+      popularSelectClientes();
+      return;
+    }
+
+    // ==== NOVO ====
+    const novo = {
+      id: Date.now(),
+      nome, responsavel,
+      whatsapp: whatsappRaw,
+      telefone_fixo: telefoneRaw || null,
+      email: email || null,
+      endereco,
+      cnpj_cpf: docRaw,
+      tipo_pessoa,
+      inscricao_estadual: ieRaw || null,
+      observacao: observacao || null,
+    };
     if (!MODO_DEMO) {
-      const res = await supabase('clientes','POST',{nome,responsavel,whatsapp,endereco});
-      if (!res.ok||!res.dados?.[0]) { alert('Erro ao salvar. Tente novamente.'); return; }
+      const res = await supabase('clientes','POST', novo);
+      if (!res.ok || !res.dados?.[0]) {
+        alert('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        return;
+      }
       novo.id = res.dados[0].id;
     }
     todosOsClientes.push(novo);
     fecharModal('modal-cliente');
-    renderizarClientes(todosOsClientes);
+    agendarRender('clientes');
     popularSelectClientes();
     const numCli = document.getElementById('num-clientes');
     if (numCli) numCli.textContent = todosOsClientes.length;
