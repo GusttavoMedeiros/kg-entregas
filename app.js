@@ -62,6 +62,16 @@ function badgeCategoria(cat) {
   return `<span class="badge ${m[cat] || 'badge-outros'}">${esc(cat)}</span>`;
 }
 
+// Determina se um pedido foi efetivamente pago.
+// REGRA DE RETROCOMPATIBILIDADE: pedidos antigos (sem status_pagamento) que estão
+// 'entregue' são considerados pagos (mantém o comportamento antigo).
+function foiPago(p) {
+  if (p.status_pagamento === 'pago') return true;
+  if (p.status_pagamento === 'pendente' || p.status_pagamento === 'recusado') return false;
+  // Legado: sem status_pagamento → assume pago se foi entregue
+  return p.status === 'entregue';
+}
+
 // Debounce — evita re-render a cada tecla digitada em buscas (150ms = imperceptível)
 function debounce(fn, ms = 150) {
   let timeout;
@@ -709,14 +719,16 @@ function renderizarDashboard() {
   const inicioMesPassado = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
   const fimMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
 
-  // Pedidos do mês (entregues = faturados)
+  // Pedidos do mês (FATURAMENTO REAL = entregues E PAGOS)
   const pedidosMes = todosOsPedidos.filter(p =>
     p.status === 'entregue' &&
+    foiPago(p) &&
     p.data_entrega &&
     new Date(p.data_entrega+'T12:00:00') >= inicioMes
   );
   const pedidosMesPassado = todosOsPedidos.filter(p =>
     p.status === 'entregue' &&
+    foiPago(p) &&
     p.data_entrega &&
     new Date(p.data_entrega+'T12:00:00') >= inicioMesPassado &&
     new Date(p.data_entrega+'T12:00:00') <= fimMesPassado
@@ -739,11 +751,16 @@ function renderizarDashboard() {
     tend.textContent = faturamento > 0 ? 'Primeiro mês com vendas' : 'Sem vendas ainda';
   }
 
-  // Card 2: A receber (pedidos pendentes)
-  const pendentes = todosOsPedidos.filter(p => p.status === 'pendente');
-  const aReceber = pendentes.reduce((s,p)=>s+(Number(p.valor)||0),0);
+  // Card 2: A receber (pedidos pendentes + entregues mas NÃO pagos)
+  const pendentesEntrega = todosOsPedidos.filter(p => p.status === 'pendente');
+  const entreguesNaoPagos = todosOsPedidos.filter(p => p.status === 'entregue' && !foiPago(p));
+  const aReceberLista = [...pendentesEntrega, ...entreguesNaoPagos];
+  const aReceber = aReceberLista.reduce((s,p)=>s+(Number(p.valor)||0),0);
   document.getElementById('num-areceber').textContent = moeda(aReceber);
-  document.getElementById('info-areceber').textContent = `${pendentes.length} pedido(s) em aberto`;
+  const detalheReceber = entreguesNaoPagos.length
+    ? `${pendentesEntrega.length} em aberto · ${entreguesNaoPagos.length} entregue(s) sem pagar`
+    : `${pendentesEntrega.length} pedido(s) em aberto`;
+  document.getElementById('info-areceber').textContent = detalheReceber;
 
   // Card 3: Atrasados
   const atras = todosOsPedidos.filter(p => isAtrasado(p));
@@ -772,7 +789,7 @@ function renderizarDashboard() {
   renderizarPerformanceVendedores('performance-vendedores', pedidosMes);
 
   // PRÓXIMAS ENTREGAS
-  const proximas = pendentes.slice().sort((a,b)=>(a.data_entrega||'').localeCompare(b.data_entrega||'')).slice(0,5);
+  const proximas = pendentesEntrega.slice().sort((a,b)=>(a.data_entrega||'').localeCompare(b.data_entrega||'')).slice(0,5);
   const elProx = document.getElementById('lista-proximas');
   if (!proximas.length) {
     elProx.innerHTML = `<div class="vazio"><div class="vazio-icone">✅</div><p>Sem entregas pendentes</p></div>`;
@@ -793,11 +810,11 @@ function renderizarInicioVendedor() {
 
   const meusPedidos = todosOsPedidos.filter(p => p.vendedor === usuario.login);
   const meusPedidosMes = meusPedidos.filter(p =>
-    p.status === 'entregue' && p.data_entrega &&
+    p.status === 'entregue' && foiPago(p) && p.data_entrega &&
     new Date(p.data_entrega+'T12:00:00') >= inicioMes
   );
   const meusPedidosMesAnt = meusPedidos.filter(p =>
-    p.status === 'entregue' && p.data_entrega &&
+    p.status === 'entregue' && foiPago(p) && p.data_entrega &&
     new Date(p.data_entrega+'T12:00:00') >= inicioMesPassado &&
     new Date(p.data_entrega+'T12:00:00') <= fimMesPassado
   );
@@ -900,7 +917,7 @@ function renderizarGraficoVendas(idDiv, idTotal, vendedorLogin) {
   }
   let total = 0;
   todosOsPedidos.forEach(p => {
-    if (p.status !== 'entregue' || !p.data_entrega) return;
+    if (p.status !== 'entregue' || !foiPago(p) || !p.data_entrega) return;
     if (vendedorLogin && p.vendedor !== vendedorLogin) return;
     if (mapa[p.data_entrega] !== undefined) {
       const v = Number(p.valor) || 0;
@@ -1238,10 +1255,23 @@ function alternarModoRota(modo, btn) {
 function cardEntrega(p, mostrarBotoes, clienteOpc) {
   const atrasado = isAtrasado(p);
   const classe = p.status==='entregue' ? 'entregue' : (atrasado ? 'atrasado' : 'pendente');
-  const badge  = p.status==='entregue'
-    ? `<span class="badge badge-entregue">✓ Entregue</span>`
-    : atrasado ? `<span class="badge badge-atrasado">⚠ Atrasado</span>`
-    : `<span class="badge badge-pendente">Pendente</span>`;
+
+  // Badge principal: status da entrega + status do pagamento (se entregue)
+  let badge;
+  if (p.status === 'entregue') {
+    if (foiPago(p)) {
+      badge = `<span class="badge badge-entregue">✓ Entregue + Pago</span>`;
+    } else if (p.status_pagamento === 'recusado') {
+      badge = `<span class="badge badge-pag-recusado">✓ Entregue · ✗ Não pagou</span>`;
+    } else {
+      // status_pagamento = 'pendente' ou pedido boleto entregue sem pagar
+      badge = `<span class="badge badge-pag-pendente">✓ Entregue · ⏰ Aguardando pgto</span>`;
+    }
+  } else if (atrasado) {
+    badge = `<span class="badge badge-atrasado">⚠ Atrasado</span>`;
+  } else {
+    badge = `<span class="badge badge-pendente">Pendente</span>`;
+  }
 
   // Itens do pedido: para ENTREGADOR em pedido PENDENTE, vira CHECKLIST interativo.
   // Para outros perfis ou pedido entregue, mostra como texto corrido (mesmo de antes).
@@ -1637,15 +1667,20 @@ function renderizarFinanceiro(filtro) {
   const mes = new Date().toISOString().slice(0,7);
   Object.values(porCliente).forEach(({pedidos}) => {
     pedidos.forEach(p => {
-      if (p.status!=='entregue') totalDev += Number(p.valor)||0;
-      else if (p.data_entrega?.startsWith(mes)) totalRec += Number(p.valor)||0;
+      // DEVE: ainda não foi pago de verdade (pendente OU entregue sem pagar)
+      if (!foiPago(p)) totalDev += Number(p.valor)||0;
+      // RECEBIDO: foi pago de fato, no mês atual (usa data_pagamento se houver, senão data_entrega)
+      else {
+        const dataRef = p.data_pagamento || p.data_entrega;
+        if (dataRef?.startsWith(mes)) totalRec += Number(p.valor)||0;
+      }
     });
   });
   document.getElementById('fin-total-devendo').textContent  = moeda(totalDev);
   document.getElementById('fin-total-recebido').textContent = moeda(totalRec);
 
   const lista = Object.values(porCliente).filter(({pedidos}) => {
-    const dev  = pedidos.filter(p => p.status!=='entregue');
+    const dev  = pedidos.filter(p => !foiPago(p));
     const atras= dev.filter(p => isAtrasado(p));
     if (filtro==='atrasado') return atras.length>0;
     if (filtro==='devendo')  return dev.length>0;
@@ -1659,7 +1694,7 @@ function renderizarFinanceiro(filtro) {
     return;
   }
   el.innerHTML = lista.map(({cliente:c, pedidos}) => {
-    const dev  = pedidos.filter(p => p.status!=='entregue');
+    const dev  = pedidos.filter(p => !foiPago(p));
     const atras= dev.filter(p => isAtrasado(p));
     const totalD = dev.reduce((s,p)=>s+(Number(p.valor)||0),0);
     const badge = atras.length>0
@@ -1719,15 +1754,27 @@ function verFinanceiroCliente(id) {
 async function marcarPagoCliente() {
   if (salvando) return;
   if (!clienteSelecionado) return;
-  const paraPagar = todosOsPedidos.filter(p => p.cliente_id===clienteSelecionado.id && p.status!=='entregue');
+  // Pega TODOS que ainda não estão pagos: pendentes de entrega OU entregues sem pagamento
+  const paraPagar = todosOsPedidos.filter(p =>
+    p.cliente_id === clienteSelecionado.id && !foiPago(p)
+  );
   if (!paraPagar.length) { fecharModal('modal-fin-cliente'); return; }
   salvando = true;
   try {
+    const hojeStr = fmt(new Date());
+    const payload = {
+      status: 'entregue',
+      status_pagamento: 'pago',
+      forma_pagamento_real: 'dinheiro',  // padrão para baixa manual
+      data_pagamento: hojeStr,
+    };
     if (!MODO_DEMO) {
-      const res = await Promise.all(paraPagar.map(p => supabase('pedidos','PATCH',{status:'entregue'},`?id=eq.${p.id}`)));
+      const res = await Promise.all(paraPagar.map(p =>
+        supabase('pedidos','PATCH', payload, `?id=eq.${p.id}`)
+      ));
       if (res.some(r=>!r.ok)) { alert('Erro ao atualizar. Tente novamente.'); return; }
     }
-    paraPagar.forEach(p => { p.status='entregue'; });
+    paraPagar.forEach(p => { Object.assign(p, payload); });
     fecharModal('modal-fin-cliente');
     agendarRender('financeiro');
     agendarRender('dashboard');
@@ -2310,13 +2357,45 @@ function abrirModalEntrega(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
   pedidoSelecionado = p;
+
+  // Verifica se este pedido precisa de confirmação de pagamento
+  // Só para À VISTA e CHEQUE (boleto tem prazo, paga depois)
+  const precisaPagamento = (p.forma_pagamento === 'avista' || p.forma_pagamento === 'cheque');
+  const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
+  if (modalSheet) {
+    modalSheet.dataset.precisaPagamento = precisaPagamento ? '1' : '0';
+    modalSheet.dataset.pagamentoEscolhido = ''; // reseta a escolha
+  }
+  // Limpa estado visual dos botões
+  document.querySelectorAll('#modal-entrega .pagto-recebido').forEach(b => b.classList.remove('ativo'));
+
+  // Texto adicional sobre a forma de pagamento
+  let pagtoInfo = '';
+  if (p.forma_pagamento === 'avista')  pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--o1)">💵 Pagamento à vista — confirme se recebeu</div>';
+  else if (p.forma_pagamento === 'cheque') pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--o1)">📝 Pagamento em cheque — confirme se recebeu</div>';
+  else if (p.forma_pagamento === 'boleto') {
+    const prazos = p.prazos_boleto ? ` (${p.prazos_boleto.split(',').join('+')} dias)` : (p.prazo_dias ? ` (${p.prazo_dias} dias)` : '');
+    pagtoInfo = `<div style="margin-top:6px;font-size:12px;color:var(--c3)">📄 Boleto${prazos} — pagamento por boleto</div>`;
+  }
+
   document.getElementById('modal-entrega-info').innerHTML = `
     <strong style="color:var(--o1)">${esc(p.cliente_nome)}</strong>
     <div style="margin-top:5px;color:var(--c2)">${esc(p.descricao)}</div>
     <div style="margin-top:5px;color:var(--o1);font-weight:700">${moeda(p.valor)}</div>
-    <div style="margin-top:3px;font-size:12px;color:var(--c3)">Data: ${dataBR(p.data_entrega)}</div>`;
+    <div style="margin-top:3px;font-size:12px;color:var(--c3)">Data: ${dataBR(p.data_entrega)}</div>
+    ${pagtoInfo}`;
   document.getElementById('entrega-obs').value = p.observacao||'';
   abrirModal('modal-entrega');
+}
+
+// Marca qual opção de pagamento o entregador escolheu
+function selecionarPagamentoRecebido(valor) {
+  const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
+  if (!modalSheet) return;
+  modalSheet.dataset.pagamentoEscolhido = valor;
+  document.querySelectorAll('#modal-entrega .pagto-recebido').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.valor === valor);
+  });
 }
 
 async function confirmarEntrega() {
@@ -2325,7 +2404,44 @@ async function confirmarEntrega() {
   const obs = document.getElementById('entrega-obs').value.trim();
   const id  = pedidoSelecionado.id;
 
-  // VALIDAÇÃO DO CHECKLIST (só para entregador) — avisa se faltam itens conferidos
+  // ====== VALIDAÇÃO DE PAGAMENTO (à vista ou cheque) ======
+  const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
+  const precisaPagamento = modalSheet?.dataset.precisaPagamento === '1';
+  const pagtoEscolhido = modalSheet?.dataset.pagamentoEscolhido || '';
+
+  if (precisaPagamento && !pagtoEscolhido) {
+    alert(
+      '⚠ Você precisa informar como o cliente pagou.\n\n' +
+      'Escolha uma das 4 opções:\n' +
+      '• 💵 Pagou em dinheiro\n' +
+      '• 💳 PIX / Cartão\n' +
+      '• ⏰ Vai pagar depois\n' +
+      '• ✗ Não quis pagar'
+    );
+    return;
+  }
+
+  // Define os campos de pagamento que vão pro banco
+  let status_pagamento = null;
+  let forma_pagamento_real = null;
+  let data_pagamento = null;
+
+  if (precisaPagamento) {
+    if (pagtoEscolhido === 'dinheiro' || pagtoEscolhido === 'pix') {
+      status_pagamento = 'pago';
+      forma_pagamento_real = pagtoEscolhido;
+      data_pagamento = fmt(new Date());
+    } else if (pagtoEscolhido === 'pendente') {
+      status_pagamento = 'pendente';
+    } else if (pagtoEscolhido === 'recusado') {
+      status_pagamento = 'recusado';
+    }
+  } else {
+    // Boleto: a entrega não confirma o pagamento, fica pendente até a data
+    status_pagamento = 'pendente';
+  }
+
+  // ====== VALIDAÇÃO DO CHECKLIST (só para entregador) ======
   if (usuario.perfil === 'entregador' && pedidoSelecionado.itens?.length) {
     const marcados = getChecklist(id);
     const total = pedidoSelecionado.itens.length;
@@ -2344,12 +2460,24 @@ async function confirmarEntrega() {
 
   salvando = true;
   try {
+    const payload = {
+      status: 'entregue',
+      observacao: obs,
+      status_pagamento,
+      forma_pagamento_real,
+      data_pagamento,
+    };
     if (!MODO_DEMO) {
-      const res = await supabase('pedidos','PATCH',{status:'entregue',observacao:obs},`?id=eq.${id}`);
-      if (!res.ok) { alert('Erro ao confirmar. Tente novamente.'); return; }
+      const res = await supabase('pedidos','PATCH', payload, `?id=eq.${id}`);
+      if (!res.ok) {
+        alert('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        return;
+      }
     }
     const idx = todosOsPedidos.findIndex(p=>p.id===id);
-    if (idx>=0) { todosOsPedidos[idx].status='entregue'; todosOsPedidos[idx].observacao=obs; }
+    if (idx>=0) {
+      Object.assign(todosOsPedidos[idx], payload);
+    }
     // Pedido entregue: limpa o checklist (não precisa mais)
     limparChecklist(id);
     fecharModal('modal-entrega');
@@ -2530,10 +2658,26 @@ function verDetalhePedido(id) {
     }
   }
 
+  // Status de pagamento (se entregue)
+  let statusPagtoLinha = '';
+  if (p.status === 'entregue') {
+    if (foiPago(p)) {
+      const formaReal = p.forma_pagamento_real === 'dinheiro' ? 'Dinheiro' :
+                        p.forma_pagamento_real === 'pix' ? 'PIX/Cartão' : '';
+      const dataPgto = p.data_pagamento ? ` em ${dataBR(p.data_pagamento)}` : '';
+      statusPagtoLinha = `<div style="font-size:12px;color:#7ec850;margin-bottom:4px;font-weight:700">✓ Pago${formaReal?' ('+formaReal+')':''}${dataPgto}</div>`;
+    } else if (p.status_pagamento === 'recusado') {
+      statusPagtoLinha = `<div style="font-size:12px;color:#ee7d6f;margin-bottom:4px;font-weight:700">✗ Cliente não pagou</div>`;
+    } else {
+      statusPagtoLinha = `<div style="font-size:12px;color:#f4a04a;margin-bottom:4px;font-weight:700">⏰ Aguardando pagamento</div>`;
+    }
+  }
+
   document.getElementById('detalhe-pedido-conteudo').innerHTML = `
     <div style="background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--c3);margin-bottom:4px">📅 Entrega: ${dataBR(p.data_entrega)} · Venc.: ${dataBR(p.data_vencimento)}</div>
-      <div style="font-size:12px;color:var(--c3);margin-bottom:4px">💰 Pagamento: ${esc(pagtoTxt)}</div>
+      <div style="font-size:12px;color:var(--c3);margin-bottom:4px">💰 Forma: ${esc(pagtoTxt)}</div>
+      ${statusPagtoLinha}
       <div style="font-size:12px;color:var(--c3)">📋 Pedido por: ${esc(p.vendedor||'–')}</div>
     </div>
     <div class="separador">Itens</div>
@@ -2550,7 +2694,9 @@ function verDetalhePedido(id) {
 // HELPERS DE LÓGICA
 // ============================================================
 function isAtrasado(p) {
-  if (p.status==='entregue' || !p.data_vencimento) return false;
+  // Já foi pago de fato? Não está atrasado.
+  if (foiPago(p)) return false;
+  if (!p.data_vencimento) return false;
   return p.data_vencimento < fmt(new Date());
 }
 
