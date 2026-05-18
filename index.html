@@ -1274,7 +1274,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="separador">Produtos</div>
     <div class="search-bar" style="margin-bottom:10px">
       <span class="search-icon">🔍</span>
-      <input type="text" placeholder="Buscar produto para adicionar..." oninput="buscarProdutoModal(this.value)" id="busca-produto-modal">
+      <input type="text" placeholder="Buscar produto para adicionar..." oninput="buscarProdutoModalDebounced(this.value)" id="busca-produto-modal">
     </div>
     <div id="lista-produto-modal" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
 
@@ -1421,6 +1421,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
