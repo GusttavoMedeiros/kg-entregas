@@ -386,6 +386,36 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* ========== CADASTRO DE CLIENTE ========== */
 .campo-obrig{color:#e05a4e;margin-left:3px;font-weight:700}
+
+/* ========== PAGAMENTO RECEBIDO NA ENTREGA ========== */
+.bloco-pagamento-entrega{display:none;margin-bottom:14px;animation:slideDown .25s ease-out}
+.modal-overlay#modal-entrega .modal-sheet[data-precisa-pagamento="1"] .bloco-pagamento-entrega{display:block}
+.bloco-pagto-label{display:block;font-size:12px;font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--o1);margin-bottom:10px}
+.pagto-recebido-grupo{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pagto-recebido{background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:11px;
+  padding:13px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
+  font-family:'Nunito',sans-serif;transition:all .18s;color:var(--c1);text-align:center}
+.pagto-recebido:hover{border-color:var(--ob);background:rgba(200,150,12,.06);transform:translateY(-1px)}
+.pagto-recebido:active{transform:scale(.97)}
+.pagto-recebido-icone{font-size:22px;line-height:1}
+.pagto-recebido-label{font-size:11px;font-weight:700;letter-spacing:.3px;line-height:1.25;color:var(--c1)}
+
+/* Estados ativos por cor (verde=pago, laranja=pendente, vermelho=recusado) */
+.pagto-recebido.pagto-pago.ativo{background:linear-gradient(135deg,rgba(39,174,96,.22),rgba(39,174,96,.12));
+  border-color:var(--gn);box-shadow:0 3px 14px rgba(39,174,96,.25)}
+.pagto-recebido.pagto-pago.ativo .pagto-recebido-label{color:#7ec850;font-weight:800}
+.pagto-recebido.pagto-pendente.ativo{background:linear-gradient(135deg,rgba(212,121,26,.22),rgba(212,121,26,.12));
+  border-color:#d4791a;box-shadow:0 3px 14px rgba(212,121,26,.25)}
+.pagto-recebido.pagto-pendente.ativo .pagto-recebido-label{color:#f4a04a;font-weight:800}
+.pagto-recebido.pagto-recusado.ativo{background:linear-gradient(135deg,rgba(192,57,43,.22),rgba(192,57,43,.12));
+  border-color:#e05a4e;box-shadow:0 3px 14px rgba(192,57,43,.25)}
+.pagto-recebido.pagto-recusado.ativo .pagto-recebido-label{color:#ee7d6f;font-weight:800}
+
+/* Badges de status de pagamento nos cards */
+.badge-pago{background:rgba(39,174,96,.18);color:#7ec850;border:1px solid rgba(39,174,96,.4)}
+.badge-pag-pendente{background:rgba(212,121,26,.18);color:#f4a04a;border:1px solid rgba(212,121,26,.4)}
+.badge-pag-recusado{background:rgba(192,57,43,.18);color:#ee7d6f;border:1px solid rgba(192,57,43,.4)}
 .ie-row{display:flex;gap:6px;align-items:stretch}
 .ie-row input{flex:1;min-width:0}
 .btn-isento{background:rgba(200,150,12,.08);color:var(--o1);border:1px solid var(--ob);
@@ -1416,11 +1446,35 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 <!-- MODAL CONFIRMAR ENTREGA -->
 <div class="modal-overlay" id="modal-entrega">
-  <div class="modal-sheet">
+  <div class="modal-sheet" data-precisa-pagamento="0">
     <button class="modal-close-x" onclick="fecharModal('modal-entrega')" aria-label="Fechar">×</button>
     <div class="modal-handle"></div>
     <div class="modal-titulo">Confirmar Entrega</div>
     <div id="modal-entrega-info" style="background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px;font-size:13px;color:var(--creme)"></div>
+
+    <!-- BLOCO DE PAGAMENTO — aparece só para à vista e cheque -->
+    <div class="bloco-pagamento-entrega">
+      <label class="bloco-pagto-label">💰 O cliente pagou? <span class="campo-obrig">*</span></label>
+      <div class="pagto-recebido-grupo">
+        <button type="button" class="pagto-recebido pagto-pago" data-valor="dinheiro" onclick="selecionarPagamentoRecebido('dinheiro')">
+          <span class="pagto-recebido-icone">💵</span>
+          <span class="pagto-recebido-label">Pagou em dinheiro</span>
+        </button>
+        <button type="button" class="pagto-recebido pagto-pago" data-valor="pix" onclick="selecionarPagamentoRecebido('pix')">
+          <span class="pagto-recebido-icone">💳</span>
+          <span class="pagto-recebido-label">PIX / Cartão</span>
+        </button>
+        <button type="button" class="pagto-recebido pagto-pendente" data-valor="pendente" onclick="selecionarPagamentoRecebido('pendente')">
+          <span class="pagto-recebido-icone">⏰</span>
+          <span class="pagto-recebido-label">Vai pagar depois</span>
+        </button>
+        <button type="button" class="pagto-recebido pagto-recusado" data-valor="recusado" onclick="selecionarPagamentoRecebido('recusado')">
+          <span class="pagto-recebido-icone">✗</span>
+          <span class="pagto-recebido-label">Não quis pagar</span>
+        </button>
+      </div>
+    </div>
+
     <div class="campo"><label>Observação (opcional)</label>
       <textarea id="entrega-obs" placeholder="Ex: Recebeu o auxiliar..."></textarea></div>
     <button class="btn-primario" onclick="confirmarEntrega()">✓ Confirmar Entrega</button>
@@ -1524,6 +1578,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
