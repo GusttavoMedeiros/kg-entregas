@@ -352,6 +352,38 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   border-radius:8px;padding:7px 11px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:600;
   cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none}
 
+/* ========== CHECKLIST DE CARREGAMENTO (entregador) ========== */
+.checklist-header{display:flex;justify-content:space-between;align-items:center;
+  margin:8px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--ol)}
+.checklist-titulo{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--o1)}
+.checklist-contador{font-family:'Cinzel',serif;font-size:12px;font-weight:700;
+  color:var(--c2);background:rgba(10,26,16,.5);padding:3px 9px;border-radius:10px;
+  border:1px solid var(--ol);transition:all .2s}
+.checklist-contador.completo{background:rgba(39,174,96,.18);border-color:rgba(39,174,96,.45);
+  color:var(--gn);box-shadow:0 0 0 1px rgba(39,174,96,.2),0 0 12px rgba(39,174,96,.18)}
+.checklist-itens{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px}
+.check-item{display:flex;align-items:center;gap:10px;
+  padding:9px 11px;border-radius:10px;cursor:pointer;
+  background:rgba(10,26,16,.5);border:1px solid var(--ol);
+  transition:background .15s,border-color .15s,opacity .25s;
+  -webkit-tap-highlight-color:transparent}
+.check-item:hover{background:rgba(200,150,12,.06);border-color:var(--ob)}
+.check-item:active{transform:scale(.985)}
+.check-box{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--ob);
+  background:rgba(10,26,16,.6);display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;position:relative}
+.check-box::after{content:'';width:11px;height:6px;border-left:2px solid var(--v1);
+  border-bottom:2px solid var(--v1);transform:rotate(-45deg) translateY(-1px) scale(0);
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.check-item.marcado .check-box{background:var(--go);border-color:transparent;
+  box-shadow:0 2px 10px rgba(200,150,12,.35)}
+.check-item.marcado .check-box::after{transform:rotate(-45deg) translateY(-1px) scale(1)}
+.check-txt{font-size:13px;color:var(--creme);flex:1;min-width:0;line-height:1.35;
+  transition:opacity .2s,text-decoration .2s}
+.check-item.marcado{background:rgba(39,174,96,.05);border-color:rgba(39,174,96,.18)}
+.check-item.marcado .check-txt{opacity:.55;text-decoration:line-through;text-decoration-color:var(--o1)}
+
 /* ========== ZONA DE PERIGO ========== */
 .zona-perigo{background:rgba(192,57,43,.06);border:1px dashed rgba(192,57,43,.3);
   border-radius:var(--r);padding:18px;margin-top:28px;margin-bottom:20px}
@@ -1421,6 +1453,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
