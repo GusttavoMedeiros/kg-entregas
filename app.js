@@ -1413,9 +1413,15 @@ function abrirModalNovoPedido(idEdit) {
     pedidoEmEdicao = p;
     document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
     document.getElementById('pedido-data-entrega').value    = p.data_entrega || hoje;
-    document.getElementById('pedido-data-vencimento').value = p.data_vencimento || hoje;
     document.getElementById('pedido-cliente').value         = p.cliente_id || '';
     document.getElementById('pedido-obs').value             = p.observacao || '';
+
+    // Forma de pagamento: usa o valor salvo, ou tenta deduzir, ou padrão "avista"
+    const forma = p.forma_pagamento || (p.prazo_dias ? 'boleto' : 'avista');
+    selecionarPagamento(forma);
+    if (forma === 'boleto' && p.prazo_dias) {
+      selecionarPrazo(p.prazo_dias);
+    }
 
     // Carrinho com os itens atuais do pedido
     carrinho = (p.itens || []).map(it => {
@@ -1431,15 +1437,72 @@ function abrirModalNovoPedido(idEdit) {
     carrinho = [];
     document.getElementById('modal-pedido-titulo').textContent = 'Novo Pedido';
     document.getElementById('pedido-data-entrega').value    = hoje;
-    document.getElementById('pedido-data-vencimento').value = hoje;
     document.getElementById('pedido-cliente').value = '';
     document.getElementById('pedido-obs').value = '';
+    // Padrão: à vista, sem prazo selecionado
+    selecionarPagamento('avista');
   }
 
   renderizarCarrinho();
   popularSelectClientes();
   buscarProdutoModal('');
   abrirModal('modal-pedido');
+}
+
+// ============================================================
+// FORMA DE PAGAMENTO (admin + vendedor)
+// ============================================================
+function selecionarPagamento(valor) {
+  const modal = document.querySelector('#modal-pedido .modal-sheet');
+  if (!modal) return;
+  modal.dataset.pagamento = valor;
+  document.querySelectorAll('#pagto-grupo .pagto-opcao').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.valor === valor);
+  });
+  // Se não for boleto, limpa o prazo selecionado
+  if (valor !== 'boleto') {
+    document.querySelectorAll('.prazo-opcao').forEach(b => b.classList.remove('ativo'));
+    const info = document.getElementById('prazo-info-venc');
+    if (info) info.textContent = '';
+  }
+}
+
+function selecionarPrazo(dias) {
+  document.querySelectorAll('.prazo-opcao').forEach(b => {
+    b.classList.toggle('ativo', Number(b.dataset.valor) === Number(dias));
+  });
+  // Calcula vencimento previsto
+  const dataEntrega = document.getElementById('pedido-data-entrega').value;
+  if (dataEntrega) {
+    const d = new Date(dataEntrega + 'T12:00:00');
+    d.setDate(d.getDate() + Number(dias));
+    const info = document.getElementById('prazo-info-venc');
+    if (info) info.textContent = `📅 Vencimento previsto: ${d.toLocaleDateString('pt-BR')}`;
+  }
+}
+
+// Lê estado atual do form de pagamento
+function obterFormaPagamento() {
+  const modal = document.querySelector('#modal-pedido .modal-sheet');
+  const forma = modal?.dataset.pagamento || 'avista';
+  let prazo = null;
+  if (forma === 'boleto') {
+    const ativo = document.querySelector('.prazo-opcao.ativo');
+    prazo = ativo ? Number(ativo.dataset.valor) : null;
+  }
+  return { forma, prazo };
+}
+
+// Calcula data_vencimento com base na forma + prazo + data_entrega
+function calcularDataVencimento(data_entrega, forma, prazo) {
+  if (!data_entrega) return null;
+  if (forma === 'boleto' && prazo) {
+    const d = new Date(data_entrega + 'T12:00:00');
+    d.setDate(d.getDate() + Number(prazo));
+    return fmt(d);
+  }
+  // À vista e Cheque: vencimento = data de entrega
+  return data_entrega;
 }
 
 // Regra: admin edita tudo, vendedor só os pedidos dele
@@ -1461,21 +1524,30 @@ async function salvarPedido() {
   if (salvando) return;  // bloqueia double-click
   const cliente_id      = Number(document.getElementById('pedido-cliente').value);
   const data_entrega    = document.getElementById('pedido-data-entrega').value;
-  const data_vencimento = document.getElementById('pedido-data-vencimento').value;
   const obs             = document.getElementById('pedido-obs').value.trim();
+  const { forma, prazo } = obterFormaPagamento();
 
   if (!cliente_id || !data_entrega) { alert('Selecione o cliente e a data de entrega.'); return; }
   if (!carrinho.length) { alert('Adicione pelo menos um produto ao carrinho.'); return; }
 
+  // Validação: se boleto, prazo é obrigatório
+  if (forma === 'boleto' && !prazo) {
+    alert('Você selecionou Boleto. Escolha o prazo do boleto (7, 14, 21 ou 28 dias).');
+    return;
+  }
+
+  // Calcula data de vencimento automaticamente
+  const data_vencimento = calcularDataVencimento(data_entrega, forma, prazo);
+
   salvando = true;
   try {
-    await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs);
+    await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma, prazo);
   } finally {
     salvando = false;
   }
 }
 
-async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs) {
+async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma_pagamento, prazo_dias) {
   const valor    = carrinho.reduce((s,c)=>s+(c.produto.preco*c.qtd),0);
   const descricao= carrinho.map(c=>`${c.qtd}x ${c.produto.nome}`).join(', ');
   const cliente  = todosOsClientes.find(c=>c.id===cliente_id);
@@ -1499,6 +1571,8 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         cliente_id, descricao, valor,
         data_entrega, data_vencimento: data_vencimento||null,
         observacao: obs,
+        forma_pagamento,
+        prazo_dias: prazo_dias || null,
       }, `?id=eq.${pedido_id}`);
       if (!resPed.ok) {
         alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
@@ -1529,6 +1603,8 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         descricao, valor, data_entrega,
         data_vencimento: data_vencimento || null,
         observacao: obs,
+        forma_pagamento,
+        prazo_dias: prazo_dias || null,
         itens,
       });
     }
@@ -1547,6 +1623,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     id: Date.now(), cliente_id, cliente_nome: cliente?.nome||'–',
     descricao, valor, status:'pendente', data_entrega,
     data_vencimento: data_vencimento||null, observacao:obs,
+    forma_pagamento, prazo_dias: prazo_dias || null,
     itens, vendedor: usuario.login,
   };
 
@@ -1555,6 +1632,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
       cliente_id, descricao, valor, status:'pendente',
       data_entrega, data_vencimento:data_vencimento||null,
       observacao:obs, vendedor:usuario.login,
+      forma_pagamento, prazo_dias: prazo_dias || null,
     });
     if (!resPed.ok||!resPed.dados?.[0]) {
       alert('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
@@ -1832,9 +1910,17 @@ function verDetalhePedido(id) {
           <span style="font-size:13px;color:var(--o1);font-weight:700">${moeda(i.preco_unit*i.qtd)}</span>
         </div>`).join('')
     : `<div style="font-size:13px;color:var(--c2);padding:8px 0">${esc(p.descricao)}</div>`;
+
+  // Formata forma de pagamento
+  let pagtoTxt = 'Não informado';
+  if (p.forma_pagamento === 'avista') pagtoTxt = '💵 À vista';
+  else if (p.forma_pagamento === 'cheque') pagtoTxt = '📝 Cheque';
+  else if (p.forma_pagamento === 'boleto') pagtoTxt = `📄 Boleto ${p.prazo_dias || ''} dias`;
+
   document.getElementById('detalhe-pedido-conteudo').innerHTML = `
     <div style="background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--c3);margin-bottom:4px">📅 Entrega: ${dataBR(p.data_entrega)} · Venc.: ${dataBR(p.data_vencimento)}</div>
+      <div style="font-size:12px;color:var(--c3);margin-bottom:4px">💰 Pagamento: ${esc(pagtoTxt)}</div>
       <div style="font-size:12px;color:var(--c3)">📋 Pedido por: ${esc(p.vendedor||'–')}</div>
     </div>
     <div class="separador">Itens</div>
