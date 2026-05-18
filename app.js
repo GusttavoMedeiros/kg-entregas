@@ -62,6 +62,52 @@ function badgeCategoria(cat) {
   return `<span class="badge ${m[cat] || 'badge-outros'}">${esc(cat)}</span>`;
 }
 
+// Debounce — evita re-render a cada tecla digitada em buscas (150ms = imperceptível)
+function debounce(fn, ms = 150) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
+// ============================================================
+// SCHEDULER DE RENDERS — agrupa múltiplas re-renderizações
+// num único frame do browser (60fps) para evitar flicker.
+// Uso: agendarRender('dashboard'); agendarRender('entregas'); → executa tudo junto.
+// ============================================================
+const _rendersPendentes = new Set();
+let _renderFrameId = null;
+function agendarRender(tela) {
+  _rendersPendentes.add(tela);
+  if (_renderFrameId !== null) return; // já tem um frame agendado
+  _renderFrameId = requestAnimationFrame(() => {
+    const telas = new Set(_rendersPendentes);
+    _rendersPendentes.clear();
+    _renderFrameId = null;
+    telas.forEach(t => {
+      try {
+        if (t === 'dashboard')        renderizarDashboard();
+        else if (t === 'entregas')    renderizarEntregas(filtroEntregas);
+        else if (t === 'catalogo')    renderizarCatalogo(filtroCatalogo);
+        else if (t === 'clientes')    renderizarClientes(todosOsClientes);
+        else if (t === 'financeiro')  renderizarFinanceiro(filtroFinanceiro);
+        else if (t === 'meus-pedidos') renderizarMeusPedidos(filtroMeusPedidos);
+        else if (t === 'inicio-vendedor') renderizarInicioVendedor();
+        else if (t === 'carrinho')    renderizarCarrinho();
+      } catch(e) { console.error('Erro ao renderizar', t, e); }
+    });
+  });
+}
+
+// Wrappers públicos com debounce (chamados pelo oninput do HTML).
+// As funções _Impl podem ser chamadas DIRETAMENTE quando precisamos resposta imediata
+// (ex: ao adicionar item no carrinho, atualizar lista sem esperar 150ms).
+const buscarProduto      = debounce((t) => _buscarProdutoImpl(t), 150);
+const buscarProdutoModal = (t) => _buscarProdutoModalImpl(t); // chamado por código JS, sem debounce
+const buscarProdutoModalDebounced = debounce((t) => _buscarProdutoModalImpl(t), 150);
+const buscarCliente      = debounce((t) => _buscarClienteImpl(t), 150);
+
 // ============================================================
 // DADOS DEMO
 // ============================================================
@@ -106,7 +152,19 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     if (metodo==='POST' || metodo==='PATCH') headers['Prefer'] = 'return=representation';
     const opts = { method:metodo, headers };
     if (dados) opts.body = JSON.stringify(dados);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
+
+    // Timeout de 15s — se a rede do entregador estiver ruim, aborta
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 15000);
+    opts.signal = ctrl.signal;
+
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
     if (!res.ok) {
       const txt = await res.text();
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
@@ -115,6 +173,10 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     if (metodo==='DELETE') return { ok:true, dados:true };
     return { ok:true, dados: await res.json() };
   } catch(e) {
+    if (e.name === 'AbortError') {
+      console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
+      return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
+    }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
     return { ok:false, erro: e.message };
   }
@@ -147,9 +209,9 @@ function fazerLogin() {
 
   if (MODO_DEMO) {
     document.getElementById('alerta-config').style.display = 'block';
-    todosOsPedidos  = JSON.parse(JSON.stringify(DEMO_PEDIDOS));
-    todosOsClientes = JSON.parse(JSON.stringify(DEMO_CLIENTES));
-    todosOsProdutos = JSON.parse(JSON.stringify(DEMO_PRODUTOS));
+    todosOsPedidos  = structuredClone(DEMO_PEDIDOS);
+    todosOsClientes = structuredClone(DEMO_CLIENTES);
+    todosOsProdutos = structuredClone(DEMO_PRODUTOS);
   }
   configurarNav();
   carregarTudo();
@@ -335,7 +397,7 @@ async function sincronizarDados() {
 
     if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
 
-    // Detecta se algo mudou (comparando quantidade ou IDs)
+    // Detecta se algo mudou (comparando hash completo dos pedidos)
     const novosPedidos = (resPed.dados || []).map(p => ({
       ...p,
       cliente_nome: p.clientes?.nome || '–',
@@ -343,8 +405,15 @@ async function sincronizarDados() {
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
 
-    const mudou = JSON.stringify(novosPedidos.map(p=>({id:p.id,status:p.status,valor:p.valor}))) !==
-                  JSON.stringify(todosOsPedidos.map(p=>({id:p.id,status:p.status,valor:p.valor})));
+    // Hash incluindo TODOS os campos que importam para a UI
+    const hashPedido = (p) => {
+      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}`).sort().join(',');
+      return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
+    };
+    const mudou =
+      novosPedidos.map(hashPedido).join('\n') !== todosOsPedidos.map(hashPedido).join('\n') ||
+      (resCli.dados || []).length !== todosOsClientes.length ||
+      (resProd.dados || []).length !== todosOsProdutos.length;
 
     todosOsPedidos  = novosPedidos;
     todosOsClientes = resCli.dados || [];
@@ -828,9 +897,9 @@ async function executarResetPedidos() {
     fecharModal('modal-reset');
 
     // Atualiza tudo
-    renderizarDashboard();
-    renderizarEntregas(filtroEntregas);
-    renderizarFinanceiro(filtroFinanceiro);
+    agendarRender('dashboard');
+    agendarRender('entregas');
+    agendarRender('financeiro');
 
     alert(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
   } catch (e) {
@@ -1070,7 +1139,7 @@ function filtrarCatalogo(filtro, btn) {
   renderizarCatalogo(filtro);
 }
 
-function buscarProduto(termo) {
+function _buscarProdutoImpl(termo) {
   const t = (termo||'').toLowerCase();
   const lista = todosOsProdutos.filter(p =>
     p.nome.toLowerCase().includes(t) || (p.categoria||'').toLowerCase().includes(t)
@@ -1104,7 +1173,7 @@ function buscarProduto(termo) {
 // ============================================================
 // CATÁLOGO NO MODAL DE PEDIDO (busca + carrinho)
 // ============================================================
-function buscarProdutoModal(termo) {
+function _buscarProdutoModalImpl(termo) {
   const t = (termo||'').toLowerCase();
   const lista = todosOsProdutos.filter(p =>
     p.nome.toLowerCase().includes(t) || (p.categoria||'').toLowerCase().includes(t)
@@ -1236,7 +1305,7 @@ function renderizarClientes(lista) {
   }).join('');
 }
 
-function buscarCliente(termo) {
+function _buscarClienteImpl(termo) {
   const t = (termo||'').toLowerCase();
   renderizarClientes(todosOsClientes.filter(c =>
     (c.nome||'').toLowerCase().includes(t) || (c.responsavel||'').toLowerCase().includes(t)
@@ -1374,9 +1443,9 @@ async function marcarPagoCliente() {
     }
     paraPagar.forEach(p => { p.status='entregue'; });
     fecharModal('modal-fin-cliente');
-    renderizarFinanceiro(filtroFinanceiro);
-    renderizarDashboard();
-    renderizarEntregas(filtroEntregas);
+    agendarRender('financeiro');
+    agendarRender('dashboard');
+    agendarRender('entregas');
   } finally {
     salvando = false;
   }
@@ -1622,6 +1691,9 @@ async function salvarPedido() {
   salvando = true;
   try {
     await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma, prazo, prazos_boleto);
+  } catch (e) {
+    console.error('Erro inesperado ao salvar pedido:', e);
+    alert('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
   } finally {
     salvando = false;
   }
@@ -1693,10 +1765,10 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
 
     pedidoEmEdicao = null;
     fecharModal('modal-pedido');
-    renderizarDashboard();
-    renderizarEntregas(filtroEntregas);
-    if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
-    if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
+    agendarRender('dashboard');
+    agendarRender('entregas');
+    if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
+    if (usuario.perfil === 'admin')    agendarRender('financeiro');
     return;
   }
 
@@ -1742,9 +1814,9 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
 
   todosOsPedidos.push(novoPedido);
   fecharModal('modal-pedido');
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  if (usuario.perfil==='vendedor') renderizarMeusPedidos(filtroMeusPedidos);
+  agendarRender('dashboard');
+  agendarRender('entregas');
+  if (usuario.perfil==='vendedor') agendarRender('meus-pedidos');
 }
 
 // ============================================================
@@ -1838,9 +1910,9 @@ async function confirmarEntrega() {
     const idx = todosOsPedidos.findIndex(p=>p.id===id);
     if (idx>=0) { todosOsPedidos[idx].status='entregue'; todosOsPedidos[idx].observacao=obs; }
     fecharModal('modal-entrega');
-    renderizarDashboard();
-    renderizarEntregas(filtroEntregas);
-    if (usuario.perfil==='admin') renderizarFinanceiro(filtroFinanceiro);
+    agendarRender('dashboard');
+    agendarRender('entregas');
+    if (usuario.perfil==='admin') agendarRender('financeiro');
   } finally {
     salvando = false;
   }
@@ -1886,10 +1958,10 @@ async function excluirPedido(id) {
 
     todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
 
-    renderizarDashboard();
-    renderizarEntregas(filtroEntregas);
-    if (usuario.perfil === 'vendedor') renderizarMeusPedidos(filtroMeusPedidos);
-    if (usuario.perfil === 'admin')    renderizarFinanceiro(filtroFinanceiro);
+    agendarRender('dashboard');
+    agendarRender('entregas');
+    if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
+    if (usuario.perfil === 'admin')    agendarRender('financeiro');
   } finally {
     salvando = false;
   }
