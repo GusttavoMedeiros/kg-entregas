@@ -220,11 +220,52 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .atalho-icone{font-size:22px}
 .atalho-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--creme);text-align:center;line-height:1.3}
 .atalho-novo .atalho-icone{filter:drop-shadow(0 0 6px rgba(200,150,12,.5))}
+/* DESTAQUE: Botão Novo Pedido — dourado sólido para máxima atenção */
+.atalho-novo{background:var(--go);border:none;
+  box-shadow:0 6px 22px rgba(200,150,12,.42),0 0 0 1px rgba(255,220,150,.3);
+  position:relative;overflow:hidden}
+.atalho-novo::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.18) 0%,transparent 60%);
+  pointer-events:none}
+.atalho-novo .atalho-icone{filter:none;color:var(--v1);font-size:26px;font-weight:900;text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.atalho-novo .atalho-label{color:var(--v0);font-weight:800;letter-spacing:.7px}
+.atalho-novo:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(200,150,12,.55)}
+.atalho-novo:active{transform:scale(.97)}
 .atalho-cobrar{border-color:rgba(212,121,26,.25)}
 .atalho-estoque{border-color:rgba(192,57,43,.25)}
 .atalho-badge{position:absolute;top:6px;right:8px;background:#e05a4e;color:#fff;
-  font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center}
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center;z-index:2}
 .atalho-badge:empty,.atalho-badge[data-count="0"]{display:none}
+
+/* ========== FORMA DE PAGAMENTO ========== */
+.pagto-grupo{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.pagto-opcao{background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:10px;
+  padding:11px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;
+  font-family:'Nunito',sans-serif;transition:all .15s;color:var(--c2)}
+.pagto-opcao:hover{border-color:var(--ob);background:rgba(200,150,12,.05)}
+.pagto-opcao.ativo{background:var(--go);border-color:transparent;
+  box-shadow:0 2px 12px rgba(200,150,12,.35)}
+.pagto-opcao.ativo .pagto-label{color:var(--v1);font-weight:800}
+.pagto-icone{font-size:18px;line-height:1}
+.pagto-label{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--c1)}
+.pagto-opcao.ativo .pagto-icone{filter:none}
+
+/* PRAZO DO BOLETO — só aparece quando data-pagamento=boleto */
+.bloco-prazo-boleto{display:none;animation:slideDown .2s ease-out}
+@keyframes slideDown{
+  from{opacity:0;transform:translateY(-6px);max-height:0}
+  to{opacity:1;transform:translateY(0);max-height:200px}
+}
+.modal-pedido[data-pagamento="boleto"] .bloco-prazo-boleto{display:block}
+.prazo-grupo{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.prazo-opcao{background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:9px;
+  padding:10px 4px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;
+  font-size:12px;color:var(--c1);transition:all .15s}
+.prazo-opcao:hover{border-color:var(--ob);background:rgba(200,150,12,.06)}
+.prazo-opcao.ativo{background:var(--go);border-color:transparent;color:var(--v1);
+  box-shadow:0 2px 10px rgba(200,150,12,.32)}
+.prazo-info{font-size:11px;color:var(--c3);margin-top:6px;font-style:italic}
+.prazo-info:empty{display:none}
 
 /* Gráfico de vendas */
 .card-grafico{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
@@ -1162,16 +1203,46 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 <!-- MODAL NOVO PEDIDO (com catálogo) -->
 <div class="modal-overlay" id="modal-pedido">
-  <div class="modal-sheet">
-    <button class="modal-close-x" onclick="fecharModal('modal-pedido')" aria-label="Fechar">×</button>
+  <div class="modal-sheet modal-pedido" data-pagamento="avista">
     <div class="modal-handle"></div>
     <div class="modal-titulo" id="modal-pedido-titulo">Novo Pedido</div>
+
     <div class="campo"><label>Cliente</label>
       <select id="pedido-cliente"><option value="">Selecionar cliente...</option></select></div>
+
     <div class="campo"><label>Data de entrega</label>
       <input type="date" id="pedido-data-entrega"></div>
-    <div class="campo"><label>Data de vencimento (pagamento)</label>
-      <input type="date" id="pedido-data-vencimento"></div>
+
+    <!-- FORMA DE PAGAMENTO -->
+    <div class="campo">
+      <label>Forma de pagamento</label>
+      <div class="pagto-grupo" id="pagto-grupo">
+        <button type="button" class="pagto-opcao ativo" data-valor="avista" onclick="selecionarPagamento('avista')">
+          <span class="pagto-icone">💵</span>
+          <span class="pagto-label">À vista</span>
+        </button>
+        <button type="button" class="pagto-opcao" data-valor="boleto" onclick="selecionarPagamento('boleto')">
+          <span class="pagto-icone">📄</span>
+          <span class="pagto-label">Boleto</span>
+        </button>
+        <button type="button" class="pagto-opcao" data-valor="cheque" onclick="selecionarPagamento('cheque')">
+          <span class="pagto-icone">📝</span>
+          <span class="pagto-label">Cheque</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- PRAZO DO BOLETO (aparece só quando forma_pagamento=boleto) -->
+    <div class="campo bloco-prazo-boleto">
+      <label>Prazo do boleto</label>
+      <div class="prazo-grupo">
+        <button type="button" class="prazo-opcao" data-valor="7" onclick="selecionarPrazo(7)">7 dias</button>
+        <button type="button" class="prazo-opcao" data-valor="14" onclick="selecionarPrazo(14)">14 dias</button>
+        <button type="button" class="prazo-opcao" data-valor="21" onclick="selecionarPrazo(21)">21 dias</button>
+        <button type="button" class="prazo-opcao" data-valor="28" onclick="selecionarPrazo(28)">28 dias</button>
+      </div>
+      <div class="prazo-info" id="prazo-info-venc"></div>
+    </div>
 
     <div class="separador">Produtos</div>
     <div class="search-bar" style="margin-bottom:10px">
@@ -1325,6 +1396,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
