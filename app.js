@@ -30,6 +30,7 @@ let carrinho           = [];      // [{produto, qtd}]
 let autoRefreshTimer   = null;    // timer de sincronização automática
 let salvando           = false;   // trava anti double-submit em operações async
 let modoEntregas       = 'lista'; // 'lista' ou 'rota' (entregador)
+let mostrarMargem      = false;   // admin: exibe custo/margem no catálogo
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
@@ -1405,29 +1406,65 @@ function renderizarCatalogo(filtro) {
   let lista = filtro==='todos' ? todosOsProdutos.slice() : todosOsProdutos.filter(p => p.categoria===filtro);
   lista.sort((a,b) => a.nome.localeCompare(b.nome));
   const el = document.getElementById('lista-catalogo');
+  const isAdmin = usuario.perfil==='admin';
+
+  // Mostra o toggle só pro admin
+  const toggle = document.getElementById('toggle-margem-catalogo');
+  if (toggle) toggle.style.display = isAdmin ? '' : 'none';
+
   if (!lista.length) {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">📦</div><p>Nenhum produto aqui</p></div>`;
     return;
   }
-  const isAdmin = usuario.perfil==='admin';
-  el.innerHTML = lista.map(p => {
-    const botoesAdmin = isAdmin ? `
-      <div class="row-gap" style="margin-top:10px">
-        <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
-        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
-      </div>` : '';
-    return `
-      <div class="item-produto-card">
-        <div class="flex-entre" style="margin-bottom:6px">
-          <div class="produto-nome">${esc(p.nome)}</div>
-          ${badgeCategoria(p.categoria)}
-        </div>
-        <div class="produto-meta">
-          <span class="produto-preco">${moeda(p.preco)}</span>
-        </div>
-        ${botoesAdmin}
-      </div>`;
-  }).join('');
+  el.innerHTML = lista.map(p => montarCardProduto(p, isAdmin)).join('');
+}
+
+// Helper para montar card de produto (usado em renderizar e buscar)
+function montarCardProduto(p, isAdmin) {
+  const custo = Number(p.preco_custo) || 0;
+  const preco = Number(p.preco) || 0;
+
+  // Linha de custo/margem (só admin + toggle ligado)
+  let custoMargemHtml = '';
+  if (isAdmin && mostrarMargem) {
+    if (custo > 0 && preco > 0) {
+      const lucro = preco - custo;
+      const pct = (lucro / custo * 100);
+      let cls = 'margem-pill';
+      if (lucro < 0) cls += ' negativa';
+      else if (pct < 20) cls += ' baixa';
+      custoMargemHtml = `
+        <div class="produto-custo-info">
+          <span class="custo-val">Custo: ${moeda(custo)}</span>
+          <span class="${cls}">+${pct.toFixed(0)}% (${moeda(lucro)})</span>
+        </div>`;
+    } else {
+      custoMargemHtml = `
+        <div class="produto-custo-info">
+          <span class="custo-val" style="font-style:italic">Custo não cadastrado</span>
+        </div>`;
+    }
+  }
+
+  const botoesAdmin = isAdmin ? `
+    <div class="row-gap" style="margin-top:10px">
+      <button class="btn-sm" onclick="verDetalheProduto(${p.id})" aria-label="Ver detalhes" title="Ver detalhes e histórico">📊 Detalhes</button>
+      <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
+      <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
+    </div>` : '';
+
+  return `
+    <div class="item-produto-card">
+      <div class="flex-entre" style="margin-bottom:6px">
+        <div class="produto-nome">${esc(p.nome)}</div>
+        ${badgeCategoria(p.categoria)}
+      </div>
+      <div class="produto-meta">
+        <span class="produto-preco">${moeda(preco)}</span>
+      </div>
+      ${custoMargemHtml}
+      ${botoesAdmin}
+    </div>`;
 }
 
 function filtrarCatalogo(filtro, btn) {
@@ -1447,24 +1484,7 @@ function _buscarProdutoImpl(termo) {
     return;
   }
   const isAdmin = usuario.perfil==='admin';
-  el.innerHTML = lista.map(p => {
-    const botoesAdmin = isAdmin ? `
-      <div class="row-gap" style="margin-top:10px">
-        <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
-        <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
-      </div>` : '';
-    return `
-      <div class="item-produto-card">
-        <div class="flex-entre" style="margin-bottom:6px">
-          <div class="produto-nome">${esc(p.nome)}</div>
-          ${badgeCategoria(p.categoria)}
-        </div>
-        <div class="produto-meta">
-          <span class="produto-preco">${moeda(p.preco)}</span>
-        </div>
-        ${botoesAdmin}
-      </div>`;
-  }).join('');
+  el.innerHTML = lista.map(p => montarCardProduto(p, isAdmin)).join('');
 }
 
 // ============================================================
@@ -2552,13 +2572,38 @@ function abrirModalProduto(id) {
     document.getElementById('produto-nome').value     = p.nome;
     document.getElementById('produto-categoria').value= p.categoria;
     document.getElementById('produto-preco').value    = p.preco;
+    document.getElementById('produto-custo').value    = (p.preco_custo != null) ? p.preco_custo : '';
   } else {
     produtoSelecionado = null;
     document.getElementById('produto-id').value='';
-    ['produto-nome','produto-preco'].forEach(i=>{ document.getElementById(i).value=''; });
+    ['produto-nome','produto-preco','produto-custo'].forEach(i=>{ document.getElementById(i).value=''; });
     document.getElementById('produto-categoria').value='Ração';
   }
+  atualizarMargemModal();
   abrirModal('modal-produto');
+}
+
+// Calcula e mostra a margem em tempo real no modal de cadastro/edição
+function atualizarMargemModal() {
+  const preco = parseFloat((document.getElementById('produto-preco').value || '0').replace(',','.')) || 0;
+  const custo = parseFloat((document.getElementById('produto-custo').value || '0').replace(',','.')) || 0;
+  const info = document.getElementById('margem-info');
+  if (!info) return;
+  if (!custo || !preco) { info.classList.remove('visivel'); info.innerHTML = ''; return; }
+  const lucro = preco - custo;
+  const pct = custo > 0 ? (lucro / custo * 100) : 0;
+  // Classifica visualmente
+  info.classList.remove('lucro-bom','lucro-baixo','lucro-negativo');
+  if (lucro < 0)        info.classList.add('lucro-negativo');
+  else if (pct < 20)    info.classList.add('lucro-baixo');
+  else                  info.classList.add('lucro-bom');
+  info.classList.add('visivel');
+  info.innerHTML = `
+    <div>
+      <div class="margem-info-label">Margem de lucro</div>
+      <div class="margem-info-valor">${moeda(lucro)}</div>
+    </div>
+    <div class="margem-info-pct">${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%</div>`;
 }
 
 async function salvarProduto() {
@@ -2567,35 +2612,61 @@ async function salvarProduto() {
   const categoria = document.getElementById('produto-categoria').value;
   const precoStr  = document.getElementById('produto-preco').value.replace(',','.');
   const preco     = Math.max(0, parseFloat(precoStr) || 0);
+  const custoStr  = document.getElementById('produto-custo').value.replace(',','.');
+  // Custo é opcional — null se vazio
+  const preco_custo = (custoStr.trim() === '' || isNaN(parseFloat(custoStr)))
+    ? null
+    : Math.max(0, parseFloat(custoStr));
   const idEdit    = document.getElementById('produto-id').value;
 
   if (!nome) { alert('Informe o nome do produto.'); return; }
+  if (!preco) { alert('Informe o preço de venda.'); return; }
 
   salvando = true;
   try {
     if (idEdit) {
-      // Editar
+      // === EDITAR ===
       const id = Number(idEdit);
       if (!id) { alert('ID inválido.'); return; }
+      const produtoAntigo = todosOsProdutos.find(p => p.id === id);
+      const precoMudou = produtoAntigo && (Number(produtoAntigo.preco) !== preco);
+      const custoMudou = produtoAntigo && (Number(produtoAntigo.preco_custo || 0) !== Number(preco_custo || 0));
+
       if (!MODO_DEMO) {
-        const res = await supabase('produtos','PATCH',{nome,categoria,preco},`?id=eq.${id}`);
+        const res = await supabase('produtos','PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
         if (!res.ok) {
-          alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+          alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
           return;
+        }
+        // Registra histórico SÓ se algum preço mudou
+        if (precoMudou || custoMudou) {
+          await supabase('historico_precos','POST', {
+            produto_id: id,
+            preco_venda: preco,
+            preco_custo,
+            alterado_por: usuario.login,
+          });
         }
       }
       const idx = todosOsProdutos.findIndex(p=>p.id===id);
-      if (idx>=0) Object.assign(todosOsProdutos[idx],{nome,categoria,preco});
+      if (idx >= 0) Object.assign(todosOsProdutos[idx], { nome, categoria, preco, preco_custo });
     } else {
-      // Novo
-      const novo = { id:Date.now(), nome, categoria, preco };
+      // === NOVO ===
+      const novo = { id: Date.now(), nome, categoria, preco, preco_custo };
       if (!MODO_DEMO) {
-        const res = await supabase('produtos','POST',{nome,categoria,preco});
-        if (!res.ok||!res.dados?.[0]) {
-          alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta') + '\n\nVerifique se as permissões da tabela produtos estão configuradas no Supabase.');
+        const res = await supabase('produtos','POST', { nome, categoria, preco, preco_custo });
+        if (!res.ok || !res.dados?.[0]) {
+          alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
           return;
         }
         novo.id = res.dados[0].id;
+        // Primeiro registro do histórico
+        await supabase('historico_precos','POST', {
+          produto_id: novo.id,
+          preco_venda: preco,
+          preco_custo,
+          alterado_por: usuario.login,
+        });
       }
       todosOsProdutos.push(novo);
     }
@@ -2604,6 +2675,16 @@ async function salvarProduto() {
   } finally {
     salvando = false;
   }
+}
+
+// ============================================================
+// MARGEM / HISTÓRICO DE PREÇOS (admin only)
+// ============================================================
+function alternarMostrarMargem() {
+  mostrarMargem = !mostrarMargem;
+  const toggle = document.getElementById('toggle-margem-catalogo');
+  if (toggle) toggle.classList.toggle('ativo', mostrarMargem);
+  renderizarCatalogo(filtroCatalogo);
 }
 
 async function excluirProduto(id) {
@@ -2621,6 +2702,112 @@ async function excluirProduto(id) {
     salvando = false;
   }
 }
+
+// Mostra modal com detalhes do produto + histórico de preços
+async function verDetalheProduto(id) {
+  const p = todosOsProdutos.find(x => x.id === id);
+  if (!p) return;
+
+  // Mostra modal com loading enquanto busca histórico
+  document.getElementById('detalhe-produto-nome').textContent = p.nome;
+  document.getElementById('detalhe-produto-conteudo').innerHTML = `
+    <div class="loading"><div class="spinner"></div> Carregando histórico...</div>`;
+  abrirModal('modal-detalhe-produto');
+
+  // Calcula margem atual
+  const custo = Number(p.preco_custo) || 0;
+  const preco = Number(p.preco) || 0;
+  const lucro = (custo > 0 && preco > 0) ? (preco - custo) : null;
+  const pct = (custo > 0 && preco > 0) ? ((preco - custo) / custo * 100) : null;
+  let classeLucro = '';
+  if (lucro != null) {
+    if (lucro < 0) classeLucro = 'lucro-negativo';
+    else if (pct < 20) classeLucro = 'lucro-baixo';
+    else classeLucro = 'lucro-bom';
+  }
+
+  // Busca histórico no banco
+  let historico = [];
+  if (!MODO_DEMO) {
+    const res = await supabase('historico_precos', 'GET', null,
+      `?produto_id=eq.${id}&order=criado_em.desc&limit=20`);
+    if (res.ok && Array.isArray(res.dados)) historico = res.dados;
+  }
+
+  // Resumo
+  let resumoHtml = `
+    <div class="historico-resumo">
+      <div class="historico-resumo-linha">
+        <span class="historico-resumo-label">📁 Categoria</span>
+        <span class="historico-resumo-valor" style="font-family:Nunito,sans-serif;font-size:13px">${esc(p.categoria || '–')}</span>
+      </div>
+      <div class="historico-resumo-linha">
+        <span class="historico-resumo-label">💰 Preço de venda</span>
+        <span class="historico-resumo-valor" style="color:#7ec850">${moeda(preco)}</span>
+      </div>
+      <div class="historico-resumo-linha">
+        <span class="historico-resumo-label">📦 Preço de custo</span>
+        <span class="historico-resumo-valor" style="color:#f4a04a">${custo > 0 ? moeda(custo) : 'Não cadastrado'}</span>
+      </div>`;
+  if (lucro != null) {
+    resumoHtml += `
+      <div class="historico-resumo-linha">
+        <span class="historico-resumo-label">📈 Margem de lucro</span>
+        <span class="historico-resumo-valor margem-info ${classeLucro}" style="border:0;padding:0;background:none">${moeda(lucro)} <span style="font-size:11px;margin-left:4px">(${pct.toFixed(0)}%)</span></span>
+      </div>`;
+  }
+  resumoHtml += `</div>`;
+
+  // Histórico
+  let historicoHtml = '<div class="separador">📊 Histórico de preços</div>';
+  if (!historico.length) {
+    historicoHtml += `<div class="historico-vazio">Nenhuma alteração registrada ainda.<br>O histórico começa a partir da próxima alteração.</div>`;
+  } else {
+    historicoHtml += '<div class="historico-lista">';
+    historico.forEach((h, i) => {
+      const dataObj = new Date(h.criado_em);
+      const dataStr = dataObj.toLocaleDateString('pt-BR') + ' às ' + dataObj.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      const venda = Number(h.preco_venda) || 0;
+      const custoH = Number(h.preco_custo) || 0;
+      const margemH = (custoH > 0 && venda > 0) ? (venda - custoH) : null;
+
+      // Detecta variação vs próximo (mais antigo)
+      let variacaoHtml = '';
+      const proximo = historico[i + 1];
+      if (proximo) {
+        const vendaAnt = Number(proximo.preco_venda) || 0;
+        if (vendaAnt > 0 && venda !== vendaAnt) {
+          const diff = ((venda - vendaAnt) / vendaAnt * 100);
+          const sinal = diff > 0 ? '↑' : '↓';
+          const cls = diff > 0 ? 'subiu' : 'desceu';
+          variacaoHtml = `<span class="historico-variacao ${cls}">${sinal} ${Math.abs(diff).toFixed(0)}% no preço de venda</span>`;
+        }
+      }
+
+      historicoHtml += `
+        <div class="historico-item">
+          <div class="historico-item-data">📅 ${dataStr}${h.alterado_por ? ` · por ${esc(h.alterado_por)}` : ''}</div>
+          <div class="historico-item-precos">
+            <div><span class="lbl">Custo</span><span class="val custo">${custoH > 0 ? moeda(custoH) : '—'}</span></div>
+            <div><span class="lbl">Venda</span><span class="val venda">${moeda(venda)}</span></div>
+            ${margemH != null ? `<div><span class="lbl">Margem</span><span class="val margem">${moeda(margemH)}</span></div>` : ''}
+          </div>
+          ${variacaoHtml}
+        </div>`;
+    });
+    historicoHtml += '</div>';
+  }
+
+  // Botões de ação
+  const botoes = `
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-azul" style="flex:1" onclick="fecharModal('modal-detalhe-produto'); abrirModalProduto(${p.id})">✏️ Editar</button>
+      <button class="btn-perigo" style="flex:1" onclick="fecharModal('modal-detalhe-produto'); excluirProduto(${p.id})">🗑️ Excluir</button>
+    </div>`;
+
+  document.getElementById('detalhe-produto-conteudo').innerHTML = resumoHtml + historicoHtml + botoes;
+}
+
 
 // ============================================================
 // DETALHE PEDIDO
