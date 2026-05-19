@@ -31,6 +31,7 @@ let autoRefreshTimer   = null;    // timer de sincronização automática
 let salvando           = false;   // trava anti double-submit em operações async
 let modoEntregas       = 'lista'; // 'lista' ou 'rota' (entregador)
 let mostrarMargem      = false;   // admin: exibe custo/margem no catálogo
+let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
@@ -71,6 +72,39 @@ function foiPago(p) {
   if (p.status_pagamento === 'pendente' || p.status_pagamento === 'recusado') return false;
   // Legado: sem status_pagamento → assume pago se foi entregue
   return p.status === 'entregue';
+}
+
+// Detecta se o pedido tem QUALQUER item com preço diferente do catálogo.
+// Itens sem preco_catalogo (legado) NÃO são considerados ajustes.
+function temAjusteDePreco(p) {
+  if (!p.itens?.length) return false;
+  return p.itens.some(it => {
+    if (it.preco_catalogo == null) return false;
+    const diff = Math.abs(Number(it.preco_unit) - Number(it.preco_catalogo));
+    return diff > 0.005;
+  });
+}
+
+// Retorna lista de ajustes para exibir no detalhe (cada item com diferença)
+function listaAjustesPrecos(p) {
+  if (!p.itens?.length) return [];
+  return p.itens
+    .filter(it => it.preco_catalogo != null && Math.abs(Number(it.preco_unit) - Number(it.preco_catalogo)) > 0.005)
+    .map(it => {
+      const unit = Number(it.preco_unit) || 0;
+      const cat  = Number(it.preco_catalogo) || 0;
+      const diff = unit - cat;
+      const pct = cat > 0 ? (diff / cat * 100) : 0;
+      return {
+        nome: it.nome,
+        qtd: it.qtd,
+        precoCatalogo: cat,
+        precoCobrado: unit,
+        diff,
+        pct,
+        impactoTotal: diff * (Number(it.qtd) || 0),
+      };
+    });
 }
 
 // ============================================================
@@ -809,7 +843,7 @@ async function sincronizarDados() {
 
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
-      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}`).sort().join(',');
+      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
       return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
     const mudou =
@@ -1424,6 +1458,13 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     badge = `<span class="badge badge-pendente">Pendente</span>`;
   }
 
+  // Badge extra para ADMIN: indica se houve ajuste de preço em algum item
+  let badgePrecoAjustado = '';
+  if (usuario.perfil === 'admin' && temAjusteDePreco(p)) {
+    badgePrecoAjustado = `<span class="badge badge-preco-ajustado" title="Preço ajustado pelo vendedor">⚠ Preço ajustado</span>`;
+  }
+  badge = badge + (badgePrecoAjustado ? ' ' + badgePrecoAjustado : '');
+
   // Itens do pedido: para ENTREGADOR em pedido PENDENTE, vira CHECKLIST interativo.
   // Para outros perfis ou pedido entregue, mostra como texto corrido (mesmo de antes).
   let conteudoLinha;
@@ -1676,7 +1717,15 @@ function adicionarAoCarrinho(produtoId) {
   if (idx>=0) {
     carrinho[idx].qtd++;
   } else {
-    carrinho.push({ produto:p, qtd:1 });
+    // Ao adicionar, guarda DOIS valores:
+    // - preco_unit: o que será cobrado do cliente (pode ser ajustado)
+    // - preco_catalogo: valor de referência do catálogo (para detectar ajustes)
+    carrinho.push({
+      produto: p,
+      qtd: 1,
+      preco_unit: Number(p.preco) || 0,
+      preco_catalogo: Number(p.preco) || 0,
+    });
   }
   renderizarCarrinho();
   // Atualiza a lista para mostrar quantidade adicionada
@@ -1704,14 +1753,27 @@ function renderizarCarrinho() {
     return;
   }
   let total = 0;
-  el.innerHTML = carrinho.map(c => {
-    const subtotal = c.produto.preco * c.qtd;
+  el.innerHTML = carrinho.map((c, idx) => {
+    // Compat com itens carregados de pedidos antigos que não têm preco_unit/preco_catalogo
+    const precoUnit = (c.preco_unit != null) ? Number(c.preco_unit) : Number(c.produto.preco) || 0;
+    const precoCat  = (c.preco_catalogo != null) ? Number(c.preco_catalogo) : Number(c.produto.preco) || 0;
+    const ajustado = Math.abs(precoUnit - precoCat) > 0.001;
+    const subtotal = precoUnit * c.qtd;
     total += subtotal;
+
+    // Visual do preço: se ajustado, mostra original riscado + novo
+    const precoVisual = ajustado
+      ? `<span class="preco-original-riscado">${moeda(precoCat)}</span><span class="preco-ajustado-novo">${moeda(precoUnit)}</span> cada`
+      : `${moeda(precoUnit)} cada`;
+
     return `
       <div class="carrinho-item">
         <div class="carrinho-info">
           <div class="carrinho-nome">${esc(c.produto.nome)}</div>
-          <div class="carrinho-preco-unit">${moeda(c.produto.preco)} cada</div>
+          <div class="carrinho-preco-unit">${precoVisual}</div>
+          <button class="btn-ajustar-preco ${ajustado ? 'preco-mudou' : ''}" onclick="abrirAjustePreco(${idx})">
+            ✏️ ${ajustado ? 'Preço ajustado' : 'Ajustar preço'}
+          </button>
         </div>
         <div class="carrinho-controle">
           <div class="carrinho-qtd">
@@ -1749,6 +1811,86 @@ function removerDoCarrinho(produtoId) {
   renderizarCarrinho();
   const termo = document.getElementById('busca-produto-modal').value;
   buscarProdutoModal(termo);
+}
+
+// ============================================================
+// AJUSTE DE PREÇO POR PEDIDO (vendedor/admin)
+// ============================================================
+function abrirAjustePreco(idx) {
+  if (idx < 0 || idx >= carrinho.length) return;
+  ajusteCarrinhoIdx = idx;
+  const c = carrinho[idx];
+  const precoUnit = Number(c.preco_unit) || 0;
+  const precoCat  = Number(c.preco_catalogo) || 0;
+
+  document.getElementById('ajustar-preco-info').innerHTML = `
+    <div style="font-weight:700;color:var(--o1);margin-bottom:4px">${esc(c.produto.nome)}</div>
+    <div style="font-size:12px;color:var(--c3)">📁 Preço do catálogo: ${moeda(precoCat)}</div>
+    <div style="font-size:12px;color:var(--c3);margin-top:2px">📦 Quantidade no pedido: ${c.qtd}x</div>`;
+
+  const input = document.getElementById('ajustar-preco-input');
+  input.value = precoUnit.toFixed(2);
+  atualizarDiferencaPreco();
+  abrirModal('modal-ajustar-preco');
+  // Foco + seleciona o valor para edição rápida
+  setTimeout(() => { input.focus(); input.select(); }, 80);
+}
+
+function atualizarDiferencaPreco() {
+  if (ajusteCarrinhoIdx == null) return;
+  const c = carrinho[ajusteCarrinhoIdx];
+  if (!c) return;
+  const precoCat = Number(c.preco_catalogo) || 0;
+  const novoStr = document.getElementById('ajustar-preco-input').value.replace(',', '.');
+  const novo = parseFloat(novoStr);
+  const diffEl = document.getElementById('ajustar-preco-diferenca');
+  if (!diffEl) return;
+
+  if (isNaN(novo) || precoCat <= 0) {
+    diffEl.style.display = 'none';
+    return;
+  }
+  const diff = novo - precoCat;
+  const pct = (diff / precoCat) * 100;
+  diffEl.style.display = 'block';
+  diffEl.classList.remove('subiu', 'desceu', 'igual');
+
+  if (Math.abs(diff) < 0.005) {
+    diffEl.classList.add('igual');
+    diffEl.textContent = '✓ Mesmo preço do catálogo';
+  } else if (diff > 0) {
+    diffEl.classList.add('subiu');
+    diffEl.textContent = `↑ ${moeda(diff)} acima (+${pct.toFixed(0)}%) · Subtotal: ${moeda(novo * c.qtd)}`;
+  } else {
+    diffEl.classList.add('desceu');
+    diffEl.textContent = `↓ ${moeda(Math.abs(diff))} de desconto (${pct.toFixed(0)}%) · Subtotal: ${moeda(novo * c.qtd)}`;
+  }
+}
+
+function confirmarAjustePreco() {
+  if (ajusteCarrinhoIdx == null) return;
+  const c = carrinho[ajusteCarrinhoIdx];
+  if (!c) return;
+  const novoStr = document.getElementById('ajustar-preco-input').value.replace(',', '.');
+  const novo = parseFloat(novoStr);
+  if (isNaN(novo) || novo < 0) {
+    alert('Informe um preço válido (maior ou igual a zero).');
+    return;
+  }
+  c.preco_unit = novo;
+  ajusteCarrinhoIdx = null;
+  fecharModal('modal-ajustar-preco');
+  renderizarCarrinho();
+}
+
+function resetarPrecoCatalogo() {
+  if (ajusteCarrinhoIdx == null) return;
+  const c = carrinho[ajusteCarrinhoIdx];
+  if (!c) return;
+  c.preco_unit = Number(c.preco_catalogo) || 0;
+  ajusteCarrinhoIdx = null;
+  fecharModal('modal-ajustar-preco');
+  renderizarCarrinho();
 }
 
 // ============================================================
@@ -2006,10 +2148,21 @@ function abrirModalNovoPedido(idEdit) {
       const prod = todosOsProdutos.find(x => x.id === it.produto_id);
       const produto = prod || { id: it.produto_id, nome: it.nome, preco: it.preco_unit };
       const existente = carrinho.find(c => c.produto.id === produto.id);
+      // Compat: itens antigos não têm preco_catalogo — usa o do catálogo atual ou o próprio preco_unit
+      const precoUnit = Number(it.preco_unit) || Number(produto.preco) || 0;
+      const precoCat  = (it.preco_catalogo != null)
+        ? Number(it.preco_catalogo)
+        : (prod ? Number(prod.preco) : precoUnit);
       if (existente) {
         existente.qtd += Number(it.qtd) || 0;
+        // Mantém preço já carregado (não sobrescreve em duplicatas)
       } else {
-        carrinho.push({ produto, qtd: Number(it.qtd) || 0 });
+        carrinho.push({
+          produto,
+          qtd: Number(it.qtd) || 0,
+          preco_unit: precoUnit,
+          preco_catalogo: precoCat,
+        });
       }
     });
   } else {
@@ -2212,10 +2365,19 @@ async function salvarPedido() {
 }
 
 async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma_pagamento, prazo_dias, prazos_boleto) {
-  const valor    = carrinho.reduce((s,c)=>s+(c.produto.preco*c.qtd),0);
+  // Valor calculado com o preço EFETIVO (preco_unit), que pode ter sido ajustado
+  const precoUnitDe = c => (c.preco_unit != null ? Number(c.preco_unit) : Number(c.produto.preco)) || 0;
+  const precoCatDe  = c => (c.preco_catalogo != null ? Number(c.preco_catalogo) : Number(c.produto.preco)) || 0;
+  const valor    = carrinho.reduce((s,c)=>s+(precoUnitDe(c)*c.qtd),0);
   const descricao= carrinho.map(c=>`${c.qtd}x ${c.produto.nome}`).join(', ');
   const cliente  = todosOsClientes.find(c=>c.id===cliente_id);
-  const itens    = carrinho.map(c=>({ produto_id:c.produto.id, nome:c.produto.nome, qtd:c.qtd, preco_unit:c.produto.preco }));
+  const itens    = carrinho.map(c=>({
+    produto_id: c.produto.id,
+    nome: c.produto.nome,
+    qtd: c.qtd,
+    preco_unit: precoUnitDe(c),
+    preco_catalogo: precoCatDe(c),
+  }));
 
   // === EDIÇÃO ===
   if (pedidoEmEdicao) {
@@ -3028,6 +3190,29 @@ function verDetalhePedido(id) {
     }
   }
 
+  // Bloco de ajustes de preço (só admin vê — auditoria)
+  let blocoAjustes = '';
+  if (usuario.perfil === 'admin') {
+    const ajustes = listaAjustesPrecos(p);
+    if (ajustes.length) {
+      blocoAjustes = `
+        <div class="bloco-ajustes-precos">
+          <div class="bloco-ajustes-precos-titulo">⚠ Preços ajustados neste pedido</div>
+          ${ajustes.map(a => `
+            <div class="bloco-ajustes-precos-item">
+              <span class="nome-prod">${esc(a.nome)} (${a.qtd}x)</span>
+              <span style="font-size:11px;color:var(--c3)">
+                ${moeda(a.precoCatalogo)} → ${moeda(a.precoCobrado)}
+              </span>
+              <span class="diff ${a.diff > 0 ? 'subiu' : 'desceu'}">
+                ${a.diff > 0 ? '+' : ''}${moeda(a.diff)} (${a.pct > 0 ? '+' : ''}${a.pct.toFixed(0)}%)
+              </span>
+            </div>
+          `).join('')}
+        </div>`;
+    }
+  }
+
   document.getElementById('detalhe-pedido-conteudo').innerHTML = `
     <div style="background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--c3);margin-bottom:4px">📅 Entrega: ${dataBR(p.data_entrega)} · Venc.: ${dataBR(p.data_vencimento)}</div>
@@ -3035,6 +3220,7 @@ function verDetalhePedido(id) {
       ${statusPagtoLinha}
       <div style="font-size:12px;color:var(--c3)">📋 Pedido por: ${esc(p.vendedor||'–')}</div>
     </div>
+    ${blocoAjustes}
     <div class="separador">Itens</div>
     ${itensHtml}
     <div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
