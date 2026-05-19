@@ -298,6 +298,7 @@ function alternarTipoPessoa(tipo) {
   const labelNome = document.getElementById('cliente-nome-label');
   const labelDoc  = document.getElementById('cliente-doc-label');
   const inputDoc  = document.getElementById('cliente-cnpj-cpf');
+  if (!labelNome || !labelDoc || !inputDoc) return;
 
   if (tipo === 'fisica') {
     labelNome.innerHTML = 'Nome completo <span class="campo-obrig">*</span>';
@@ -320,6 +321,7 @@ function alternarTipoPessoa(tipo) {
 function marcarIsento() {
   const input = document.getElementById('cliente-ie');
   const btn = document.querySelector('.btn-isento');
+  if (!input || !btn) return;
   if (input.value.toUpperCase() === 'ISENTO') {
     input.value = '';
     input.disabled = false;
@@ -477,6 +479,17 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
+
+  // Limpa TODOS os checklists do localStorage (evita herança entre usuários)
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(CHECKLIST_PREFIX)) keys.push(k);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+  } catch(e) { /* silencioso */ }
+
   // Reset completo de TODOS os estados
   usuario = null;
   todosOsPedidos = []; todosOsClientes = []; todosOsProdutos = [];
@@ -1526,7 +1539,8 @@ function adicionarAoCarrinho(produtoId) {
   }
   renderizarCarrinho();
   // Atualiza a lista para mostrar quantidade adicionada
-  const termo = document.getElementById('busca-produto-modal').value;
+  const buscaEl = document.getElementById('busca-produto-modal');
+  const termo = buscaEl ? buscaEl.value : '';
   buscarProdutoModal(termo);
 }
 
@@ -2728,10 +2742,13 @@ async function verDetalheProduto(id) {
 
   // Busca histórico no banco
   let historico = [];
+  let modoDemoSemHistorico = false;
   if (!MODO_DEMO) {
     const res = await supabase('historico_precos', 'GET', null,
       `?produto_id=eq.${id}&order=criado_em.desc&limit=20`);
     if (res.ok && Array.isArray(res.dados)) historico = res.dados;
+  } else {
+    modoDemoSemHistorico = true;
   }
 
   // Resumo
@@ -2760,7 +2777,9 @@ async function verDetalheProduto(id) {
 
   // Histórico
   let historicoHtml = '<div class="separador">📊 Histórico de preços</div>';
-  if (!historico.length) {
+  if (modoDemoSemHistorico) {
+    historicoHtml += `<div class="historico-vazio">Histórico só fica disponível no modo real (com banco conectado).</div>`;
+  } else if (!historico.length) {
     historicoHtml += `<div class="historico-vazio">Nenhuma alteração registrada ainda.<br>O histórico começa a partir da próxima alteração.</div>`;
   } else {
     historicoHtml += '<div class="historico-lista">';
