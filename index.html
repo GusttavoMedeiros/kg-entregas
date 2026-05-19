@@ -416,6 +416,66 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .badge-pago{background:rgba(39,174,96,.18);color:#7ec850;border:1px solid rgba(39,174,96,.4)}
 .badge-pag-pendente{background:rgba(212,121,26,.18);color:#f4a04a;border:1px solid rgba(212,121,26,.4)}
 .badge-pag-recusado{background:rgba(192,57,43,.18);color:#ee7d6f;border:1px solid rgba(192,57,43,.4)}
+
+/* ========== CUSTO / MARGEM / HISTORICO DE PRECOS ========== */
+.preco-linha{display:flex;gap:10px;align-items:flex-end}
+@media (max-width:480px){
+  .preco-linha{flex-direction:column;gap:0}
+}
+.margem-info{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:10px;
+  padding:10px 13px;margin:0 0 4px;font-size:12px;color:var(--c2);display:none}
+.margem-info.visivel{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.margem-info-label{font-size:11px;color:var(--c3);font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.margem-info-valor{font-family:'Cinzel',serif;font-size:15px;font-weight:700;color:var(--o1)}
+.margem-info.lucro-bom .margem-info-valor{color:#7ec850}
+.margem-info.lucro-baixo .margem-info-valor{color:#f4a04a}
+.margem-info.lucro-negativo .margem-info-valor{color:#ee7d6f}
+.margem-info-pct{font-size:13px;font-weight:700;font-family:'Nunito',sans-serif}
+
+/* Card produto: pequena info de custo/margem só para admin */
+.produto-custo-info{font-size:11px;color:var(--c3);margin-top:3px;display:flex;gap:8px;align-items:center}
+.produto-custo-info .custo-val{color:var(--c2)}
+.produto-custo-info .margem-pill{background:rgba(39,174,96,.12);color:#7ec850;
+  padding:2px 7px;border-radius:8px;font-weight:700;font-size:10px;letter-spacing:.3px}
+.produto-custo-info .margem-pill.baixa{background:rgba(212,121,26,.12);color:#f4a04a}
+.produto-custo-info .margem-pill.negativa{background:rgba(192,57,43,.12);color:#ee7d6f}
+
+/* Toggle "mostrar margem" no admin */
+.toggle-margem{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(10,26,16,.5);
+  border:1px solid var(--ol);border-radius:10px;margin-bottom:12px;cursor:pointer;
+  font-size:12px;color:var(--c2);user-select:none;transition:border-color .15s}
+.toggle-margem:hover{border-color:var(--ob)}
+.toggle-margem-switch{width:36px;height:20px;background:rgba(200,150,12,.15);border-radius:10px;
+  position:relative;transition:background .2s;flex-shrink:0}
+.toggle-margem-switch::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+  background:var(--c3);border-radius:50%;transition:all .2s}
+.toggle-margem.ativo .toggle-margem-switch{background:var(--go)}
+.toggle-margem.ativo .toggle-margem-switch::after{left:18px;background:var(--v1)}
+.toggle-margem-label{font-weight:600;letter-spacing:.3px}
+
+/* Histórico de preços (modal de detalhe) */
+.historico-resumo{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:var(--r);
+  padding:14px;margin-bottom:14px}
+.historico-resumo-linha{display:flex;justify-content:space-between;align-items:center;padding:5px 0}
+.historico-resumo-linha + .historico-resumo-linha{border-top:1px dashed var(--ol)}
+.historico-resumo-label{font-size:12px;color:var(--c3);letter-spacing:.3px}
+.historico-resumo-valor{font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:var(--o1)}
+.historico-lista{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.historico-item{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:9px;
+  padding:10px 12px;font-size:12px}
+.historico-item-data{font-size:10px;color:var(--c3);font-weight:600;letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:6px}
+.historico-item-precos{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.historico-item-precos > div{display:flex;flex-direction:column;gap:1px}
+.historico-item-precos .lbl{font-size:9px;color:var(--c3);text-transform:uppercase;letter-spacing:.5px}
+.historico-item-precos .val{font-family:'Cinzel',serif;font-size:13px;font-weight:700;color:var(--creme)}
+.historico-item-precos .val.custo{color:#f4a04a}
+.historico-item-precos .val.venda{color:#7ec850}
+.historico-item-precos .val.margem{color:var(--o1)}
+.historico-variacao{font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;margin-top:5px;display:inline-block}
+.historico-variacao.subiu{background:rgba(212,121,26,.15);color:#f4a04a}
+.historico-variacao.desceu{background:rgba(39,174,96,.15);color:#7ec850}
+.historico-vazio{font-size:12px;color:var(--c3);text-align:center;padding:18px;font-style:italic}
 .ie-row{display:flex;gap:6px;align-items:stretch}
 .ie-row input{flex:1;min-width:0}
 .btn-isento{background:rgba(200,150,12,.08);color:var(--o1);border:1px solid var(--ob);
@@ -1219,6 +1279,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         <button class="aba" onclick="filtrarCatalogo('Ração',this)">Ração</button>
         <button class="aba" onclick="filtrarCatalogo('Agropecuário',this)">Agro</button>
       </div>
+      <div class="toggle-margem" id="toggle-margem-catalogo" onclick="alternarMostrarMargem()" style="display:none">
+        <div class="toggle-margem-switch"></div>
+        <span class="toggle-margem-label">Mostrar custo e margem</span>
+      </div>
       <div id="lista-catalogo"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
       <div id="btn-add-produto"></div>
     </div>
@@ -1520,10 +1584,26 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         <option value="Agropecuário">Agropecuário / Campo</option>
         <option value="Outros">Outros</option>
       </select></div>
-    <div class="campo"><label>Preço de venda (R$)</label>
-      <input type="number" id="produto-preco" placeholder="0,00" step="0.01" min="0"></div>
+    <div class="preco-linha">
+      <div class="campo" style="flex:1;min-width:0"><label>Preço de venda (R$) <span class="campo-obrig">*</span></label>
+        <input type="number" id="produto-preco" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="atualizarMargemModal()"></div>
+      <div class="campo" style="flex:1;min-width:0"><label>Preço de custo (R$)</label>
+        <input type="number" id="produto-custo" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="atualizarMargemModal()"></div>
+    </div>
+    <div class="margem-info" id="margem-info"></div>
     <button class="btn-primario mt-12" onclick="salvarProduto()">Salvar Produto</button>
     <button class="btn-secundario mt-8" onclick="fecharModal('modal-produto')">Cancelar</button>
+  </div>
+</div>
+
+<!-- MODAL DETALHE DO PRODUTO (admin) -->
+<div class="modal-overlay" id="modal-detalhe-produto">
+  <div class="modal-sheet">
+    <button class="modal-close-x" onclick="fecharModal('modal-detalhe-produto')" aria-label="Fechar">×</button>
+    <div class="modal-handle"></div>
+    <div class="modal-titulo" id="detalhe-produto-nome">Produto</div>
+    <div id="detalhe-produto-conteudo"></div>
+    <button class="btn-secundario mt-12" onclick="fecharModal('modal-detalhe-produto')">Fechar</button>
   </div>
 </div>
 
@@ -1578,6 +1658,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
