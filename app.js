@@ -73,6 +73,92 @@ function foiPago(p) {
   return p.status === 'entregue';
 }
 
+// ============================================================
+// BUSCA INTELIGENTE — normalização + tolerância a typos + highlight
+// ============================================================
+
+// Tira acentos, ç vira c, deixa minúsculo. "Ração" → "racao"
+function normalizar(texto) {
+  if (texto == null) return '';
+  return String(texto)
+    .toLowerCase()
+    .normalize('NFD')              // separa letra base do acento
+    .replace(/[\u0300-\u036f]/g, '') // remove os acentos
+    .replace(/ç/g, 'c');           // ç → c (caso o NFD não pegue)
+}
+
+// Aplica substituições fonéticas para tolerar typos comuns em português.
+// Ex: "rasao", "raçao", "racao", "Ração" → todos viram "raçao" depois "rasao"
+// IMPORTANTE: ordem das substituições importa — vamos do mais específico ao mais geral.
+function fuzzyKey(texto) {
+  let s = normalizar(texto);
+  // Dígrafos (precisam vir antes das letras isoladas)
+  s = s.replace(/qu/g, 'k')
+       .replace(/ch/g, 'x')
+       .replace(/lh/g, 'li')
+       .replace(/nh/g, 'ni')
+       .replace(/sh/g, 'x')
+       .replace(/ph/g, 'f');
+  // Letras isoladas comumente confundidas
+  s = s.replace(/[cz]/g, 's')   // c, z → s
+       .replace(/[kq]/g, 'k')   // k, q → k
+       .replace(/y/g, 'i')
+       .replace(/w/g, 'v');
+  // Duplicações: "ss" → "s", "rr" → "r", etc.
+  s = s.replace(/(.)\1+/g, '$1');
+  return s;
+}
+
+// Testa se um item (com vários campos texto) bate com o termo de busca.
+// Retorna true se TODAS as palavras do termo aparecem em ALGUM campo.
+// Aceita acento OU não, ç OU c, e tolera typos foneticamente.
+function matchBusca(termo, ...campos) {
+  if (!termo || !termo.trim()) return true;
+  // Divide o termo em palavras (espaço ou múltiplos espaços)
+  const palavras = termo.trim().split(/\s+/).filter(Boolean);
+  // Versões normalizadas e fuzzy de cada palavra
+  const palavrasNorm = palavras.map(p => normalizar(p));
+  const palavrasFuzzy = palavras.map(p => fuzzyKey(p));
+  // Concatena todos os campos numa string só, normalizada
+  const conteudoNorm = campos.map(c => normalizar(c)).join(' ');
+  const conteudoFuzzy = campos.map(c => fuzzyKey(c)).join(' ');
+  // Cada palavra precisa bater em pelo menos uma versão (exata OU fuzzy)
+  return palavras.every((_, i) => {
+    return conteudoNorm.includes(palavrasNorm[i]) ||
+           conteudoFuzzy.includes(palavrasFuzzy[i]);
+  });
+}
+
+// Aplica highlight dourado nas palavras encontradas (com escape de HTML).
+// Mostra o texto ORIGINAL mas destaca os pedaços que casaram (com ou sem acento).
+function highlightBusca(textoOriginal, termo) {
+  const seguro = esc(textoOriginal || '');
+  if (!termo || !termo.trim()) return seguro;
+  const palavras = termo.trim().split(/\s+/).filter(Boolean);
+  // Para cada palavra, gera regex que ignora acentos do texto original
+  let resultado = seguro;
+  palavras.forEach(palavra => {
+    const palavraNorm = normalizar(palavra);
+    if (!palavraNorm) return;
+    // Constrói regex que casa a sequência de caracteres ignorando acentos
+    // Ex: "rac" casa "Rac", "ráç", "Raç" etc.
+    const padraoChars = palavraNorm.split('').map(c => {
+      // Map letra normalizada → classe de caracteres que ela representa
+      const variantes = {
+        'a': '[aáàãâäAÁÀÃÂÄ]', 'e': '[eéèêëEÉÈÊË]', 'i': '[iíìîïIÍÌÎÏ]',
+        'o': '[oóòõôöOÓÒÕÔÖ]', 'u': '[uúùûüUÚÙÛÜ]', 'c': '[cçCÇ]',
+        'n': '[nñNÑ]'
+      };
+      return variantes[c] || c;
+    }).join('');
+    try {
+      const re = new RegExp('(' + padraoChars + ')', 'gi');
+      resultado = resultado.replace(re, '<mark class="busca-match">$1</mark>');
+    } catch(e) { /* regex inválida — ignora highlight */ }
+  });
+  return resultado;
+}
+
 // Debounce — evita re-render a cada tecla digitada em buscas (150ms = imperceptível)
 function debounce(fn, ms = 150) {
   let timeout;
@@ -1433,7 +1519,7 @@ function renderizarCatalogo(filtro) {
 }
 
 // Helper para montar card de produto (usado em renderizar e buscar)
-function montarCardProduto(p, isAdmin) {
+function montarCardProduto(p, isAdmin, termoBusca = '') {
   const custo = Number(p.preco_custo) || 0;
   const preco = Number(p.preco) || 0;
 
@@ -1466,10 +1552,13 @@ function montarCardProduto(p, isAdmin) {
       <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
     </div>` : '';
 
+  // Aplica highlight no nome se houver termo de busca
+  const nomeHtml = termoBusca ? highlightBusca(p.nome, termoBusca) : esc(p.nome);
+
   return `
     <div class="item-produto-card">
       <div class="flex-entre" style="margin-bottom:6px">
-        <div class="produto-nome">${esc(p.nome)}</div>
+        <div class="produto-nome">${nomeHtml}</div>
         ${badgeCategoria(p.categoria)}
       </div>
       <div class="produto-meta">
@@ -1487,9 +1576,9 @@ function filtrarCatalogo(filtro, btn) {
 }
 
 function _buscarProdutoImpl(termo) {
-  const t = (termo||'').toLowerCase();
+  const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    p.nome.toLowerCase().includes(t) || (p.categoria||'').toLowerCase().includes(t)
+    matchBusca(t, p.nome, p.categoria || '')
   );
   const el = document.getElementById('lista-catalogo');
   if (!lista.length) {
@@ -1497,16 +1586,16 @@ function _buscarProdutoImpl(termo) {
     return;
   }
   const isAdmin = usuario.perfil==='admin';
-  el.innerHTML = lista.map(p => montarCardProduto(p, isAdmin)).join('');
+  el.innerHTML = lista.map(p => montarCardProduto(p, isAdmin, t)).join('');
 }
 
 // ============================================================
 // CATÁLOGO NO MODAL DE PEDIDO (busca + carrinho)
 // ============================================================
 function _buscarProdutoModalImpl(termo) {
-  const t = (termo||'').toLowerCase();
+  const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    p.nome.toLowerCase().includes(t) || (p.categoria||'').toLowerCase().includes(t)
+    matchBusca(t, p.nome, p.categoria || '')
   );
   const el = document.getElementById('lista-produto-modal');
   if (!lista.length) {
@@ -1516,11 +1605,12 @@ function _buscarProdutoModalImpl(termo) {
   el.innerHTML = lista.map(p => {
     const noCarrinho = carrinho.find(c => c.produto.id===p.id);
     const jaAdicionado = noCarrinho ? `<span style="font-size:11px;color:var(--gn)">✓ ${noCarrinho.qtd}x</span>` : '';
+    const nomeHtml = t ? highlightBusca(p.nome, t) : esc(p.nome);
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;
                   background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:10px;margin-bottom:6px">
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--creme)">${esc(p.nome)}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--creme)">${nomeHtml}</div>
           <div style="font-size:12px;color:var(--o1)">${moeda(p.preco)} ${jaAdicionado}</div>
         </div>
         <button class="btn-azul" onclick="adicionarAoCarrinho(${p.id})">+ Adicionar</button>
@@ -1613,7 +1703,7 @@ function removerDoCarrinho(produtoId) {
 // ============================================================
 // CLIENTES
 // ============================================================
-function renderizarClientes(lista) {
+function renderizarClientes(lista, termoBusca = '') {
   const el = document.getElementById('lista-clientes');
   if (!lista.length) {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">🏪</div><p>Nenhum cliente cadastrado</p></div>`;
@@ -1625,11 +1715,14 @@ function renderizarClientes(lista) {
     const badge = devendo>0
       ? `<span class="badge badge-devendo">${moeda(devendo)} em aberto</span>`
       : `<span class="badge badge-em-dia">Em dia</span>`;
+    const nomeHtml = termoBusca ? highlightBusca(c.nome, termoBusca) : esc(c.nome);
+    const responsavelHtml = termoBusca ? highlightBusca(c.responsavel || '–', termoBusca) : esc(c.responsavel || '–');
+    const whatsappHtml = termoBusca ? highlightBusca(c.whatsapp || '–', termoBusca) : esc(c.whatsapp || '–');
     return `
       <div class="item-cliente-card" onclick="verDetalheCliente(${c.id})">
         <div>
-          <div class="cliente-nome">${esc(c.nome)}</div>
-          <div class="cliente-info">${esc(c.responsavel||'–')} · ${esc(c.whatsapp||'–')}</div>
+          <div class="cliente-nome">${nomeHtml}</div>
+          <div class="cliente-info">${responsavelHtml} · ${whatsappHtml}</div>
         </div>
         ${badge}
       </div>`;
@@ -1637,10 +1730,11 @@ function renderizarClientes(lista) {
 }
 
 function _buscarClienteImpl(termo) {
-  const t = (termo||'').toLowerCase();
-  renderizarClientes(todosOsClientes.filter(c =>
-    (c.nome||'').toLowerCase().includes(t) || (c.responsavel||'').toLowerCase().includes(t)
-  ));
+  const t = termo || '';
+  const filtrados = todosOsClientes.filter(c =>
+    matchBusca(t, c.nome, c.responsavel, c.whatsapp, c.endereco, c.email, c.cnpj_cpf)
+  );
+  renderizarClientes(filtrados, t);
 }
 
 function verDetalheCliente(id) {
