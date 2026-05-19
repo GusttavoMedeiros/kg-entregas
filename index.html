@@ -747,6 +747,16 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 .search-bar input:focus{outline:none}
 .search-icon{font-size:15px;color:var(--o0);opacity:.7}
 
+/* Botão X para limpar busca rapidamente */
+.search-clear{display:none;background:rgba(200,150,12,.15);border:1px solid rgba(200,150,12,.3);
+  color:var(--o0);border-radius:50%;width:26px;height:26px;cursor:pointer;
+  font-size:18px;line-height:1;padding:0;font-family:'Nunito',sans-serif;font-weight:700;
+  align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;
+  -webkit-tap-highlight-color:transparent}
+.search-clear:hover{background:rgba(200,150,12,.3);border-color:var(--go)}
+.search-clear:active{transform:scale(.9)}
+.search-bar.tem-texto .search-clear{display:flex}
+
 /* ABAS */
 .abas{display:flex;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);
   padding:3px;margin-bottom:14px;gap:3px}
@@ -1256,7 +1266,8 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="tela" id="tela-clientes">
       <div class="search-bar">
         <span class="search-icon">🔍</span>
-        <input type="text" placeholder="Buscar cliente..." oninput="buscarCliente(this.value)">
+        <input type="text" id="busca-clientes" placeholder="Buscar cliente..." oninput="buscarCliente(this.value); atualizarBotaoLimpar(this)">
+        <button type="button" class="search-clear" onclick="limparBusca('busca-clientes', buscarCliente)" aria-label="Limpar busca">×</button>
       </div>
       <div id="lista-clientes"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
       <button class="btn-primario mt-16" onclick="abrirModalNovoCliente()">+ Novo Cliente</button>
@@ -1280,7 +1291,8 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="tela" id="tela-catalogo">
       <div class="search-bar">
         <span class="search-icon">🔍</span>
-        <input type="text" placeholder="Buscar produto..." oninput="buscarProduto(this.value)">
+        <input type="text" id="busca-catalogo" placeholder="Buscar produto..." oninput="buscarProduto(this.value); atualizarBotaoLimpar(this)">
+        <button type="button" class="search-clear" onclick="limparBusca('busca-catalogo', buscarProduto)" aria-label="Limpar busca">×</button>
       </div>
       <div class="abas" id="abas-catalogo">
         <button class="aba ativa" onclick="filtrarCatalogo('todos',this)">Todos</button>
@@ -1420,7 +1432,8 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="separador">Produtos</div>
     <div class="search-bar" style="margin-bottom:10px">
       <span class="search-icon">🔍</span>
-      <input type="text" placeholder="Buscar produto para adicionar..." oninput="buscarProdutoModalDebounced(this.value)" id="busca-produto-modal">
+      <input type="text" placeholder="Buscar produto para adicionar..." oninput="buscarProdutoModalDebounced(this.value); atualizarBotaoLimpar(this)" id="busca-produto-modal">
+      <button type="button" class="search-clear" onclick="limparBusca('busca-produto-modal', (v)=>buscarProdutoModal(v))" aria-label="Limpar busca">×</button>
     </div>
     <div id="lista-produto-modal" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
 
@@ -1666,6 +1679,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
