@@ -168,6 +168,53 @@ function debounce(fn, ms = 150) {
   };
 }
 
+// Mostra/esconde botão X na barra de busca baseado se há texto digitado.
+// Aplica classe .tem-texto no .search-bar pai (que ativa o display do botão).
+function atualizarBotaoLimpar(inputEl) {
+  if (!inputEl) return;
+  const bar = inputEl.closest('.search-bar');
+  if (bar) bar.classList.toggle('tem-texto', !!inputEl.value);
+}
+
+// Limpa o input de busca e chama a função de busca com string vazia.
+// Volta o foco para o input (UX: usuário pode digitar de novo sem tocar de novo).
+function limparBusca(inputId, fnBusca) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.value = '';
+  atualizarBotaoLimpar(input);
+  if (typeof fnBusca === 'function') fnBusca('');
+  input.focus();
+}
+
+// Reseta todas as barras de busca e filtros visuais ao trocar de tela
+function resetarBuscasEFiltros() {
+  // Apaga todos os inputs de busca conhecidos
+  ['busca-clientes', 'busca-catalogo', 'busca-produto-modal'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) {
+      inp.value = '';
+      atualizarBotaoLimpar(inp);
+    }
+  });
+
+  // Reseta filtros internos para o padrão (alinhado com a 1ª aba ativa do HTML)
+  filtroEntregas     = 'pendente';
+  filtroCatalogo     = 'todos';
+  filtroFinanceiro   = 'atrasado';
+  filtroMeusPedidos  = 'pendente';
+
+  // Reseta a primeira aba ativa de cada grupo de abas
+  document.querySelectorAll('.abas').forEach(grupo => {
+    const botoes = grupo.querySelectorAll('.aba');
+    botoes.forEach(b => b.classList.remove('ativa'));
+    if (botoes[0]) botoes[0].classList.add('ativa');
+  });
+
+  // Volta scroll pro topo da tela
+  window.scrollTo({top: 0, behavior: 'instant'});
+}
+
 // ============================================================
 // SCHEDULER DE RENDERS — agrupa múltiplas re-renderizações
 // num único frame do browser (60fps) para evitar flicker.
@@ -674,6 +721,10 @@ function navegarPara(id) {
   const itens = NAV[p] || NAV.entregador;
   const item = itens.find(i => i.id===id);
   if (!item) return;
+
+  // Reset completo ao trocar de aba: limpa buscas + filtros + scroll
+  resetarBuscasEFiltros();
+
   document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
   const el = document.getElementById(item.tela);
   if (el) { el.style.display=''; el.classList.add('ativa'); }
