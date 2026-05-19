@@ -387,6 +387,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 /* ========== CADASTRO DE CLIENTE ========== */
 .campo-obrig{color:#e05a4e;margin-left:3px;font-weight:700}
 
+/* Status da consulta de CNPJ (BrasilAPI) */
+.cnpj-status{margin-top:7px;padding:9px 12px;border-radius:9px;font-size:12px;
+  border:1px solid var(--ol);background:rgba(10,26,16,.5);color:var(--c2);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.4}
+.cnpj-status.carregando{border-color:var(--ob);color:var(--o1);background:rgba(200,150,12,.08)}
+.cnpj-status.ok{border-color:rgba(39,174,96,.4);color:#7ec850;background:rgba(39,174,96,.08)}
+.cnpj-status.aviso{border-color:rgba(212,121,26,.4);color:#f4a04a;background:rgba(212,121,26,.08)}
+.cnpj-status.erro{border-color:rgba(192,57,43,.4);color:#ee7d6f;background:rgba(192,57,43,.08)}
+.spinner-mini{width:13px;height:13px;border:2px solid rgba(200,150,12,.25);
+  border-top-color:var(--o0);border-radius:50%;animation:spinMini .7s linear infinite;display:inline-block;flex-shrink:0}
+@keyframes spinMini{to{transform:rotate(360deg)}}
+
 /* ========== PAGAMENTO RECEBIDO NA ENTREGA ========== */
 .bloco-pagamento-entrega{display:none;margin-bottom:14px;animation:slideDown .25s ease-out}
 .modal-overlay#modal-entrega .modal-sheet[data-precisa-pagamento="1"] .bloco-pagamento-entrega{display:block}
@@ -1517,6 +1529,7 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="campo">
       <label id="cliente-doc-label">CNPJ <span class="campo-obrig">*</span></label>
       <input type="tel" id="cliente-cnpj-cpf" inputmode="numeric" placeholder="00.000.000/0000-00" autocomplete="off">
+      <div id="cnpj-status" class="cnpj-status" style="display:none"></div>
     </div>
 
     <!-- CONTATO -->
@@ -1732,6 +1745,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
