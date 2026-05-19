@@ -455,6 +455,12 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .toggle-margem.ativo .toggle-margem-switch::after{left:18px;background:var(--v1)}
 .toggle-margem-label{font-weight:600;letter-spacing:.3px}
 
+/* ========== HIGHLIGHT DE BUSCA INTELIGENTE ========== */
+mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,150,12,.25));
+  color:var(--o0);font-weight:700;padding:1px 4px;border-radius:5px;
+  text-decoration:none;border:1px solid rgba(200,150,12,.45);
+  box-shadow:0 1px 4px rgba(200,150,12,.2)}
+
 /* Histórico de preços (modal de detalhe) */
 .historico-resumo{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:var(--r);
   padding:14px;margin-bottom:14px}
@@ -1660,6 +1666,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
