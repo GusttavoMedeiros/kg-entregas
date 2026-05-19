@@ -500,6 +500,189 @@ function marcarIsento() {
   }
 }
 
+// ============================================================
+// CONSULTA DE CNPJ NA BRASILAPI (gratuita, sem cadastro)
+// ============================================================
+// Cache em memória: evita consultar o mesmo CNPJ múltiplas vezes
+const _cacheCNPJ = new Map();
+
+async function consultarCNPJ(cnpjLimpo) {
+  // cnpjLimpo: só 14 dígitos, sem máscara
+  if (!cnpjLimpo || cnpjLimpo.length !== 14) return { ok: false, erro: 'CNPJ inválido' };
+
+  // Verifica cache
+  if (_cacheCNPJ.has(cnpjLimpo)) {
+    return { ok: true, dados: _cacheCNPJ.get(cnpjLimpo), cached: true };
+  }
+
+  // Timeout de 8s (rede ruim não trava o app)
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 8000);
+
+  try {
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`, {
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.status === 404) {
+      return { ok: false, erro: 'CNPJ não encontrado na Receita Federal.' };
+    }
+    if (!res.ok) {
+      return { ok: false, erro: `Erro ao consultar (HTTP ${res.status})` };
+    }
+    const dados = await res.json();
+    _cacheCNPJ.set(cnpjLimpo, dados);
+    return { ok: true, dados };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      return { ok: false, erro: 'Tempo esgotado. Verifique sua internet.' };
+    }
+    return { ok: false, erro: 'Não foi possível consultar a Receita Federal agora.' };
+  }
+}
+
+// Aplica dados retornados da Receita nos campos do modal de cliente
+// Lida com nome divergente (alerta) e CNPJ inativo (aviso)
+async function aplicarDadosReceita(dados) {
+  if (!dados) return;
+
+  // 1) Avisa se CNPJ inativo/suspenso/baixado ANTES de preencher
+  const descSit = (dados.descricao_situacao_cadastral || '').toUpperCase();
+  if (descSit && descSit !== 'ATIVA') {
+    const continuar = confirm(
+      `⚠ Atenção! Este CNPJ está com situação cadastral "${descSit}" na Receita Federal.\n\n` +
+      `Pode indicar que a empresa está inativa, suspensa ou baixada.\n\n` +
+      `Deseja preencher os dados mesmo assim?`
+    );
+    if (!continuar) return;
+  }
+
+  // 2) Decide qual nome usar (nome_fantasia > razao_social)
+  const nomeReceita = (dados.nome_fantasia || dados.razao_social || '').trim();
+
+  // 3) Verifica divergência com nome já digitado
+  const inputNome = document.getElementById('cliente-nome');
+  const nomeAtual = (inputNome?.value || '').trim();
+  let usarNomeReceita = true;
+  if (nomeAtual && nomeReceita && normalizar(nomeAtual) !== normalizar(nomeReceita)) {
+    usarNomeReceita = confirm(
+      `⚠ O nome digitado não bate com o cadastrado na Receita Federal.\n\n` +
+      `Digitado: ${nomeAtual}\n` +
+      `Receita:  ${nomeReceita}\n\n` +
+      `Deseja substituir pelo nome da Receita?`
+    );
+  }
+
+  // 4) Preenche os campos (só sobrescreve se vazio OU se usuário autorizou)
+  if (inputNome && nomeReceita && (!nomeAtual || usarNomeReceita)) {
+    inputNome.value = nomeReceita;
+  }
+
+  // Endereço completo
+  const inputEnd = document.getElementById('cliente-endereco');
+  if (inputEnd && !inputEnd.value.trim()) {
+    const partes = [
+      dados.logradouro,
+      dados.numero,
+      dados.bairro,
+      dados.municipio,
+      dados.uf,
+    ].filter(Boolean).map(s => String(s).trim());
+    if (partes.length) {
+      const cep = dados.cep ? ` - CEP ${dados.cep}` : '';
+      inputEnd.value = partes.join(', ') + cep;
+    }
+  }
+
+  // Telefone (DDD + número juntos vêm como "8133214455")
+  const inputWa = document.getElementById('cliente-whatsapp');
+  const inputTel = document.getElementById('cliente-telefone-fixo');
+  const telReceita = dados.ddd_telefone_1 || '';
+  if (telReceita) {
+    // Detecta se é celular (9 dígitos após DDD) — vai pro WhatsApp; senão, fixo
+    const ehCelular = telReceita.length === 11;
+    if (ehCelular && inputWa && !inputWa.value.trim()) {
+      inputWa.value = mascaraTelefone(telReceita);
+    } else if (!ehCelular && inputTel && !inputTel.value.trim()) {
+      inputTel.value = mascaraTelefone(telReceita);
+    }
+  }
+
+  // E-mail
+  const inputEmail = document.getElementById('cliente-email');
+  if (inputEmail && !inputEmail.value.trim() && dados.email) {
+    inputEmail.value = String(dados.email).toLowerCase().trim();
+  }
+
+  // Inscrição estadual — BrasilAPI traz array `inscricoes_estaduais` ou pode não vir
+  const inputIE = document.getElementById('cliente-ie');
+  const btnIsento = document.querySelector('.btn-isento');
+  if (inputIE && !inputIE.value.trim() && !inputIE.disabled) {
+    const ies = Array.isArray(dados.inscricoes_estaduais) ? dados.inscricoes_estaduais : [];
+    const ativa = ies.find(i => i.ativo === true);
+    if (ativa?.inscricao_estadual) {
+      inputIE.value = ativa.inscricao_estadual;
+    }
+  }
+}
+
+// Dispara consulta automática quando CNPJ está completo (14 dígitos)
+async function tentarConsultarCNPJ() {
+  const input = document.getElementById('cliente-cnpj-cpf');
+  const status = document.getElementById('cnpj-status');
+  if (!input || !status) return;
+
+  // Só consulta no modo CNPJ (não em CPF)
+  const modal = document.querySelector('#modal-cliente .modal-sheet');
+  const tipo = modal?.dataset.tipoPessoa || 'juridica';
+  if (tipo !== 'juridica') {
+    status.style.display = 'none';
+    return;
+  }
+
+  const digitos = soDigitos(input.value);
+  if (digitos.length !== 14) {
+    status.style.display = 'none';
+    return;
+  }
+
+  // Valida antes de gastar requisição
+  if (!validarCNPJ(digitos)) {
+    status.style.display = 'block';
+    status.className = 'cnpj-status erro';
+    status.innerHTML = '⚠ CNPJ inválido (dígitos verificadores não batem)';
+    return;
+  }
+
+  // Mostra loading
+  status.style.display = 'block';
+  status.className = 'cnpj-status carregando';
+  status.innerHTML = '<span class="spinner-mini"></span> Consultando Receita Federal...';
+
+  const res = await consultarCNPJ(digitos);
+
+  if (!res.ok) {
+    status.className = 'cnpj-status aviso';
+    status.innerHTML = `ℹ ${esc(res.erro)} <button type="button" onclick="tentarConsultarCNPJ()" style="background:none;border:none;color:var(--o0);text-decoration:underline;cursor:pointer;font-size:11px">tentar novamente</button>`;
+    return;
+  }
+
+  const d = res.dados;
+  const nomeUsar = d.nome_fantasia || d.razao_social || 'sem nome';
+  const sitTxt = (d.descricao_situacao_cadastral || 'ATIVA').toUpperCase();
+  const sitClass = sitTxt === 'ATIVA' ? 'ok' : 'aviso';
+
+  status.className = 'cnpj-status ' + sitClass;
+  status.innerHTML = `
+    <div style="font-weight:700;margin-bottom:3px">${sitTxt === 'ATIVA' ? '✓' : '⚠'} ${esc(nomeUsar)}</div>
+    <div style="font-size:11px;opacity:.85">Situação: ${esc(sitTxt)}${res.cached ? ' · em cache' : ''}</div>`;
+
+  // Aplica os dados (com confirmações se necessário)
+  await aplicarDadosReceita(d);
+}
+
 // Aplica máscaras nos inputs do modal de cliente (delegação por evento)
 function aplicarMascarasCliente() {
   const inputDoc = document.getElementById('cliente-cnpj-cpf');
@@ -515,6 +698,18 @@ function aplicarMascarasCliente() {
     const modal = document.querySelector('#modal-cliente .modal-sheet');
     const tipo = modal?.dataset.tipoPessoa || 'juridica';
     e.target.value = tipo === 'fisica' ? mascaraCPF(e.target.value) : mascaraCNPJ(e.target.value);
+
+    // Esconde status anterior enquanto digita
+    const status = document.getElementById('cnpj-status');
+    if (status && tipo === 'juridica') {
+      const digitos = soDigitos(e.target.value);
+      if (digitos.length < 14) {
+        status.style.display = 'none';
+      } else if (digitos.length === 14) {
+        // Consulta automática quando completa 14 dígitos
+        tentarConsultarCNPJ();
+      }
+    }
   });
   inputWa.addEventListener('input',  e => { e.target.value = mascaraTelefone(e.target.value); });
   inputTel.addEventListener('input', e => { e.target.value = mascaraTelefone(e.target.value); });
@@ -2552,6 +2747,13 @@ function abrirModalNovoCliente(idEdit) {
 
   abrirModal('modal-cliente');
   aplicarMascarasCliente();
+
+  // Esconde status de consulta anterior
+  const statusEl = document.getElementById('cnpj-status');
+  if (statusEl) {
+    statusEl.style.display = 'none';
+    statusEl.innerHTML = '';
+  }
 }
 
 async function salvarCliente() {
