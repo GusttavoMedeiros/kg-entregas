@@ -461,6 +461,41 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   text-decoration:none;border:1px solid rgba(200,150,12,.45);
   box-shadow:0 1px 4px rgba(200,150,12,.2)}
 
+/* ========== PRECO AJUSTADO POR PEDIDO ========== */
+.btn-ajustar-preco{background:rgba(200,150,12,.12);color:var(--o0);border:1px solid rgba(200,150,12,.3);
+  border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;font-family:'Nunito',sans-serif;
+  cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;
+  -webkit-tap-highlight-color:transparent}
+.btn-ajustar-preco:hover{background:rgba(200,150,12,.22);border-color:var(--go)}
+.btn-ajustar-preco:active{transform:scale(.95)}
+.btn-ajustar-preco.preco-mudou{background:rgba(200,150,12,.25);border-color:var(--go);color:var(--o0);
+  box-shadow:0 0 0 1px rgba(200,150,12,.3),0 0 10px rgba(200,150,12,.15)}
+
+.preco-original-riscado{font-size:11px;color:var(--c3);text-decoration:line-through;margin-right:5px}
+.preco-ajustado-novo{font-size:13px;color:var(--o0);font-weight:700}
+
+/* Indicador de diferença no modal (subiu/desceu/igual) */
+#ajustar-preco-diferenca.subiu{background:rgba(39,174,96,.15);color:#7ec850;border:1px solid rgba(39,174,96,.3)}
+#ajustar-preco-diferenca.desceu{background:rgba(212,121,26,.15);color:#f4a04a;border:1px solid rgba(212,121,26,.3)}
+#ajustar-preco-diferenca.igual{background:rgba(174,142,79,.1);color:var(--o1);border:1px solid var(--ol)}
+
+/* Badge "preço ajustado" no card de pedido (admin vê) */
+.badge-preco-ajustado{background:rgba(200,150,12,.18);color:var(--o0);border:1px solid rgba(200,150,12,.4);
+  font-weight:700}
+
+/* Log de ajustes no detalhe do pedido */
+.bloco-ajustes-precos{background:rgba(200,150,12,.06);border:1px solid rgba(200,150,12,.25);
+  border-radius:var(--r);padding:11px 13px;margin-bottom:14px}
+.bloco-ajustes-precos-titulo{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--o0);margin-bottom:7px;display:flex;align-items:center;gap:5px}
+.bloco-ajustes-precos-item{font-size:12px;color:var(--c2);padding:4px 0;display:flex;
+  justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.bloco-ajustes-precos-item + .bloco-ajustes-precos-item{border-top:1px dashed rgba(200,150,12,.15)}
+.bloco-ajustes-precos-item .nome-prod{font-weight:600;color:var(--creme);flex:1;min-width:0}
+.bloco-ajustes-precos-item .diff{font-family:'Cinzel',serif;font-weight:700}
+.bloco-ajustes-precos-item .diff.subiu{color:#7ec850}
+.bloco-ajustes-precos-item .diff.desceu{color:#f4a04a}
+
 /* Histórico de preços (modal de detalhe) */
 .historico-resumo{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:var(--r);
   padding:14px;margin-bottom:14px}
@@ -1628,6 +1663,24 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
+<!-- MODAL AJUSTAR PRECO DO ITEM (no carrinho) -->
+<div class="modal-overlay" id="modal-ajustar-preco">
+  <div class="modal-sheet" style="max-width:380px">
+    <button class="modal-close-x" onclick="fecharModal('modal-ajustar-preco')" aria-label="Fechar">×</button>
+    <div class="modal-handle"></div>
+    <div class="modal-titulo">Ajustar preço</div>
+    <div id="ajustar-preco-info" style="background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px;font-size:13px;color:var(--creme)"></div>
+    <div class="campo">
+      <label>Novo preço unitário (R$)</label>
+      <input type="number" id="ajustar-preco-input" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="atualizarDiferencaPreco()">
+    </div>
+    <div id="ajustar-preco-diferenca" style="font-size:12px;font-weight:700;text-align:center;padding:8px;border-radius:8px;margin-bottom:10px;display:none"></div>
+    <button class="btn-primario" onclick="confirmarAjustePreco()">Confirmar ajuste</button>
+    <button class="btn-secundario mt-8" onclick="resetarPrecoCatalogo()">↺ Voltar ao preço do catálogo</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-ajustar-preco')">Cancelar</button>
+  </div>
+</div>
+
 <!-- MODAL DETALHE PEDIDO -->
 <div class="modal-overlay" id="modal-detalhe-pedido">
   <div class="modal-sheet">
@@ -1679,6 +1732,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
