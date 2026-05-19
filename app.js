@@ -2113,6 +2113,10 @@ function abrirModalNovoPedido(idEdit) {
   document.getElementById('busca-produto-modal').value = '';
   document.getElementById('lista-produto-modal').innerHTML = '';
 
+  // IMPORTANTE: popula o select de clientes ANTES de tentar definir o valor selecionado.
+  // Sem isso, o .value é resetado quando innerHTML é reescrito depois.
+  popularSelectClientes();
+
   if (idEdit) {
     // Modo edição
     const p = todosOsPedidos.find(x => x.id === idEdit);
@@ -2178,7 +2182,6 @@ function abrirModalNovoPedido(idEdit) {
   }
 
   renderizarCarrinho();
-  popularSelectClientes();
   buscarProdutoModal('');
   abrirModal('modal-pedido');
 }
