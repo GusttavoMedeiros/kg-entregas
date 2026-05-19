@@ -2165,8 +2165,8 @@ function verDetalheCliente(id) {
         <div style="font-size:12px;color:var(--c3);margin-top:3px">${moeda(p.valor)} · ${dataBR(p.data_entrega)}</div>
       </div>`).join('')
     : '<div class="vazio" style="padding:20px"><p>Nenhum pedido ainda</p></div>'}
-    ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="abrirModalNovoCliente(${c.id})">✏️ Editar cliente</button>` : ''}
-    ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-8" onclick="excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
+    ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="fecharModal('modal-detalhe-cliente'); abrirModalNovoCliente(${c.id})">✏️ Editar cliente</button>` : ''}
+    ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-8" onclick="fecharModal('modal-detalhe-cliente'); excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
   abrirModal('modal-detalhe-cliente');
 }
 
