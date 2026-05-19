@@ -419,8 +419,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* ========== CUSTO / MARGEM / HISTORICO DE PRECOS ========== */
 .preco-linha{display:flex;gap:10px;align-items:flex-end}
-@media (max-width:480px){
-  .preco-linha{flex-direction:column;gap:0}
+.preco-linha > .campo{flex:1;min-width:0}
+@media (max-width:600px){
+  .preco-linha{flex-direction:column;gap:0;align-items:stretch}
+  .preco-linha > .campo{flex:none;width:100%}
 }
 .margem-info{background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:10px;
   padding:10px 13px;margin:0 0 4px;font-size:12px;color:var(--c2);display:none}
@@ -1585,9 +1587,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         <option value="Outros">Outros</option>
       </select></div>
     <div class="preco-linha">
-      <div class="campo" style="flex:1;min-width:0"><label>Preço de venda (R$) <span class="campo-obrig">*</span></label>
+      <div class="campo"><label>Preço de venda (R$) <span class="campo-obrig">*</span></label>
         <input type="number" id="produto-preco" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="atualizarMargemModal()"></div>
-      <div class="campo" style="flex:1;min-width:0"><label>Preço de custo (R$)</label>
+      <div class="campo"><label>Preço de custo (R$)</label>
         <input type="number" id="produto-custo" placeholder="0,00" step="0.01" min="0" inputmode="decimal" oninput="atualizarMargemModal()"></div>
     </div>
     <div class="margem-info" id="margem-info"></div>
@@ -1658,6 +1660,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
