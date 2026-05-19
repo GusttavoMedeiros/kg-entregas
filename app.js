@@ -2767,10 +2767,14 @@ async function verDetalheProduto(id) {
         <span class="historico-resumo-valor" style="color:#f4a04a">${custo > 0 ? moeda(custo) : 'Não cadastrado'}</span>
       </div>`;
   if (lucro != null) {
+    // Define a cor diretamente baseado na classe
+    let corLucro = '#7ec850'; // bom (verde)
+    if (classeLucro === 'lucro-negativo') corLucro = '#ee7d6f';
+    else if (classeLucro === 'lucro-baixo') corLucro = '#f4a04a';
     resumoHtml += `
       <div class="historico-resumo-linha">
         <span class="historico-resumo-label">📈 Margem de lucro</span>
-        <span class="historico-resumo-valor margem-info ${classeLucro}" style="border:0;padding:0;background:none">${moeda(lucro)} <span style="font-size:11px;margin-left:4px">(${pct.toFixed(0)}%)</span></span>
+        <span class="historico-resumo-valor" style="color:${corLucro}">${moeda(lucro)} <span style="font-size:11px;margin-left:4px;opacity:.85">(${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)</span></span>
       </div>`;
   }
   resumoHtml += `</div>`;
