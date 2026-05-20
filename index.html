@@ -159,13 +159,15 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .btn-sair{background:var(--oo);color:var(--o3);border:1px solid var(--ob);border-radius:8px;
   padding:7px 10px;font-size:11px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;flex-shrink:0}
 
-/* NAV BOTTOM — flex 1 1 0 distribui igualmente mesmo com conteúdo de tamanhos diferentes */
+/* NAV BOTTOM — sticky funciona melhor que fixed quando o container pai (#app) rola */
 .nav-bottom{background:linear-gradient(0deg,#0a1a10 0%,#0d2218 100%);border-top:1px solid var(--ob);
-  display:flex;position:fixed;bottom:0;left:0;right:0;z-index:100;
+  display:flex;position:sticky;bottom:0;left:0;right:0;z-index:100;
   padding-bottom:calc(4px + var(--safe-bot));
   padding-left:var(--safe-left);
   padding-right:var(--safe-right);
-  box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+  box-shadow:0 -4px 20px rgba(0,0,0,.4);
+  /* margin-top:auto empurra a nav pro fundo do container flex pai */
+  margin-top:auto}
 .nav-item{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:10px 2px 8px;
   cursor:pointer;border:none;background:transparent;gap:4px;position:relative;transition:all .2s;
@@ -181,7 +183,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .nav-item.ativo .nav-label{background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* CONTEÚDO */
-.conteudo{padding:var(--pad-vert) var(--pad-lat) 100px;flex:1;position:relative;z-index:1;
+.conteudo{padding:var(--pad-vert) var(--pad-lat) 24px;flex:1;position:relative;z-index:1;
   padding-left:calc(var(--pad-lat) + var(--safe-left));
   padding-right:calc(var(--pad-lat) + var(--safe-right))}
 .tela{display:none}.tela.ativa{display:block}
@@ -944,7 +946,7 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     height: 100dvh;
     box-shadow: 0 0 60px rgba(0,0,0,.6), 0 0 0 1px rgba(200,150,12,.15);
   }
-  .nav-bottom { max-width: 480px; left: 50%; transform: translateX(-50%); right: auto; }
+  .nav-bottom { max-width: 480px; margin-left: auto; margin-right: auto; }
   /* Modal: overlay fica fullscreen (sem max-width), sheet centralizada por flex */
   .modal-overlay { left: 0; right: 0; max-width: 100%; }
   .modal-sheet { max-width: 480px; width: 100%; }
@@ -1835,6 +1837,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
