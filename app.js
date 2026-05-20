@@ -3188,13 +3188,43 @@ async function confirmarEntrega() {
       forma_pagamento_real,
       data_pagamento,
     };
+
     if (!MODO_DEMO) {
-      const res = await supabase('pedidos','PATCH', payload, `?id=eq.${id}`);
-      if (!res.ok) {
-        alert('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
-        return;
+      // Se está offline, enfileira em vez de tentar enviar (e falhar)
+      if (!navigator.onLine) {
+        adicionarNaFilaOffline({
+          tipo: 'marcar-entregue',
+          pedidoId: id,
+          payload,
+        });
+        alert(
+          '📡 Sem internet no momento.\n\n' +
+          'O pedido foi marcado localmente como ENTREGUE e será sincronizado ' +
+          'automaticamente quando a conexão voltar.\n\n' +
+          'Continue suas entregas normalmente.'
+        );
+      } else {
+        const res = await supabase('pedidos','PATCH', payload, `?id=eq.${id}`);
+        if (!res.ok) {
+          // Se falhou por timeout (rede ruim), também enfileira
+          if (res.erro && /tempo esgotado|timeout|offline/i.test(res.erro)) {
+            adicionarNaFilaOffline({
+              tipo: 'marcar-entregue',
+              pedidoId: id,
+              payload,
+            });
+            alert(
+              '⚠ Conexão lenta — pedido marcado localmente.\n\n' +
+              'Vai sincronizar automaticamente quando a internet melhorar.'
+            );
+          } else {
+            alert('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+            return;
+          }
+        }
       }
     }
+    // Atualiza estado local em ambos os casos (sucesso ou offline)
     const idx = todosOsPedidos.findIndex(p=>p.id===id);
     if (idx>=0) {
       Object.assign(todosOsPedidos[idx], payload);
@@ -3641,4 +3671,171 @@ document.addEventListener('keydown', e => {
       if (aberto.id === 'modal-pedido') pedidoEmEdicao = null;
     }
   }
+});
+
+// ============================================================
+// SERVICE WORKER + DETECÇÃO OFFLINE + INSTALAR PWA
+// ============================================================
+
+// Registra o Service Worker (silencioso em caso de erro)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // Quando uma nova versão do SW estiver instalada, ativa imediatamente
+      reg.addEventListener('updatefound', () => {
+        const novo = reg.installing;
+        if (!novo) return;
+        novo.addEventListener('statechange', () => {
+          if (novo.state === 'installed' && navigator.serviceWorker.controller) {
+            // Nova versão disponível — ativa silenciosamente
+            novo.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(err => console.warn('SW falhou ao registrar:', err));
+
+    // Recarrega quando o SW novo assumir controle (atualização suave)
+    let recarregando = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (recarregando) return;
+      recarregando = true;
+      window.location.reload();
+    });
+  });
+}
+
+// ============================================================
+// DETECÇÃO DE STATUS ONLINE/OFFLINE
+// ============================================================
+function atualizarStatusConexao() {
+  const offline = !navigator.onLine;
+  document.body.classList.toggle('offline', offline);
+  // Se voltou online, tenta processar fila de ações pendentes
+  if (!offline && usuario) processarFilaOffline();
+}
+
+window.addEventListener('online',  atualizarStatusConexao);
+window.addEventListener('offline', atualizarStatusConexao);
+// Estado inicial
+atualizarStatusConexao();
+
+// ============================================================
+// FILA OFFLINE DE "MARCAR ENTREGUE"
+// Quando entregador marca entregue offline, ação fica enfileirada
+// em localStorage. Quando volta online, envia tudo automaticamente.
+// ============================================================
+const FILA_OFFLINE_KEY = 'kg-fila-offline';
+
+function lerFilaOffline() {
+  try {
+    const raw = localStorage.getItem(FILA_OFFLINE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function gravarFilaOffline(fila) {
+  try {
+    localStorage.setItem(FILA_OFFLINE_KEY, JSON.stringify(fila));
+  } catch(e) { console.warn('Falha ao gravar fila offline:', e); }
+}
+
+function adicionarNaFilaOffline(acao) {
+  const fila = lerFilaOffline();
+  fila.push({ ...acao, ts: Date.now() });
+  gravarFilaOffline(fila);
+}
+
+let _processandoFila = false;
+async function processarFilaOffline() {
+  if (_processandoFila) return;
+  if (MODO_DEMO) return;
+  if (!navigator.onLine) return;
+  const fila = lerFilaOffline();
+  if (!fila.length) return;
+
+  _processandoFila = true;
+  const sucesso = [], falha = [];
+  for (const acao of fila) {
+    try {
+      if (acao.tipo === 'marcar-entregue') {
+        const res = await supabase('pedidos', 'PATCH', acao.payload, `?id=eq.${acao.pedidoId}`);
+        if (res.ok) {
+          sucesso.push(acao);
+          // Atualiza no estado local
+          const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
+          if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload);
+        } else {
+          falha.push(acao);
+        }
+      }
+    } catch(e) {
+      falha.push(acao);
+    }
+  }
+
+  // Mantém só os que falharam na fila (vai tentar de novo depois)
+  gravarFilaOffline(falha);
+  _processandoFila = false;
+
+  if (sucesso.length) {
+    // Notifica o usuário e re-renderiza
+    console.log(`✓ ${sucesso.length} ação(ões) sincronizada(s) com sucesso`);
+    if (typeof agendarRender === 'function') {
+      agendarRender('dashboard');
+      agendarRender('entregas');
+    }
+  }
+}
+
+// Tenta processar a fila a cada 30s quando online
+setInterval(() => {
+  if (navigator.onLine && usuario) processarFilaOffline();
+}, 30000);
+
+// ============================================================
+// INSTALAR PWA (botão "Adicionar à tela inicial")
+// ============================================================
+let _deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  // Previne o prompt automático do Chrome
+  e.preventDefault();
+  _deferredPrompt = e;
+  // Mostra nosso banner customizado (só se não foi descartado antes)
+  if (!localStorage.getItem('kg-instalar-fechado') && usuario) {
+    const banner = document.getElementById('banner-instalar');
+    if (banner) banner.style.display = 'flex';
+  }
+});
+
+async function instalarApp() {
+  if (!_deferredPrompt) {
+    // Em iOS o prompt automático não existe — instrui manualmente
+    alert(
+      '📱 Para instalar o KG Entregas:\n\n' +
+      '• iPhone (Safari): toque no ícone de compartilhar e escolha "Adicionar à Tela de Início"\n\n' +
+      '• Android (Chrome): toque nos 3 pontos do menu e escolha "Instalar app" ou "Adicionar à tela inicial"'
+    );
+    return;
+  }
+  _deferredPrompt.prompt();
+  const { outcome } = await _deferredPrompt.userChoice;
+  if (outcome === 'accepted') {
+    console.log('App instalado!');
+  }
+  _deferredPrompt = null;
+  fecharBannerInstalar();
+}
+
+function fecharBannerInstalar() {
+  const banner = document.getElementById('banner-instalar');
+  if (banner) banner.style.display = 'none';
+  // Lembra que o usuário descartou (não mostra de novo nesta sessão)
+  try { localStorage.setItem('kg-instalar-fechado', '1'); } catch(e) {}
+}
+
+// Se já está instalado (rodando como PWA), esconde permanentemente
+window.addEventListener('appinstalled', () => {
+  _deferredPrompt = null;
+  fecharBannerInstalar();
 });
