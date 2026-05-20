@@ -267,7 +267,7 @@ function agendarRender(tela) {
       try {
         if (t === 'dashboard')        renderizarDashboard();
         else if (t === 'entregas')    renderizarEntregas(filtroEntregas);
-        else if (t === 'catalogo')    renderizarCatalogo(filtroCatalogo);
+        else if (t === 'catalogo')    rerenderizarCatalogoMantendoBusca();
         else if (t === 'clientes')    renderizarClientes(todosOsClientes);
         else if (t === 'financeiro')  renderizarFinanceiro(filtroFinanceiro);
         else if (t === 'meus-pedidos') renderizarMeusPedidos(filtroMeusPedidos);
@@ -3402,9 +3402,22 @@ async function salvarProduto() {
       todosOsProdutos.push(novo);
     }
     fecharModal('modal-produto');
-    renderizarCatalogo(filtroCatalogo);
+    rerenderizarCatalogoMantendoBusca();
   } finally {
     salvando = false;
+  }
+}
+
+// Re-renderiza o catálogo respeitando busca ativa.
+// Se o usuário tem texto digitado na busca, mantém a busca.
+// Senão, usa o filtro de aba (Todos/Ração/Agro).
+function rerenderizarCatalogoMantendoBusca() {
+  const buscaEl = document.getElementById('busca-catalogo');
+  const termo = buscaEl ? buscaEl.value.trim() : '';
+  if (termo) {
+    _buscarProdutoImpl(termo);
+  } else {
+    renderizarCatalogo(filtroCatalogo);
   }
 }
 
@@ -3415,7 +3428,7 @@ function alternarMostrarMargem() {
   mostrarMargem = !mostrarMargem;
   const toggle = document.getElementById('toggle-margem-catalogo');
   if (toggle) toggle.classList.toggle('ativo', mostrarMargem);
-  renderizarCatalogo(filtroCatalogo);
+  rerenderizarCatalogoMantendoBusca();
 }
 
 async function excluirProduto(id) {
@@ -3428,7 +3441,7 @@ async function excluirProduto(id) {
       if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
     }
     todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
-    renderizarCatalogo(filtroCatalogo);
+    rerenderizarCatalogoMantendoBusca();
   } finally {
     salvando = false;
   }
