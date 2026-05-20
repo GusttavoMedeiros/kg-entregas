@@ -473,6 +473,26 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   text-decoration:none;border:1px solid rgba(200,150,12,.45);
   box-shadow:0 1px 4px rgba(200,150,12,.2)}
 
+/* ========== BLOCO MANUTENCAO (admin) ========== */
+.bloco-manutencao{background:rgba(200,150,12,.05);border:1px dashed rgba(200,150,12,.25);
+  border-radius:var(--r);padding:16px;margin:18px 0}
+.bloco-manutencao-titulo{font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--o0);margin-bottom:10px}
+.btn-manutencao{background:rgba(200,150,12,.1);color:var(--o0);border:1px solid rgba(200,150,12,.3);
+  border-radius:10px;padding:11px 14px;font-size:13px;font-weight:700;font-family:'Nunito',sans-serif;
+  cursor:pointer;width:100%;transition:all .15s;letter-spacing:.3px}
+.btn-manutencao:hover:not(:disabled){background:rgba(200,150,12,.18);border-color:var(--go)}
+.btn-manutencao:active:not(:disabled){transform:scale(.98)}
+.btn-manutencao:disabled{opacity:.5;cursor:not-allowed}
+#geocodar-status{margin-top:10px;padding:9px 12px;border-radius:9px;font-size:12px;line-height:1.4;
+  border:1px solid var(--ol);background:rgba(10,26,16,.5);color:var(--c2)}
+#geocodar-status.processando{border-color:var(--ob);color:var(--o1);background:rgba(200,150,12,.08)}
+#geocodar-status.concluido{border-color:rgba(39,174,96,.4);color:#7ec850;background:rgba(39,174,96,.08)}
+#geocodar-status .progress-bar{height:4px;background:rgba(10,26,16,.5);border-radius:2px;
+  margin-top:6px;overflow:hidden}
+#geocodar-status .progress-fill{height:100%;background:linear-gradient(90deg,var(--go),var(--o0));
+  transition:width .3s}
+
 /* ========== PRECO AJUSTADO POR PEDIDO ========== */
 .btn-ajustar-preco{background:rgba(200,150,12,.12);color:var(--o0);border:1px solid rgba(200,150,12,.3);
   border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;font-family:'Nunito',sans-serif;
@@ -1263,6 +1283,15 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
       <div class="separador">📅 Próximas entregas</div>
       <div id="lista-proximas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
 
+      <!-- MANUTENÇÃO (admin) -->
+      <div class="bloco-manutencao">
+        <div class="bloco-manutencao-titulo">🔧 Manutenção</div>
+        <button class="btn-manutencao" onclick="geocodarTodosClientes()" id="btn-geocodar">
+          📍 Geocodar todos os clientes (para rota inteligente)
+        </button>
+        <div id="geocodar-status" style="display:none"></div>
+      </div>
+
       <!-- ZONA DE PERIGO -->
       <div class="zona-perigo">
         <div class="zona-perigo-header">
@@ -1745,6 +1774,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
