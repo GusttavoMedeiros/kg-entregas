@@ -500,6 +500,146 @@ function marcarIsento() {
   }
 }
 
+// Geocoda em lote todos os clientes que ainda não têm coords.
+// Respeita 1 req/segundo do Nominatim → demora ~N segundos para N clientes.
+async function geocodarTodosClientes() {
+  if (!usuario || usuario.perfil !== 'admin') {
+    alert('Apenas o admin pode usar esta função.');
+    return;
+  }
+  if (MODO_DEMO) {
+    alert('Função disponível apenas no modo real (com banco conectado).');
+    return;
+  }
+
+  // Pega clientes com endereço mas sem coords
+  const pendentes = todosOsClientes.filter(c =>
+    c.endereco && c.endereco.trim() &&
+    (c.latitude == null || c.longitude == null)
+  );
+
+  if (!pendentes.length) {
+    alert('✓ Todos os clientes com endereço já estão geocodados!');
+    return;
+  }
+
+  const segundos = pendentes.length;
+  const ok = confirm(
+    `Geocodar ${pendentes.length} cliente(s)?\n\n` +
+    `⏱ Vai levar cerca de ${segundos} segundo(s) (1 consulta por segundo).\n\n` +
+    `O app continua funcionando, mas espere terminar antes de fechar a aba.`
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-geocodar');
+  const status = document.getElementById('geocodar-status');
+  if (btn) btn.disabled = true;
+  if (status) status.style.display = 'block';
+
+  let sucesso = 0, falha = 0;
+  for (let i = 0; i < pendentes.length; i++) {
+    const c = pendentes[i];
+    const pct = Math.round(((i) / pendentes.length) * 100);
+    if (status) {
+      status.className = 'processando';
+      status.innerHTML = `
+        <div>📍 Processando ${i + 1} de ${pendentes.length}: <strong>${esc(c.nome)}</strong></div>
+        <div style="font-size:11px;opacity:.8;margin-top:3px">✓ ${sucesso} geocodados · ✗ ${falha} falhas</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+    }
+
+    try {
+      const res = await geocodarEndereco(c.endereco);
+      if (res.ok) {
+        // Atualiza no banco
+        const payload = { latitude: res.dados.latitude, longitude: res.dados.longitude };
+        const r = await supabase('clientes', 'PATCH', payload, `?id=eq.${c.id}`);
+        if (r.ok) {
+          Object.assign(c, payload);
+          sucesso++;
+        } else {
+          falha++;
+        }
+      } else {
+        falha++;
+      }
+    } catch(e) {
+      falha++;
+    }
+  }
+
+  if (btn) btn.disabled = false;
+  if (status) {
+    status.className = 'concluido';
+    status.innerHTML = `
+      <div style="font-weight:700;margin-bottom:3px">✓ Concluído</div>
+      <div style="font-size:11px">${sucesso} clientes geocodados com sucesso · ${falha} falhas</div>
+      ${falha > 0 ? '<div style="font-size:11px;margin-top:4px;opacity:.8">Falhas geralmente ocorrem com endereços imprecisos. Edite o cliente e ajuste o endereço para tentar novamente.</div>' : ''}
+      <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>`;
+  }
+}
+
+// ============================================================
+// GEOCODING VIA NOMINATIM (OpenStreetMap, gratuito, sem cadastro)
+// Converte endereço em coordenadas (latitude, longitude).
+// Limite: 1 requisição/segundo. Por isso usamos throttle entre chamadas em lote.
+// ============================================================
+const _cacheGeoEndereco = new Map();
+let _ultimaConsultaNominatim = 0;
+
+async function geocodarEndereco(enderecoTexto) {
+  if (!enderecoTexto || !enderecoTexto.trim()) {
+    return { ok: false, erro: 'Endereço vazio' };
+  }
+  const chave = enderecoTexto.trim().toLowerCase();
+  if (_cacheGeoEndereco.has(chave)) {
+    return { ok: true, dados: _cacheGeoEndereco.get(chave), cached: true };
+  }
+
+  // Throttle: respeita 1 req/segundo do Nominatim (regra de uso)
+  const agora = Date.now();
+  const desdeUltima = agora - _ultimaConsultaNominatim;
+  if (desdeUltima < 1100) {
+    await new Promise(r => setTimeout(r, 1100 - desdeUltima));
+  }
+  _ultimaConsultaNominatim = Date.now();
+
+  // Acrescenta ", Brasil" no fim se não tiver país/UF claro (melhora muito a precisão)
+  const query = enderecoTexto.trim() + (/, brasil|, br|brazil/i.test(enderecoTexto) ? '' : ', Brasil');
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' + encodeURIComponent(query);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { ok: false, erro: `HTTP ${res.status}` };
+    const arr = await res.json();
+    if (!Array.isArray(arr) || !arr.length) {
+      return { ok: false, erro: 'Endereço não encontrado' };
+    }
+    const r = arr[0];
+    const dados = {
+      latitude: Number(r.lat),
+      longitude: Number(r.lon),
+      display_name: r.display_name || '',
+    };
+    if (isNaN(dados.latitude) || isNaN(dados.longitude)) {
+      return { ok: false, erro: 'Coordenadas inválidas retornadas' };
+    }
+    _cacheGeoEndereco.set(chave, dados);
+    return { ok: true, dados };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') return { ok: false, erro: 'Tempo esgotado' };
+    return { ok: false, erro: e.message || 'Falha ao geocodar' };
+  }
+}
+
 // ============================================================
 // CONSULTA DE CNPJ NA BRASILAPI (gratuita, sem cadastro)
 // ============================================================
@@ -2146,7 +2286,18 @@ function verDetalheCliente(id) {
   if (c.whatsapp)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📲 ${esc(mascaraTelefone(c.whatsapp))}</div>`);
   if (c.telefone_fixo)      linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📞 ${esc(mascaraTelefone(c.telefone_fixo))}</div>`);
   if (c.email)              linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📧 ${esc(c.email)}</div>`);
-  if (c.endereco)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}</div>`);
+  if (c.endereco) {
+    // Indicador de geocoding (só admin vê)
+    let geoIcon = '';
+    if (usuario.perfil === 'admin') {
+      if (c.latitude && c.longitude) {
+        geoIcon = ' <span style="font-size:10px;color:#7ec850;margin-left:4px" title="Endereço geocodado: rota inteligente funciona">📡</span>';
+      } else {
+        geoIcon = ' <span style="font-size:10px;color:#f4a04a;margin-left:4px" title="Endereço sem coordenadas: edite o cliente para geocodar">⚠</span>';
+      }
+    }
+    linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}${geoIcon}</div>`);
+  }
   if (c.inscricao_estadual) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">🏷️ IE: ${esc(c.inscricao_estadual)}</div>`);
   if (c.observacao)         linhas.push(`<div style="font-size:13px;color:var(--c2);margin-top:8px;padding-top:8px;border-top:1px solid var(--ol);font-style:italic">📝 ${esc(c.observacao)}</div>`);
 
@@ -2804,6 +2955,28 @@ async function salvarCliente() {
 
   salvando = true;
   try {
+    // Geocoding automático do endereço (se mudou ou se cliente novo)
+    let latitude = null, longitude = null;
+    if (endereco) {
+      const enderecoAntigo = clienteSelecionado?.endereco || '';
+      const precisaGeocodar = !clienteSelecionado
+        || endereco !== enderecoAntigo
+        || !clienteSelecionado.latitude
+        || !clienteSelecionado.longitude;
+      if (precisaGeocodar) {
+        const resGeo = await geocodarEndereco(endereco);
+        if (resGeo.ok) {
+          latitude = resGeo.dados.latitude;
+          longitude = resGeo.dados.longitude;
+        }
+        // Se falhou, salva sem coords mesmo (não bloqueia o cadastro)
+      } else {
+        // Mantém as coords antigas
+        latitude = clienteSelecionado.latitude;
+        longitude = clienteSelecionado.longitude;
+      }
+    }
+
     // ==== EDIÇÃO ====
     if (clienteSelecionado) {
       const id = clienteSelecionado.id;
@@ -2817,6 +2990,7 @@ async function salvarCliente() {
         tipo_pessoa,
         inscricao_estadual: ieRaw || null,
         observacao: observacao || null,
+        latitude, longitude,
       };
       if (!MODO_DEMO) {
         const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
@@ -2851,6 +3025,7 @@ async function salvarCliente() {
       tipo_pessoa,
       inscricao_estadual: ieRaw || null,
       observacao: observacao || null,
+      latitude, longitude,
     };
     if (!MODO_DEMO) {
       const res = await supabase('clientes','POST', novo);
