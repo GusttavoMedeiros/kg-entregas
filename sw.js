@@ -6,7 +6,7 @@
 //   - VersÃ£o do cache muda â†’ SW antigo Ã© removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v6';
+const CACHE_VERSION = 'kg-v7';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -16,8 +16,13 @@ const ASSETS_PARA_CACHEAR = [
   './index.html',
   './app.js',
   './manifest.json',
+  './manifest.json?v=2',
   './logo.webp',
   './logo.png',
+  './app-icon-180.png',
+  './app-icon-192.png',
+  './app-icon-512.png',
+  './app-icon-maskable-512.png',
 ];
 
 // ============================================================
