@@ -1025,6 +1025,7 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
       return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
     }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
+    document.body.classList.add('offline');
     avisarInstabilidadeConexao(
       navigator.onLine ? 'INSTABILIDADE NA CONEXÃO' : 'MODO OFFLINE',
       'Não consegui falar com o servidor agora.',
@@ -1035,7 +1036,7 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
 }
 
 function erroPareceConexao(erro) {
-  return /tempo esgotado|timeout|offline|failed to fetch|network|internet|conex|HTTP 50\d|HTTP 502|HTTP 503|HTTP 504/i.test(String(erro || ''));
+  return /tempo esgotado|timeout|offline|failed\s*to\s*fetch|fetch failed|load failed|networkerror|network|internet|conex|cors|HTTP 0|HTTP 50\d|HTTP 502|HTTP 503|HTTP 504/i.test(String(erro || ''));
 }
 
 function erroPareceCampoAusente(erro) {
