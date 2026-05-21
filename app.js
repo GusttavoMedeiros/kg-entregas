@@ -35,6 +35,7 @@ let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
+const DADOS_OFFLINE_KEY = 'kg-dados-offline-v2';
 
 // ============================================================
 // HELPERS
@@ -221,6 +222,84 @@ function limparBusca(inputId, fnBusca) {
   input.focus();
 }
 
+// ============================================================
+// CACHE LOCAL DOS DADOS DO APP
+// Mantem uma copia dos ultimos pedidos/clientes/produtos no aparelho.
+// Assim o app continua abrindo com informacoes mesmo sem internet.
+// ============================================================
+function normalizarPedidosBanco(lista) {
+  return (lista || []).map(p => ({
+    ...p,
+    cliente_nome: p.clientes?.nome || p.cliente_nome || '–',
+    itens: p.itens_pedido || p.itens || [],
+    descricao: (p.itens_pedido || p.itens || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
+  }));
+}
+
+function salvarDadosOffline(origem = 'sync') {
+  if (MODO_DEMO) return;
+  try {
+    localStorage.setItem(DADOS_OFFLINE_KEY, JSON.stringify({
+      versao: 2,
+      origem,
+      salvo_em: new Date().toISOString(),
+      pedidos: todosOsPedidos,
+      clientes: todosOsClientes,
+      produtos: todosOsProdutos,
+    }));
+  } catch(e) {
+    console.warn('Nao foi possivel salvar dados offline:', e);
+  }
+}
+
+function carregarDadosOffline() {
+  try {
+    const raw = localStorage.getItem(DADOS_OFFLINE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    if (!cache || !Array.isArray(cache.pedidos) || !Array.isArray(cache.clientes) || !Array.isArray(cache.produtos)) {
+      return null;
+    }
+    return cache;
+  } catch(e) {
+    console.warn('Nao foi possivel ler dados offline:', e);
+    return null;
+  }
+}
+
+function aplicarDadosOffline(cache) {
+  if (!cache) return false;
+  todosOsPedidos  = normalizarPedidosBanco(cache.pedidos);
+  todosOsClientes = cache.clientes || [];
+  todosOsProdutos = cache.produtos || [];
+  return true;
+}
+
+function renderizarDadosAtuais() {
+  renderizarDashboard();
+  renderizarEntregas(filtroEntregas);
+  renderizarCatalogo(filtroCatalogo);
+  if (usuario?.perfil === 'vendedor') {
+    renderizarInicioVendedor();
+    renderizarMeusPedidos(filtroMeusPedidos);
+  }
+  if (usuario?.perfil === 'admin') renderizarFinanceiro(filtroFinanceiro);
+  popularSelectClientes();
+}
+
+function carregarCacheOfflineComAviso(motivo) {
+  const cache = carregarDadosOffline();
+  if (!aplicarDadosOffline(cache)) return false;
+  const quando = cache.salvo_em ? new Date(cache.salvo_em).toLocaleString('pt-BR') : 'data desconhecida';
+  avisarInstabilidadeConexao(
+    'MODO OFFLINE',
+    `Mostrando dados salvos neste aparelho (${quando}). As alteracoes pendentes sincronizam quando a internet voltar.`,
+    8000
+  );
+  console.log(`Dados offline carregados (${motivo})`, cache.salvo_em || '');
+  return true;
+}
+
 // Reseta todas as barras de busca e filtros visuais ao trocar de tela
 function resetarBuscasEFiltros() {
   // Apaga todos os inputs de busca conhecidos
@@ -258,6 +337,9 @@ const _rendersPendentes = new Set();
 let _renderFrameId = null;
 function agendarRender(tela) {
   _rendersPendentes.add(tela);
+  if (!MODO_DEMO && usuario && (todosOsPedidos.length || todosOsClientes.length || todosOsProdutos.length)) {
+    salvarDadosOffline('mudanca-local');
+  }
   if (_renderFrameId !== null) return; // já tem um frame agendado
   _renderFrameId = requestAnimationFrame(() => {
     const telas = new Set(_rendersPendentes);
@@ -1133,12 +1215,30 @@ function navegarPara(id) {
 // ============================================================
 async function carregarTudo() {
   if (!MODO_DEMO) {
+    if (!navigator.onLine && carregarCacheOfflineComAviso('sem internet ao abrir')) {
+      renderizarDadosAtuais();
+      if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
+      iniciarAutoRefresh();
+      return;
+    }
+    if (!navigator.onLine) {
+      alert('Sem internet e ainda nÃ£o existem dados salvos neste aparelho. Abra o app uma vez com internet para ativar o modo offline.');
+      iniciarAutoRefresh();
+      return;
+    }
+
     const [resPed, resCli, resProd] = await Promise.all([
       supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
       supabase('clientes','GET',null,'?order=nome.asc'),
       supabase('produtos','GET',null,'?order=nome.asc'),
     ]);
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
+      if (carregarCacheOfflineComAviso('falha ao carregar online')) {
+        renderizarDadosAtuais();
+        if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
+        iniciarAutoRefresh();
+        return;
+      }
       alert('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
@@ -1150,6 +1250,8 @@ async function carregarTudo() {
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
+    todosOsPedidos = normalizarPedidosBanco(todosOsPedidos);
+    salvarDadosOffline('carregarTudo');
   }
   renderizarDashboard();
   renderizarEntregas(filtroEntregas);
@@ -1206,6 +1308,7 @@ async function sincronizarDados() {
     todosOsPedidos  = novosPedidos;
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
+    salvarDadosOffline('sincronizarDados');
 
     // Re-renderiza só se algo mudou (para não causar flicker)
     if (mudou) {
