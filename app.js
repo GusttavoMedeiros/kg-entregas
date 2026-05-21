@@ -921,6 +921,13 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     if (!res.ok) {
       const txt = await res.text();
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
+      if (res.status >= 500 || res.status === 0) {
+        avisarInstabilidadeConexao(
+          'SERVIDOR INDISPONÍVEL',
+          'O servidor demorou ou recusou a resposta. Tente novamente em instantes.',
+          7000
+        );
+      }
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
     if (metodo==='DELETE') return { ok:true, dados:true };
@@ -928,9 +935,19 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
+      avisarInstabilidadeConexao(
+        'CONEXÃO LENTA',
+        'A operação demorou demais para responder.',
+        7000
+      );
       return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
     }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
+    avisarInstabilidadeConexao(
+      navigator.onLine ? 'INSTABILIDADE NA CONEXÃO' : 'MODO OFFLINE',
+      'Não consegui falar com o servidor agora.',
+      7000
+    );
     return { ok:false, erro: e.message };
   }
 }
@@ -3718,13 +3735,93 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
+// BANNER INTELIGENTE DE CONEXÃO + FILA OFFLINE
+// ============================================================
+const FILA_OFFLINE_KEY = 'kg-fila-offline';
+const BANNER_CONEXAO_DURACAO_MS = 6500;
+const BANNER_CONEXAO_OK_MS = 3500;
+const BANNER_CONEXAO_REAVISO_MS = 60000;
+let bannerConexaoTimer = null;
+let ultimoAvisoFilaPendente = 0;
+let statusOnlineAnterior = navigator.onLine;
+let statusConexaoInicializado = false;
+
+function fecharBannerConexao() {
+  clearTimeout(bannerConexaoTimer);
+  bannerConexaoTimer = null;
+  const banner = document.getElementById('banner-offline');
+  if (!banner) return;
+  banner.classList.remove('visivel');
+  banner.setAttribute('aria-hidden', 'true');
+}
+
+function mensagemOfflineComFila(mensagemBase) {
+  const qtd = lerFilaOffline().length;
+  if (!qtd) return mensagemBase;
+  const plural = qtd === 1 ? 'ação pendente' : 'ações pendentes';
+  return `${mensagemBase} ${qtd} ${plural} na fila serão sincronizadas automaticamente.`;
+}
+
+function mostrarBannerConexao(tipo, titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
+  const banner = document.getElementById('banner-offline');
+  if (!banner) return;
+
+  const icone = document.getElementById('banner-offline-icone');
+  const tituloEl = document.getElementById('banner-offline-titulo');
+  const msgEl = document.getElementById('banner-offline-msg');
+  if (icone) {
+    icone.textContent = tipo === 'ok' ? '✓' : (tipo === 'syncing' ? '↻' : '⚠️');
+  }
+  if (tituloEl) tituloEl.textContent = titulo;
+  if (msgEl) msgEl.textContent = mensagem;
+
+  banner.classList.remove('ok', 'syncing');
+  if (tipo === 'ok' || tipo === 'syncing') banner.classList.add(tipo);
+  banner.classList.add('visivel');
+  banner.setAttribute('aria-hidden', 'false');
+
+  clearTimeout(bannerConexaoTimer);
+  if (duracao > 0) {
+    bannerConexaoTimer = setTimeout(fecharBannerConexao, duracao);
+  }
+}
+
+function avisarInstabilidadeConexao(titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
+  mostrarBannerConexao('offline', titulo, mensagemOfflineComFila(mensagem), duracao);
+}
+
+// ============================================================
 // DETECÇÃO DE STATUS ONLINE/OFFLINE
 // ============================================================
 function atualizarStatusConexao() {
-  const offline = !navigator.onLine;
-  document.body.classList.toggle('offline', offline);
-  // Se voltou online, tenta processar fila de ações pendentes
-  if (!offline && usuario) processarFilaOffline();
+  const onlineAgora = navigator.onLine;
+  const ficouOffline = statusConexaoInicializado && statusOnlineAnterior && !onlineAgora;
+  const voltouOnline = statusConexaoInicializado && !statusOnlineAnterior && onlineAgora;
+
+  document.body.classList.toggle('offline', !onlineAgora);
+
+  if (!statusConexaoInicializado && !onlineAgora) {
+    avisarInstabilidadeConexao(
+      'MODO OFFLINE',
+      'Sem conexão agora. Você pode continuar e as ações pendentes serão guardadas.'
+    );
+  } else if (ficouOffline) {
+    avisarInstabilidadeConexao(
+      'MODO OFFLINE',
+      'A conexão caiu. Dados podem estar desatualizados.'
+    );
+  } else if (voltouOnline) {
+    mostrarBannerConexao(
+      'ok',
+      'CONEXÃO RESTAURADA',
+      'Internet voltou. Vou sincronizar ações pendentes, se houver.',
+      BANNER_CONEXAO_OK_MS
+    );
+  }
+
+  if (onlineAgora && usuario) processarFilaOffline();
+  statusOnlineAnterior = onlineAgora;
+  statusConexaoInicializado = true;
 }
 
 window.addEventListener('online',  atualizarStatusConexao);
@@ -3737,7 +3834,6 @@ atualizarStatusConexao();
 // Quando entregador marca entregue offline, ação fica enfileirada
 // em localStorage. Quando volta online, envia tudo automaticamente.
 // ============================================================
-const FILA_OFFLINE_KEY = 'kg-fila-offline';
 
 function lerFilaOffline() {
   try {
@@ -3756,6 +3852,12 @@ function adicionarNaFilaOffline(acao) {
   const fila = lerFilaOffline();
   fila.push({ ...acao, ts: Date.now() });
   gravarFilaOffline(fila);
+  mostrarBannerConexao(
+    'syncing',
+    'AÇÃO SALVA OFFLINE',
+    mensagemOfflineComFila('Ela ficou guardada neste aparelho.'),
+    BANNER_CONEXAO_DURACAO_MS
+  );
 }
 
 let _processandoFila = false;
@@ -3793,9 +3895,28 @@ async function processarFilaOffline() {
   if (sucesso.length) {
     // Notifica o usuário e re-renderiza
     console.log(`✓ ${sucesso.length} ação(ões) sincronizada(s) com sucesso`);
+    const pendentes = falha.length;
+    mostrarBannerConexao(
+      pendentes ? 'syncing' : 'ok',
+      pendentes ? 'SINCRONIZAÇÃO PARCIAL' : 'TUDO SINCRONIZADO',
+      pendentes
+        ? `${sucesso.length} ação(ões) sincronizada(s). ${pendentes} ainda pendente(s).`
+        : `${sucesso.length} ação(ões) sincronizada(s) com sucesso.`,
+      pendentes ? BANNER_CONEXAO_DURACAO_MS : BANNER_CONEXAO_OK_MS
+    );
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
       agendarRender('entregas');
+    }
+  } else if (falha.length) {
+    const agora = Date.now();
+    if (agora - ultimoAvisoFilaPendente > BANNER_CONEXAO_REAVISO_MS) {
+      ultimoAvisoFilaPendente = agora;
+      avisarInstabilidadeConexao(
+        'SINCRONIZAÇÃO PENDENTE',
+        'Ainda não foi possível enviar as ações guardadas.',
+        BANNER_CONEXAO_DURACAO_MS
+      );
     }
   }
 }
