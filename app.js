@@ -1034,6 +1034,61 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
   }
 }
 
+function erroPareceConexao(erro) {
+  return /tempo esgotado|timeout|offline|failed to fetch|network|internet|conex|HTTP 50\d|HTTP 502|HTTP 503|HTTP 504/i.test(String(erro || ''));
+}
+
+function erroPareceCampoAusente(erro) {
+  return /schema cache|could not find|column .* does not exist|PGRST204/i.test(String(erro || ''));
+}
+
+function payloadPedidoBasico(payload) {
+  return {
+    cliente_id: payload.cliente_id,
+    descricao: payload.descricao,
+    valor: payload.valor,
+    data_entrega: payload.data_entrega,
+    data_vencimento: payload.data_vencimento,
+    observacao: payload.observacao,
+  };
+}
+
+async function atualizarPedidoComFallback(pedido_id, payload) {
+  let resPed = await supabase('pedidos','PATCH', payload, `?id=eq.${pedido_id}`);
+  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
+
+  // Alguns bancos podem nao ter ainda as colunas novas de pagamento.
+  // Nesse caso, salva o pedido com os campos essenciais para nao travar a edicao.
+  console.warn('Pedido: tentando atualizar novamente apenas com campos basicos.', resPed.erro);
+  return supabase('pedidos','PATCH', payloadPedidoBasico(payload), `?id=eq.${pedido_id}`);
+}
+
+async function salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens) {
+  const resPed = await atualizarPedidoComFallback(pedido_id, payloadPedido);
+  if (!resPed.ok) {
+    return { ok:false, etapa:'pedido', erro:resPed.erro || 'Erro ao atualizar pedido' };
+  }
+
+  const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
+  if (!resDel.ok) {
+    return { ok:false, etapa:'limpar itens antigos', erro:resDel.erro || 'Erro ao limpar itens antigos' };
+  }
+
+  const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+    pedido_id,
+    produto_id: it.produto_id,
+    nome: it.nome,
+    qtd: it.qtd,
+    preco_unit: it.preco_unit,
+  })));
+  const erroItens = resItens.find(r => !r.ok);
+  if (erroItens) {
+    return { ok:false, etapa:'salvar itens', erro:erroItens.erro || 'Erro ao salvar itens do pedido' };
+  }
+
+  return { ok:true };
+}
+
 // ============================================================
 // LOGIN / SAIR
 // ============================================================
@@ -2861,32 +2916,41 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     const pedido_id = pedidoEmEdicao.id;
 
     if (!MODO_DEMO) {
-      // Atualiza o pedido
-      const resPed = await supabase('pedidos','PATCH',{
+      const payloadPedido = {
         cliente_id, descricao, valor,
         data_entrega, data_vencimento: data_vencimento||null,
         observacao: obs,
         forma_pagamento,
         prazo_dias: prazo_dias || null,
         prazos_boleto: prazos_boleto || null,
-      }, `?id=eq.${pedido_id}`);
-      if (!resPed.ok) {
-        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
-        return;
-      }
-      // Apaga itens antigos
-      const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
-      if (!resDel.ok) {
-        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
-        return;
-      }
-      // Insere itens novos
-      const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
-      })));
-      if (resItens.some(r => !r.ok)) {
-        alert('Erro ao salvar itens atualizados. Verifique no banco.');
-        return;
+      };
+
+      if (!navigator.onLine) {
+        adicionarNaFilaOffline({
+          tipo: 'editar-pedido',
+          pedidoId: pedido_id,
+          payload: payloadPedido,
+          itens,
+        });
+      } else {
+        const resBanco = await salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens);
+        if (!resBanco.ok) {
+          if (erroPareceConexao(resBanco.erro)) {
+            adicionarNaFilaOffline({
+              tipo: 'editar-pedido',
+              pedidoId: pedido_id,
+              payload: payloadPedido,
+              itens,
+            });
+          } else {
+            alert(
+              'Erro ao atualizar pedido.\n\n' +
+              'Etapa: ' + (resBanco.etapa || 'pedido') + '\n' +
+              'Detalhes: ' + (resBanco.erro || 'desconhecido')
+            );
+            return;
+          }
+        }
       }
     }
 
@@ -3952,7 +4016,11 @@ function gravarFilaOffline(fila) {
 }
 
 function adicionarNaFilaOffline(acao) {
-  const fila = lerFilaOffline();
+  let fila = lerFilaOffline();
+  // Para edicao de pedido, mantem apenas a versao mais recente daquele pedido.
+  if (acao.tipo === 'editar-pedido' && acao.pedidoId != null) {
+    fila = fila.filter(a => !(a.tipo === 'editar-pedido' && a.pedidoId === acao.pedidoId));
+  }
   fila.push({ ...acao, ts: Date.now() });
   gravarFilaOffline(fila);
   mostrarBannerConexao(
@@ -3982,6 +4050,15 @@ async function processarFilaOffline() {
           // Atualiza no estado local
           const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
           if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload);
+        } else {
+          falha.push(acao);
+        }
+      } else if (acao.tipo === 'editar-pedido') {
+        const res = await salvarEdicaoPedidoNoBanco(acao.pedidoId, acao.payload, acao.itens || []);
+        if (res.ok) {
+          sucesso.push(acao);
+          const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
+          if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload, { itens: acao.itens || todosOsPedidos[idx].itens });
         } else {
           falha.push(acao);
         }
