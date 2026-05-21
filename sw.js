@@ -1,12 +1,12 @@
 // ============================================================
-// KG ENTREGAS — Service Worker
-// Estratégia:
-//   - Assets (HTML/JS/CSS/imagens): cache-first (carrega instantâneo)
+// KG ENTREGAS â€” Service Worker
+// EstratÃ©gia:
+//   - Assets (HTML/JS/CSS/imagens): cache-first (carrega instantÃ¢neo)
 //   - Supabase API: network-first com fallback de cache
-//   - Versão do cache muda → SW antigo é removido automaticamente
+//   - VersÃ£o do cache muda â†’ SW antigo Ã© removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v5';
+const CACHE_VERSION = 'kg-v6';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -21,7 +21,7 @@ const ASSETS_PARA_CACHEAR = [
 ];
 
 // ============================================================
-// INSTALAÇÃO: baixa todos os assets pro cache
+// INSTALAÃ‡ÃƒO: baixa todos os assets pro cache
 // ============================================================
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -32,7 +32,7 @@ self.addEventListener('install', event => {
 });
 
 // ============================================================
-// ATIVAÇÃO: remove caches antigos de versões anteriores
+// ATIVAÃ‡ÃƒO: remove caches antigos de versÃµes anteriores
 // ============================================================
 self.addEventListener('activate', event => {
   event.waitUntil(
@@ -47,65 +47,64 @@ self.addEventListener('activate', event => {
 });
 
 // ============================================================
-// FETCH: intercepta todas as requisições
+// FETCH: intercepta todas as requisiÃ§Ãµes
 // ============================================================
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // 1) Só intercepta GET (POST/PATCH/DELETE vão direto pra rede)
+  // 1) SÃ³ intercepta GET (POST/PATCH/DELETE vÃ£o direto pra rede)
   if (event.request.method !== 'GET') return;
 
-  // 2) Ignora requisições de outras origens que não interessam pro cache
+  // 2) Ignora requisiÃ§Ãµes de outras origens que nÃ£o interessam pro cache
   //    Mas DEIXA passar Supabase (pra fazer network-first com fallback)
   const ehSupabase  = url.hostname.endsWith('supabase.co');
   const ehBrasilAPI = url.hostname === 'brasilapi.com.br';
-  const ehNominatim = url.hostname === 'nominatim.openstreetmap.org';
   const ehMesmaOrigem = url.origin === self.location.origin;
 
-  if (!ehMesmaOrigem && !ehSupabase && !ehBrasilAPI && !ehNominatim) {
+  if (!ehMesmaOrigem && !ehSupabase && !ehBrasilAPI) {
     return; // navegador trata normalmente
   }
 
-  // 3) APIs externas (BrasilAPI, Nominatim): network-only com cache de sucesso
-  //    Se falhar, devolve do cache (consulta CNPJ/geocoding antigos)
-  if (ehBrasilAPI || ehNominatim) {
+  // 3) APIs externas (BrasilAPI): network-only com cache de sucesso
+  //    Se falhar, devolve do cache (consulta CNPJ antigos)
+  if (ehBrasilAPI) {
     event.respondWith(estrategiaNetworkPrimeiro(event.request, DATA_CACHE));
     return;
   }
 
-  // 4) Supabase: SEMPRE tenta rede primeiro. Cache só como último recurso (offline)
+  // 4) Supabase: SEMPRE tenta rede primeiro. Cache sÃ³ como Ãºltimo recurso (offline)
   if (ehSupabase) {
     event.respondWith(estrategiaNetworkPrimeiro(event.request, DATA_CACHE));
     return;
   }
 
-  // 5) Assets da própria origem: cache-first (instantâneo)
+  // 5) Assets da prÃ³pria origem: cache-first (instantÃ¢neo)
   event.respondWith(estrategiaCachePrimeiro(event.request, ASSETS_CACHE));
 });
 
 // ============================================================
-// ESTRATÉGIA: cache-first (assets)
-// Usa cache se tiver. Senão, busca rede e guarda.
+// ESTRATÃ‰GIA: cache-first (assets)
+// Usa cache se tiver. SenÃ£o, busca rede e guarda.
 // ============================================================
 async function estrategiaCachePrimeiro(request, cacheName) {
   try {
     const cached = await caches.match(request);
     if (cached) return cached;
     const fresh = await fetch(request);
-    // Guarda no cache (só se status 200)
+    // Guarda no cache (sÃ³ se status 200)
     if (fresh && fresh.status === 200) {
       const cache = await caches.open(cacheName);
       cache.put(request, fresh.clone());
     }
     return fresh;
   } catch (e) {
-    // Sem rede e sem cache → devolve resposta vazia em vez de quebrar
+    // Sem rede e sem cache â†’ devolve resposta vazia em vez de quebrar
     return new Response('', { status: 503, statusText: 'Offline' });
   }
 }
 
 // ============================================================
-// ESTRATÉGIA: network-first (dados)
+// ESTRATÃ‰GIA: network-first (dados)
 // Tenta rede com timeout. Se falhar, devolve cache.
 // ============================================================
 async function estrategiaNetworkPrimeiro(request, cacheName) {
@@ -118,13 +117,13 @@ async function estrategiaNetworkPrimeiro(request, cacheName) {
     const fresh = await fetch(request, { signal: ctrl.signal });
     clearTimeout(timeoutId);
 
-    // Só guarda no cache se a resposta deu certo
+    // SÃ³ guarda no cache se a resposta deu certo
     if (fresh && fresh.status === 200) {
       cache.put(request, fresh.clone()).catch(() => {/* ignora erro de quota */});
     }
     return fresh;
   } catch (e) {
-    // Rede falhou → tenta cache
+    // Rede falhou â†’ tenta cache
     const cached = await cache.match(request);
     if (cached) {
       // Marca a resposta para o app saber que veio do cache (offline)
@@ -134,8 +133,8 @@ async function estrategiaNetworkPrimeiro(request, cacheName) {
         headers: { ...Object.fromEntries(cached.headers.entries()), 'x-from-cache': '1' },
       });
     }
-    // Sem cache nem rede → 503
-    return new Response(JSON.stringify({ erro: 'offline', mensagem: 'Sem conexão e sem cache' }), {
+    // Sem cache nem rede â†’ 503
+    return new Response(JSON.stringify({ erro: 'offline', mensagem: 'Sem conexÃ£o e sem cache' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -150,3 +149,4 @@ self.addEventListener('message', event => {
     self.skipWaiting();
   }
 });
+
