@@ -481,82 +481,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   padding-top:calc(9px + env(safe-area-inset-top));
   padding-left:calc(14px + env(safe-area-inset-left));
   padding-right:calc(14px + env(safe-area-inset-right))}
-.banner-offline{
-  position:fixed;
-  top:calc(10px + env(safe-area-inset-top));
-  left:calc(10px + env(safe-area-inset-left));
-  right:calc(10px + env(safe-area-inset-right));
-  z-index:9999;
-  max-width:520px;
-  margin:0 auto;
-  background:linear-gradient(135deg,#c0392b,#8e2820);
-  color:#fff;
-  border:1px solid rgba(255,255,255,.16);
-  border-radius:14px;
-  padding:10px 11px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  box-shadow:0 8px 26px rgba(0,0,0,.42);
-  font-family:'Nunito',sans-serif;
-  font-size:12px;
-  line-height:1.3;
-  opacity:0;
-  transform:translateY(-120%);
-  pointer-events:none;
-  transition:opacity .2s ease,transform .24s cubic-bezier(.2,.8,.2,1);
-}
-
-.banner-offline.visivel{
-  opacity:1;
-  transform:translateY(0);
-  pointer-events:auto;
-}
-
-.banner-offline.ok{
-  background:linear-gradient(135deg,#1f8d52,#0d5f38);
-}
-
-.banner-offline.syncing{
-  background:linear-gradient(135deg,#d4791a,#8c4d12);
-}
-
-.banner-offline-icone{
-  font-size:20px;
-  flex-shrink:0;
-}
-
-.banner-offline-texto{
-  display:flex;
-  flex-direction:column;
-  gap:1px;
-  min-width:0;
-  flex:1;
-}
-
-.banner-offline-texto strong{
-  font-size:12px;
-  font-weight:800;
-  letter-spacing:.6px;
-}
-
-.banner-offline-texto span{
-  font-size:11px;
-  opacity:.92;
-}
-
-.banner-offline-close{
-  background:rgba(255,255,255,.12);
-  border:1px solid rgba(255,255,255,.14);
-  color:#fff;
-  border-radius:8px;
-  width:28px;
-  height:28px;
-  font-size:18px;
-  line-height:1;
-  cursor:pointer;
-  flex-shrink:0;
-}
+body.offline .banner-offline{display:flex}
+body.offline #app{padding-top:54px}
 .banner-offline-icone{font-size:20px;flex-shrink:0}
 .banner-offline-texto{display:flex;flex-direction:column;gap:1px;min-width:0}
 .banner-offline-texto strong{font-size:12px;font-weight:800;letter-spacing:.6px}
@@ -1911,6 +1837,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=27"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
