@@ -8,12 +8,11 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KG Entregas">
 <meta name="description" content="Sistema de gestão de entregas - KG Agropet">
-<link rel="manifest" href="manifest.json?v=5">
-<link rel="icon" type="image/png" sizes="192x192" href="app-icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="app-icon-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="logo.png">
 <title>KG Entregas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Nunito:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -48,16 +47,14 @@
   -webkit-touch-callout:none}
 /* Inputs e textareas precisam permitir seleção e edição */
 input,textarea,select,[contenteditable]{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%;width:100%;
-  overflow:hidden;overscroll-behavior:none}
-body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);height:100%;min-height:100svh;min-height:100dvh;
-  overflow:hidden;overscroll-behavior:none;position:relative;
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%}
+body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100dvh;overflow-x:hidden;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  width:100%;max-width:100%}
+  overscroll-behavior-y:contain;
+  width:100%}
 
-/* Estrutura fixa de app: o corpo não desliza; só o conteúdo interno rola */
-#tela-login,#app{width:100%;max-width:100%;height:100svh;height:100dvh;min-height:0;
-  overflow:hidden;overscroll-behavior:none}
+/* Container interno que rola — comportamento de app nativo */
+#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;min-height:100dvh}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 70% 50% at 15% 5%,rgba(200,150,12,.05) 0%,transparent 60%),
              radial-gradient(ellipse 60% 70% at 85% 90%,rgba(46,99,71,.12) 0%,transparent 60%)}
@@ -66,9 +63,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background-size:80px 80px}
 
 /* LOGIN */
-#tela-login{display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:40px 24px;position:relative;background:var(--gv);overflow-y:auto;overflow-x:hidden;
-  -webkit-overflow-scrolling:touch;z-index:1}
+#tela-login{min-height:100dvh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 24px;position:relative;background:var(--gv);overflow:hidden;z-index:1}
 #tela-login svg.deco{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .logo-login{text-align:center;margin-bottom:28px;position:relative;z-index:1;animation:fadeD .6s ease-out both}
 @keyframes fadeD{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
@@ -145,11 +141,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .erro-login{color:#e05a4e;font-size:13px;text-align:center;margin-top:10px;display:none}
 
 /* APP */
-#app{display:none;flex-direction:column;position:relative;z-index:1}
+#app{display:none;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
 .header{background:linear-gradient(180deg,#0d2218 0%,#0a1a10 100%);border-bottom:1px solid var(--ob);
   padding:12px var(--pad-lat);display:flex;align-items:center;justify-content:space-between;
-  position:relative;top:auto;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
-  width:100%;max-width:100%;flex:0 0 auto;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
   padding-top:calc(12px + var(--safe-top));
   padding-left:calc(var(--pad-lat) + var(--safe-left));
   padding-right:calc(var(--pad-lat) + var(--safe-right))}
@@ -166,12 +161,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* NAV BOTTOM — sticky funciona melhor que fixed quando o container pai (#app) rola */
 .nav-bottom{background:linear-gradient(0deg,#0a1a10 0%,#0d2218 100%);border-top:1px solid var(--ob);
-  display:flex;position:relative;bottom:auto;left:auto;right:auto;z-index:100;
-  width:100%;max-width:100%;flex:0 0 auto;
+  display:flex;position:sticky;bottom:0;left:0;right:0;z-index:100;
   padding-bottom:calc(4px + var(--safe-bot));
   padding-left:var(--safe-left);
   padding-right:var(--safe-right);
-  box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+  box-shadow:0 -4px 20px rgba(0,0,0,.4);
+  /* margin-top:auto empurra a nav pro fundo do container flex pai */
+  margin-top:auto}
 .nav-item{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:10px 2px 8px;
   cursor:pointer;border:none;background:transparent;gap:4px;position:relative;transition:all .2s;
@@ -187,11 +183,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .nav-item.ativo .nav-label{background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* CONTEÚDO */
-.conteudo{padding:var(--pad-vert) var(--pad-lat) 24px;flex:1 1 auto;min-height:0;position:relative;z-index:1;
-  width:100%;max-width:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
+.conteudo{padding:var(--pad-vert) var(--pad-lat) 24px;flex:1;position:relative;z-index:1;
   padding-left:calc(var(--pad-lat) + var(--safe-left));
   padding-right:calc(var(--pad-lat) + var(--safe-right))}
-.tela{display:none;width:100%;max-width:100%;min-width:0;overflow-x:hidden}.tela.ativa{display:block}
+.tela{display:none}.tela.ativa{display:block}
 
 /* CARDS */
 .card-resumo{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
@@ -202,7 +197,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .card-resumo.alerta .resumo-numero{background:none;-webkit-text-fill-color:#e05a4e}
 .card-resumo.atencao .resumo-numero{background:none;-webkit-text-fill-color:var(--am)}
 .resumo-label{font-size:10px;color:var(--c3);margin-top:5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
-.grid-resumo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:16px;max-width:100%;min-width:0}
+.grid-resumo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 
 /* ========== NOVO DASHBOARD ========== */
 .card-icone{font-size:24px;margin-bottom:8px;opacity:.85}
@@ -217,7 +212,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .resumo-tendencia.neutro{color:var(--c3)}
 
 /* Atalhos rápidos */
-.atalhos-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px;max-width:100%;min-width:0}
+.atalhos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
 .atalho-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);padding:14px 10px;
   display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;
@@ -337,15 +332,15 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 /* Resumo entregador */
 .resumo-entregador{display:none;margin-bottom:14px}
 .resumo-entregador.ativo{display:block}
-.resumo-entregador-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px;max-width:100%;min-width:0}
+.resumo-entregador-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
 .resumo-entregador-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
-  padding:12px 8px;text-align:center;box-shadow:var(--sv);min-width:0;overflow:hidden}
-.resumo-entregador-num{font-family:'Cinzel',serif;font-size:clamp(16px,5vw,20px);font-weight:700;
+  padding:12px 8px;text-align:center;box-shadow:var(--sv)}
+.resumo-entregador-num{font-family:'Cinzel',serif;font-size:20px;font-weight:700;
   background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.resumo-entregador-lbl{font-size:clamp(8px,2.5vw,9px);color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-.resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px;max-width:100%;min-width:0}
+.resumo-entregador-lbl{font-size:9px;color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px}
 .aba-rota{flex:1;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:10px;
-  min-width:0;padding:9px 8px;font-size:clamp(10px,3vw,11px);font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
+  padding:9px 8px;font-size:11px;font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
   letter-spacing:.5px;transition:all .15s}
 .aba-rota.ativa{background:var(--go);color:var(--v1);border-color:transparent}
 .bairro-grupo{margin-bottom:14px}
@@ -476,24 +471,23 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* ========== BANNERS DE SISTEMA (offline + instalar) ========== */
 
-/* Banner OFFLINE — toast temporário, sem empurrar/cobrir o app permanentemente */
-.banner-offline{position:fixed;top:calc(10px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));
-  right:calc(10px + env(safe-area-inset-right));z-index:9999;max-width:520px;margin:0 auto;
-  background:linear-gradient(135deg,#c0392b,#8e2820);color:#fff;border:1px solid rgba(255,255,255,.16);
-  border-radius:14px;padding:10px 11px;display:flex;align-items:center;gap:10px;
-  box-shadow:0 8px 26px rgba(0,0,0,.42);font-family:'Nunito',sans-serif;font-size:12px;line-height:1.3;
-  opacity:0;transform:translateY(-120%);pointer-events:none;
-  transition:opacity .2s ease,transform .24s cubic-bezier(.2,.8,.2,1)}
-.banner-offline.visivel{opacity:1;transform:translateY(0);pointer-events:auto}
-.banner-offline.ok{background:linear-gradient(135deg,#1f8d52,#0d5f38)}
-.banner-offline.syncing{background:linear-gradient(135deg,#d4791a,#8c4d12)}
+/* Banner OFFLINE — só aparece quando o body tem .offline */
+.banner-offline{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
+  background:linear-gradient(135deg,#c0392b,#8e2820);color:#fff;
+  padding:9px 14px;align-items:center;gap:11px;
+  box-shadow:0 4px 14px rgba(0,0,0,.4);
+  font-family:'Nunito',sans-serif;font-size:12px;line-height:1.3;
+  animation:slideDown .25s ease-out;
+  padding-top:calc(9px + env(safe-area-inset-top));
+  padding-left:calc(14px + env(safe-area-inset-left));
+  padding-right:calc(14px + env(safe-area-inset-right))}
+body.offline .banner-offline{display:flex}
+body.offline #app{padding-top:54px}
 .banner-offline-icone{font-size:20px;flex-shrink:0}
-.banner-offline-texto{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.banner-offline-texto{display:flex;flex-direction:column;gap:1px;min-width:0}
 .banner-offline-texto strong{font-size:12px;font-weight:800;letter-spacing:.6px}
 .banner-offline-texto span{font-size:11px;opacity:.92}
-.banner-offline-close{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14);
-  color:#fff;border-radius:8px;width:28px;height:28px;font-size:18px;line-height:1;cursor:pointer;flex-shrink:0}
-.banner-offline-close:active{transform:scale(.96)}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 
 /* Banner INSTALAR app — flutuante no rodapé */
 .banner-instalar{position:fixed;bottom:14px;left:14px;right:14px;z-index:9998;
@@ -521,6 +515,26 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   color:var(--o0);font-weight:700;padding:1px 4px;border-radius:5px;
   text-decoration:none;border:1px solid rgba(200,150,12,.45);
   box-shadow:0 1px 4px rgba(200,150,12,.2)}
+
+/* ========== BLOCO MANUTENCAO (admin) ========== */
+.bloco-manutencao{background:rgba(200,150,12,.05);border:1px dashed rgba(200,150,12,.25);
+  border-radius:var(--r);padding:16px;margin:18px 0}
+.bloco-manutencao-titulo{font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--o0);margin-bottom:10px}
+.btn-manutencao{background:rgba(200,150,12,.1);color:var(--o0);border:1px solid rgba(200,150,12,.3);
+  border-radius:10px;padding:11px 14px;font-size:13px;font-weight:700;font-family:'Nunito',sans-serif;
+  cursor:pointer;width:100%;transition:all .15s;letter-spacing:.3px}
+.btn-manutencao:hover:not(:disabled){background:rgba(200,150,12,.18);border-color:var(--go)}
+.btn-manutencao:active:not(:disabled){transform:scale(.98)}
+.btn-manutencao:disabled{opacity:.5;cursor:not-allowed}
+#geocodar-status{margin-top:10px;padding:9px 12px;border-radius:9px;font-size:12px;line-height:1.4;
+  border:1px solid var(--ol);background:rgba(10,26,16,.5);color:var(--c2)}
+#geocodar-status.processando{border-color:var(--ob);color:var(--o1);background:rgba(200,150,12,.08)}
+#geocodar-status.concluido{border-color:rgba(39,174,96,.4);color:#7ec850;background:rgba(39,174,96,.08)}
+#geocodar-status .progress-bar{height:4px;background:rgba(10,26,16,.5);border-radius:2px;
+  margin-top:6px;overflow:hidden}
+#geocodar-status .progress-fill{height:100%;background:linear-gradient(90deg,var(--go),var(--o0));
+  transition:width .3s}
 
 /* ========== PRECO AJUSTADO POR PEDIDO ========== */
 .btn-ajustar-preco{background:rgba(200,150,12,.12);color:var(--o0);border:1px solid rgba(200,150,12,.3);
@@ -855,9 +869,9 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 
 /* ABAS */
 .abas{display:flex;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);
-  padding:3px;margin-bottom:14px;gap:3px;max-width:100%;min-width:0;overflow:hidden}
+  padding:3px;margin-bottom:14px;gap:3px}
 .aba{flex:1;padding:8px 4px;text-align:center;font-size:11px;font-weight:700;border-radius:10px;
-  min-width:0;cursor:pointer;border:none;background:transparent;color:var(--c3);font-family:'Nunito',sans-serif;
+  cursor:pointer;border:none;background:transparent;color:var(--c3);font-family:'Nunito',sans-serif;
   letter-spacing:.5px;text-transform:uppercase;transition:all .2s}
 .aba.ativa{background:var(--go);color:var(--v1);box-shadow:0 2px 8px rgba(200,150,12,.28)}
 
@@ -914,10 +928,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   .btn-sair { padding: 6px 8px; font-size: 10px; }
   .resumo-numero { font-size: 26px; }
   .resumo-label { font-size: 9px; }
-  .resumo-entregador-grid { gap: 6px; }
-  .resumo-entregador-card { padding: 10px 5px; }
-  .resumo-entregador-lbl { letter-spacing: .2px; }
-  .aba-rota { padding: 9px 5px; letter-spacing: .2px; }
   .nav-label { font-size: 8px; }
   .nav-icon { font-size: 18px; }
 }
@@ -1186,14 +1196,13 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 </head>
 <body>
 
-<!-- BANNER OFFLINE — toast temporário quando perde conexão ou há instabilidade -->
-<div id="banner-offline" class="banner-offline" role="status" aria-live="polite" aria-hidden="true">
-  <span class="banner-offline-icone" id="banner-offline-icone">⚠️</span>
+<!-- BANNER OFFLINE — aparece quando perde conexão -->
+<div id="banner-offline" class="banner-offline">
+  <span class="banner-offline-icone">⚠️</span>
   <div class="banner-offline-texto">
-    <strong id="banner-offline-titulo">MODO OFFLINE</strong>
-    <span id="banner-offline-msg">Dados podem estar desatualizados. Ações serão sincronizadas quando voltar.</span>
+    <strong>MODO OFFLINE</strong>
+    <span>Dados podem estar desatualizados. Ações serão sincronizadas quando voltar.</span>
   </div>
-  <button class="banner-offline-close" type="button" onclick="fecharBannerConexao()" aria-label="Fechar aviso">×</button>
 </div>
 
 <!-- BANNER INSTALAR APP — aparece quando navegador permite -->
@@ -1336,6 +1345,15 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
       <!-- PRÓXIMAS ENTREGAS (compacto) -->
       <div class="separador">📅 Próximas entregas</div>
       <div id="lista-proximas"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+
+      <!-- MANUTENÇÃO (admin) -->
+      <div class="bloco-manutencao">
+        <div class="bloco-manutencao-titulo">🔧 Manutenção</div>
+        <button class="btn-manutencao" onclick="geocodarTodosClientes()" id="btn-geocodar">
+          📍 Geocodar todos os clientes (para rota inteligente)
+        </button>
+        <div id="geocodar-status" style="display:none"></div>
+      </div>
 
       <!-- ZONA DE PERIGO -->
       <div class="zona-perigo">
@@ -1819,6 +1837,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=35"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
