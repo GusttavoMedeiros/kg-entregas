@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v1';
+const CACHE_VERSION = 'kg-v12';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -15,9 +15,15 @@ const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
   './app.js',
+  './app.js?v=37',
   './manifest.json',
+  './manifest.json?v=5',
   './logo.webp',
   './logo.png',
+  './app-icon-180.png',
+  './app-icon-192.png',
+  './app-icon-512.png',
+  './app-icon-maskable-512.png',
 ];
 
 // ============================================================
@@ -59,16 +65,15 @@ self.addEventListener('fetch', event => {
   //    Mas DEIXA passar Supabase (pra fazer network-first com fallback)
   const ehSupabase  = url.hostname.endsWith('supabase.co');
   const ehBrasilAPI = url.hostname === 'brasilapi.com.br';
-  const ehNominatim = url.hostname === 'nominatim.openstreetmap.org';
   const ehMesmaOrigem = url.origin === self.location.origin;
 
-  if (!ehMesmaOrigem && !ehSupabase && !ehBrasilAPI && !ehNominatim) {
+  if (!ehMesmaOrigem && !ehSupabase && !ehBrasilAPI) {
     return; // navegador trata normalmente
   }
 
-  // 3) APIs externas (BrasilAPI, Nominatim): network-only com cache de sucesso
-  //    Se falhar, devolve do cache (consulta CNPJ/geocoding antigos)
-  if (ehBrasilAPI || ehNominatim) {
+  // 3) APIs externas (BrasilAPI): network-only com cache de sucesso
+  //    Se falhar, devolve do cache (consulta CNPJ antigos)
+  if (ehBrasilAPI) {
     event.respondWith(estrategiaNetworkPrimeiro(event.request, DATA_CACHE));
     return;
   }
@@ -79,7 +84,15 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) Assets da própria origem: cache-first (instantâneo)
+  // 5) Paginas HTML: rede primeiro, para evitar tela antiga presa no cache.
+  const aceitaHtml = event.request.mode === 'navigate' ||
+    (event.request.headers.get('accept') || '').includes('text/html');
+  if (aceitaHtml) {
+    event.respondWith(estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE));
+    return;
+  }
+
+  // 6) Assets da própria origem: cache-first (instantâneo)
   event.respondWith(estrategiaCachePrimeiro(event.request, ASSETS_CACHE));
 });
 
