@@ -8,10 +8,10 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="KG Entregas">
 <meta name="description" content="Sistema de gestão de entregas - KG Agropet">
-<link rel="manifest" href="manifest.json?v=4">
+<link rel="manifest" href="manifest.json?v=5">
 <link rel="icon" type="image/png" sizes="192x192" href="app-icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="app-icon-180.png">
 <title>KG Entregas</title>
@@ -48,14 +48,16 @@
   -webkit-touch-callout:none}
 /* Inputs e textareas precisam permitir seleção e edição */
 input,textarea,select,[contenteditable]{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%}
-body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100dvh;overflow-x:hidden;
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%;width:100%;
+  overflow:hidden;overscroll-behavior:none}
+body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);height:100%;min-height:100svh;min-height:100dvh;
+  overflow:hidden;overscroll-behavior:none;position:relative;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  overscroll-behavior-y:contain;
-  width:100%}
+  width:100%;max-width:100%}
 
-/* Container interno que rola — comportamento de app nativo */
-#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;min-height:100dvh}
+/* Estrutura fixa de app: o corpo não desliza; só o conteúdo interno rola */
+#tela-login,#app{width:100%;max-width:100%;height:100svh;height:100dvh;min-height:0;
+  overflow:hidden;overscroll-behavior:none}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 70% 50% at 15% 5%,rgba(200,150,12,.05) 0%,transparent 60%),
              radial-gradient(ellipse 60% 70% at 85% 90%,rgba(46,99,71,.12) 0%,transparent 60%)}
@@ -64,8 +66,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background-size:80px 80px}
 
 /* LOGIN */
-#tela-login{min-height:100dvh;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:40px 24px;position:relative;background:var(--gv);overflow:hidden;z-index:1}
+#tela-login{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 24px;position:relative;background:var(--gv);overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;z-index:1}
 #tela-login svg.deco{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .logo-login{text-align:center;margin-bottom:28px;position:relative;z-index:1;animation:fadeD .6s ease-out both}
 @keyframes fadeD{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
@@ -142,10 +145,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .erro-login{color:#e05a4e;font-size:13px;text-align:center;margin-top:10px;display:none}
 
 /* APP */
-#app{display:none;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
+#app{display:none;flex-direction:column;position:relative;z-index:1}
 .header{background:linear-gradient(180deg,#0d2218 0%,#0a1a10 100%);border-bottom:1px solid var(--ob);
   padding:12px var(--pad-lat);display:flex;align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
+  position:relative;top:auto;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
+  width:100%;max-width:100%;flex:0 0 auto;
   padding-top:calc(12px + var(--safe-top));
   padding-left:calc(var(--pad-lat) + var(--safe-left));
   padding-right:calc(var(--pad-lat) + var(--safe-right))}
@@ -162,13 +166,12 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 /* NAV BOTTOM — sticky funciona melhor que fixed quando o container pai (#app) rola */
 .nav-bottom{background:linear-gradient(0deg,#0a1a10 0%,#0d2218 100%);border-top:1px solid var(--ob);
-  display:flex;position:sticky;bottom:0;left:0;right:0;z-index:100;
+  display:flex;position:relative;bottom:auto;left:auto;right:auto;z-index:100;
+  width:100%;max-width:100%;flex:0 0 auto;
   padding-bottom:calc(4px + var(--safe-bot));
   padding-left:var(--safe-left);
   padding-right:var(--safe-right);
-  box-shadow:0 -4px 20px rgba(0,0,0,.4);
-  /* margin-top:auto empurra a nav pro fundo do container flex pai */
-  margin-top:auto}
+  box-shadow:0 -4px 20px rgba(0,0,0,.4)}
 .nav-item{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:10px 2px 8px;
   cursor:pointer;border:none;background:transparent;gap:4px;position:relative;transition:all .2s;
@@ -184,10 +187,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .nav-item.ativo .nav-label{background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
 /* CONTEÚDO */
-.conteudo{padding:var(--pad-vert) var(--pad-lat) 24px;flex:1;position:relative;z-index:1;
+.conteudo{padding:var(--pad-vert) var(--pad-lat) 24px;flex:1 1 auto;min-height:0;position:relative;z-index:1;
+  width:100%;max-width:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
   padding-left:calc(var(--pad-lat) + var(--safe-left));
   padding-right:calc(var(--pad-lat) + var(--safe-right))}
-.tela{display:none}.tela.ativa{display:block}
+.tela{display:none;width:100%;max-width:100%;min-width:0;overflow-x:hidden}.tela.ativa{display:block}
 
 /* CARDS */
 .card-resumo{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
@@ -198,7 +202,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .card-resumo.alerta .resumo-numero{background:none;-webkit-text-fill-color:#e05a4e}
 .card-resumo.atencao .resumo-numero{background:none;-webkit-text-fill-color:var(--am)}
 .resumo-label{font-size:10px;color:var(--c3);margin-top:5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
-.grid-resumo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.grid-resumo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:16px;max-width:100%;min-width:0}
 
 /* ========== NOVO DASHBOARD ========== */
 .card-icone{font-size:24px;margin-bottom:8px;opacity:.85}
@@ -213,7 +217,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .resumo-tendencia.neutro{color:var(--c3)}
 
 /* Atalhos rápidos */
-.atalhos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
+.atalhos-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px;max-width:100%;min-width:0}
 .atalho-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);padding:14px 10px;
   display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;
@@ -333,15 +337,15 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 /* Resumo entregador */
 .resumo-entregador{display:none;margin-bottom:14px}
 .resumo-entregador.ativo{display:block}
-.resumo-entregador-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.resumo-entregador-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px;max-width:100%;min-width:0}
 .resumo-entregador-card{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
-  padding:12px 8px;text-align:center;box-shadow:var(--sv)}
-.resumo-entregador-num{font-family:'Cinzel',serif;font-size:20px;font-weight:700;
+  padding:12px 8px;text-align:center;box-shadow:var(--sv);min-width:0;overflow:hidden}
+.resumo-entregador-num{font-family:'Cinzel',serif;font-size:clamp(16px,5vw,20px);font-weight:700;
   background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.resumo-entregador-lbl{font-size:9px;color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-.resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px}
+.resumo-entregador-lbl{font-size:clamp(8px,2.5vw,9px);color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px;max-width:100%;min-width:0}
 .aba-rota{flex:1;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:10px;
-  padding:9px 8px;font-size:11px;font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
+  min-width:0;padding:9px 8px;font-size:clamp(10px,3vw,11px);font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
   letter-spacing:.5px;transition:all .15s}
 .aba-rota.ativa{background:var(--go);color:var(--v1);border-color:transparent}
 .bairro-grupo{margin-bottom:14px}
@@ -851,9 +855,9 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 
 /* ABAS */
 .abas{display:flex;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);
-  padding:3px;margin-bottom:14px;gap:3px}
+  padding:3px;margin-bottom:14px;gap:3px;max-width:100%;min-width:0;overflow:hidden}
 .aba{flex:1;padding:8px 4px;text-align:center;font-size:11px;font-weight:700;border-radius:10px;
-  cursor:pointer;border:none;background:transparent;color:var(--c3);font-family:'Nunito',sans-serif;
+  min-width:0;cursor:pointer;border:none;background:transparent;color:var(--c3);font-family:'Nunito',sans-serif;
   letter-spacing:.5px;text-transform:uppercase;transition:all .2s}
 .aba.ativa{background:var(--go);color:var(--v1);box-shadow:0 2px 8px rgba(200,150,12,.28)}
 
@@ -910,6 +914,10 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   .btn-sair { padding: 6px 8px; font-size: 10px; }
   .resumo-numero { font-size: 26px; }
   .resumo-label { font-size: 9px; }
+  .resumo-entregador-grid { gap: 6px; }
+  .resumo-entregador-card { padding: 10px 5px; }
+  .resumo-entregador-lbl { letter-spacing: .2px; }
+  .aba-rota { padding: 9px 5px; letter-spacing: .2px; }
   .nav-label { font-size: 8px; }
   .nav-icon { font-size: 18px; }
 }
@@ -1811,6 +1819,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>
