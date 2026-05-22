@@ -324,7 +324,9 @@ function resetarBuscasEFiltros() {
     if (botoes[0]) botoes[0].classList.add('ativa');
   });
 
-  // Volta scroll pro topo da tela
+  // Volta a área rolável do app para o topo sem mover a página inteira.
+  const areaConteudo = document.querySelector('.conteudo');
+  if (areaConteudo) areaConteudo.scrollTo({ top: 0, behavior: 'instant' });
   window.scrollTo({top: 0, behavior: 'instant'});
 }
 
@@ -3979,6 +3981,5 @@ window.addEventListener('appinstalled', () => {
   _deferredPrompt = null;
   fecharBannerInstalar();
 });
-
 
 
