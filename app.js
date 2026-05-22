@@ -35,7 +35,6 @@ let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
-const DADOS_OFFLINE_KEY = 'kg-dados-offline-v2';
 
 // ============================================================
 // HELPERS
@@ -222,84 +221,6 @@ function limparBusca(inputId, fnBusca) {
   input.focus();
 }
 
-// ============================================================
-// CACHE LOCAL DOS DADOS DO APP
-// Mantem uma copia dos ultimos pedidos/clientes/produtos no aparelho.
-// Assim o app continua abrindo com informacoes mesmo sem internet.
-// ============================================================
-function normalizarPedidosBanco(lista) {
-  return (lista || []).map(p => ({
-    ...p,
-    cliente_nome: p.clientes?.nome || p.cliente_nome || '–',
-    itens: p.itens_pedido || p.itens || [],
-    descricao: (p.itens_pedido || p.itens || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
-  }));
-}
-
-function salvarDadosOffline(origem = 'sync') {
-  if (MODO_DEMO) return;
-  try {
-    localStorage.setItem(DADOS_OFFLINE_KEY, JSON.stringify({
-      versao: 2,
-      origem,
-      salvo_em: new Date().toISOString(),
-      pedidos: todosOsPedidos,
-      clientes: todosOsClientes,
-      produtos: todosOsProdutos,
-    }));
-  } catch(e) {
-    console.warn('Nao foi possivel salvar dados offline:', e);
-  }
-}
-
-function carregarDadosOffline() {
-  try {
-    const raw = localStorage.getItem(DADOS_OFFLINE_KEY);
-    if (!raw) return null;
-    const cache = JSON.parse(raw);
-    if (!cache || !Array.isArray(cache.pedidos) || !Array.isArray(cache.clientes) || !Array.isArray(cache.produtos)) {
-      return null;
-    }
-    return cache;
-  } catch(e) {
-    console.warn('Nao foi possivel ler dados offline:', e);
-    return null;
-  }
-}
-
-function aplicarDadosOffline(cache) {
-  if (!cache) return false;
-  todosOsPedidos  = normalizarPedidosBanco(cache.pedidos);
-  todosOsClientes = cache.clientes || [];
-  todosOsProdutos = cache.produtos || [];
-  return true;
-}
-
-function renderizarDadosAtuais() {
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  renderizarCatalogo(filtroCatalogo);
-  if (usuario?.perfil === 'vendedor') {
-    renderizarInicioVendedor();
-    renderizarMeusPedidos(filtroMeusPedidos);
-  }
-  if (usuario?.perfil === 'admin') renderizarFinanceiro(filtroFinanceiro);
-  popularSelectClientes();
-}
-
-function carregarCacheOfflineComAviso(motivo) {
-  const cache = carregarDadosOffline();
-  if (!aplicarDadosOffline(cache)) return false;
-  const quando = cache.salvo_em ? new Date(cache.salvo_em).toLocaleString('pt-BR') : 'data desconhecida';
-  avisarInstabilidadeConexao(
-    'MODO OFFLINE',
-    `Mostrando dados salvos neste aparelho (${quando}). As alteracoes pendentes sincronizam quando a internet voltar.`,
-    8000
-  );
-  console.log(`Dados offline carregados (${motivo})`, cache.salvo_em || '');
-  return true;
-}
-
 // Reseta todas as barras de busca e filtros visuais ao trocar de tela
 function resetarBuscasEFiltros() {
   // Apaga todos os inputs de busca conhecidos
@@ -324,9 +245,7 @@ function resetarBuscasEFiltros() {
     if (botoes[0]) botoes[0].classList.add('ativa');
   });
 
-  // Volta a área rolável do app para o topo sem mover a página inteira.
-  const areaConteudo = document.querySelector('.conteudo');
-  if (areaConteudo) areaConteudo.scrollTo({ top: 0, behavior: 'instant' });
+  // Volta scroll pro topo da tela
   window.scrollTo({top: 0, behavior: 'instant'});
 }
 
@@ -339,9 +258,6 @@ const _rendersPendentes = new Set();
 let _renderFrameId = null;
 function agendarRender(tela) {
   _rendersPendentes.add(tela);
-  if (!MODO_DEMO && usuario && (todosOsPedidos.length || todosOsClientes.length || todosOsProdutos.length)) {
-    salvarDadosOffline('mudanca-local');
-  }
   if (_renderFrameId !== null) return; // já tem um frame agendado
   _renderFrameId = requestAnimationFrame(() => {
     const telas = new Set(_rendersPendentes);
@@ -584,10 +500,150 @@ function marcarIsento() {
   }
 }
 
+// Geocoda em lote todos os clientes que ainda não têm coords.
+// Respeita 1 req/segundo do Nominatim → demora ~N segundos para N clientes.
+async function geocodarTodosClientes() {
+  if (!usuario || usuario.perfil !== 'admin') {
+    alert('Apenas o admin pode usar esta função.');
+    return;
+  }
+  if (MODO_DEMO) {
+    alert('Função disponível apenas no modo real (com banco conectado).');
+    return;
+  }
+
+  // Pega clientes com endereço mas sem coords
+  const pendentes = todosOsClientes.filter(c =>
+    c.endereco && c.endereco.trim() &&
+    (c.latitude == null || c.longitude == null)
+  );
+
+  if (!pendentes.length) {
+    alert('✓ Todos os clientes com endereço já estão geocodados!');
+    return;
+  }
+
+  const segundos = pendentes.length;
+  const ok = confirm(
+    `Geocodar ${pendentes.length} cliente(s)?\n\n` +
+    `⏱ Vai levar cerca de ${segundos} segundo(s) (1 consulta por segundo).\n\n` +
+    `O app continua funcionando, mas espere terminar antes de fechar a aba.`
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-geocodar');
+  const status = document.getElementById('geocodar-status');
+  if (btn) btn.disabled = true;
+  if (status) status.style.display = 'block';
+
+  let sucesso = 0, falha = 0;
+  for (let i = 0; i < pendentes.length; i++) {
+    const c = pendentes[i];
+    const pct = Math.round(((i) / pendentes.length) * 100);
+    if (status) {
+      status.className = 'processando';
+      status.innerHTML = `
+        <div>📍 Processando ${i + 1} de ${pendentes.length}: <strong>${esc(c.nome)}</strong></div>
+        <div style="font-size:11px;opacity:.8;margin-top:3px">✓ ${sucesso} geocodados · ✗ ${falha} falhas</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+    }
+
+    try {
+      const res = await geocodarEndereco(c.endereco);
+      if (res.ok) {
+        // Atualiza no banco
+        const payload = { latitude: res.dados.latitude, longitude: res.dados.longitude };
+        const r = await supabase('clientes', 'PATCH', payload, `?id=eq.${c.id}`);
+        if (r.ok) {
+          Object.assign(c, payload);
+          sucesso++;
+        } else {
+          falha++;
+        }
+      } else {
+        falha++;
+      }
+    } catch(e) {
+      falha++;
+    }
+  }
+
+  if (btn) btn.disabled = false;
+  if (status) {
+    status.className = 'concluido';
+    status.innerHTML = `
+      <div style="font-weight:700;margin-bottom:3px">✓ Concluído</div>
+      <div style="font-size:11px">${sucesso} clientes geocodados com sucesso · ${falha} falhas</div>
+      ${falha > 0 ? '<div style="font-size:11px;margin-top:4px;opacity:.8">Falhas geralmente ocorrem com endereços imprecisos. Edite o cliente e ajuste o endereço para tentar novamente.</div>' : ''}
+      <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>`;
+  }
+}
+
+// ============================================================
+// GEOCODING VIA NOMINATIM (OpenStreetMap, gratuito, sem cadastro)
+// Converte endereço em coordenadas (latitude, longitude).
+// Limite: 1 requisição/segundo. Por isso usamos throttle entre chamadas em lote.
+// ============================================================
+const _cacheGeoEndereco = new Map();
+let _ultimaConsultaNominatim = 0;
+
+async function geocodarEndereco(enderecoTexto) {
+  if (!enderecoTexto || !enderecoTexto.trim()) {
+    return { ok: false, erro: 'Endereço vazio' };
+  }
+  const chave = enderecoTexto.trim().toLowerCase();
+  if (_cacheGeoEndereco.has(chave)) {
+    return { ok: true, dados: _cacheGeoEndereco.get(chave), cached: true };
+  }
+
+  // Throttle: respeita 1 req/segundo do Nominatim (regra de uso)
+  const agora = Date.now();
+  const desdeUltima = agora - _ultimaConsultaNominatim;
+  if (desdeUltima < 1100) {
+    await new Promise(r => setTimeout(r, 1100 - desdeUltima));
+  }
+  _ultimaConsultaNominatim = Date.now();
+
+  // Acrescenta ", Brasil" no fim se não tiver país/UF claro (melhora muito a precisão)
+  const query = enderecoTexto.trim() + (/, brasil|, br|brazil/i.test(enderecoTexto) ? '' : ', Brasil');
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' + encodeURIComponent(query);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { ok: false, erro: `HTTP ${res.status}` };
+    const arr = await res.json();
+    if (!Array.isArray(arr) || !arr.length) {
+      return { ok: false, erro: 'Endereço não encontrado' };
+    }
+    const r = arr[0];
+    const dados = {
+      latitude: Number(r.lat),
+      longitude: Number(r.lon),
+      display_name: r.display_name || '',
+    };
+    if (isNaN(dados.latitude) || isNaN(dados.longitude)) {
+      return { ok: false, erro: 'Coordenadas inválidas retornadas' };
+    }
+    _cacheGeoEndereco.set(chave, dados);
+    return { ok: true, dados };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') return { ok: false, erro: 'Tempo esgotado' };
+    return { ok: false, erro: e.message || 'Falha ao geocodar' };
+  }
+}
+
 // ============================================================
 // CONSULTA DE CNPJ NA BRASILAPI (gratuita, sem cadastro)
 // ============================================================
-// Cache em memoria: evita consultar o mesmo CNPJ multiplas vezes
+// Cache em memória: evita consultar o mesmo CNPJ múltiplas vezes
 const _cacheCNPJ = new Map();
 
 async function consultarCNPJ(cnpjLimpo) {
@@ -865,13 +921,6 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     if (!res.ok) {
       const txt = await res.text();
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
-      if (res.status >= 500 || res.status === 0) {
-        avisarInstabilidadeConexao(
-          'SERVIDOR INDISPONÍVEL',
-          'O servidor demorou ou recusou a resposta. Tente novamente em instantes.',
-          7000
-        );
-      }
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
     if (metodo==='DELETE') return { ok:true, dados:true };
@@ -879,77 +928,11 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
-      avisarInstabilidadeConexao(
-        'CONEXÃO LENTA',
-        'A operação demorou demais para responder.',
-        7000
-      );
       return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
     }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
-    document.body.classList.add('offline');
-    avisarInstabilidadeConexao(
-      navigator.onLine ? 'INSTABILIDADE NA CONEXÃO' : 'MODO OFFLINE',
-      'Não consegui falar com o servidor agora.',
-      7000
-    );
     return { ok:false, erro: e.message };
   }
-}
-
-function erroPareceConexao(erro) {
-  return /tempo esgotado|timeout|offline|failed\s*to\s*fetch|fetch failed|load failed|networkerror|network|internet|conex|cors|HTTP 0|HTTP 50\d|HTTP 502|HTTP 503|HTTP 504/i.test(String(erro || ''));
-}
-
-function erroPareceCampoAusente(erro) {
-  return /schema cache|could not find|column .* does not exist|PGRST204/i.test(String(erro || ''));
-}
-
-function payloadPedidoBasico(payload) {
-  return {
-    cliente_id: payload.cliente_id,
-    descricao: payload.descricao,
-    valor: payload.valor,
-    data_entrega: payload.data_entrega,
-    data_vencimento: payload.data_vencimento,
-    observacao: payload.observacao,
-  };
-}
-
-async function atualizarPedidoComFallback(pedido_id, payload) {
-  let resPed = await supabase('pedidos','PATCH', payload, `?id=eq.${pedido_id}`);
-  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
-
-  // Alguns bancos podem nao ter ainda as colunas novas de pagamento.
-  // Nesse caso, salva o pedido com os campos essenciais para nao travar a edicao.
-  console.warn('Pedido: tentando atualizar novamente apenas com campos basicos.', resPed.erro);
-  return supabase('pedidos','PATCH', payloadPedidoBasico(payload), `?id=eq.${pedido_id}`);
-}
-
-async function salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens) {
-  const resPed = await atualizarPedidoComFallback(pedido_id, payloadPedido);
-  if (!resPed.ok) {
-    return { ok:false, etapa:'pedido', erro:resPed.erro || 'Erro ao atualizar pedido' };
-  }
-
-  const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
-  if (!resDel.ok) {
-    return { ok:false, etapa:'limpar itens antigos', erro:resDel.erro || 'Erro ao limpar itens antigos' };
-  }
-
-  const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-    pedido_id,
-    produto_id: it.produto_id,
-    nome: it.nome,
-    qtd: it.qtd,
-    preco_unit: it.preco_unit,
-  })));
-  const erroItens = resItens.find(r => !r.ok);
-  if (erroItens) {
-    return { ok:false, etapa:'salvar itens', erro:erroItens.erro || 'Erro ao salvar itens do pedido' };
-  }
-
-  return { ok:true };
 }
 
 // ============================================================
@@ -1133,30 +1116,12 @@ function navegarPara(id) {
 // ============================================================
 async function carregarTudo() {
   if (!MODO_DEMO) {
-    if (!navigator.onLine && carregarCacheOfflineComAviso('sem internet ao abrir')) {
-      renderizarDadosAtuais();
-      if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
-      iniciarAutoRefresh();
-      return;
-    }
-    if (!navigator.onLine) {
-      alert('Sem internet e ainda não existem dados salvos neste aparelho. Abra o app uma vez com internet para ativar o modo offline.');
-      iniciarAutoRefresh();
-      return;
-    }
-
     const [resPed, resCli, resProd] = await Promise.all([
       supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
       supabase('clientes','GET',null,'?order=nome.asc'),
       supabase('produtos','GET',null,'?order=nome.asc'),
     ]);
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
-      if (carregarCacheOfflineComAviso('falha ao carregar online')) {
-        renderizarDadosAtuais();
-        if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
-        iniciarAutoRefresh();
-        return;
-      }
       alert('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
@@ -1168,8 +1133,6 @@ async function carregarTudo() {
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
-    todosOsPedidos = normalizarPedidosBanco(todosOsPedidos);
-    salvarDadosOffline('carregarTudo');
   }
   renderizarDashboard();
   renderizarEntregas(filtroEntregas);
@@ -1226,7 +1189,6 @@ async function sincronizarDados() {
     todosOsPedidos  = novosPedidos;
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
-    salvarDadosOffline('sincronizarDados');
 
     // Re-renderiza só se algo mudou (para não causar flicker)
     if (mudou) {
@@ -2324,7 +2286,18 @@ function verDetalheCliente(id) {
   if (c.whatsapp)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📲 ${esc(mascaraTelefone(c.whatsapp))}</div>`);
   if (c.telefone_fixo)      linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📞 ${esc(mascaraTelefone(c.telefone_fixo))}</div>`);
   if (c.email)              linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📧 ${esc(c.email)}</div>`);
-  if (c.endereco) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}</div>`);
+  if (c.endereco) {
+    // Indicador de geocoding (só admin vê)
+    let geoIcon = '';
+    if (usuario.perfil === 'admin') {
+      if (c.latitude && c.longitude) {
+        geoIcon = ' <span style="font-size:10px;color:#7ec850;margin-left:4px" title="Endereço geocodado: rota inteligente funciona">📡</span>';
+      } else {
+        geoIcon = ' <span style="font-size:10px;color:#f4a04a;margin-left:4px" title="Endereço sem coordenadas: edite o cliente para geocodar">⚠</span>';
+      }
+    }
+    linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}${geoIcon}</div>`);
+  }
   if (c.inscricao_estadual) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">🏷️ IE: ${esc(c.inscricao_estadual)}</div>`);
   if (c.observacao)         linhas.push(`<div style="font-size:13px;color:var(--c2);margin-top:8px;padding-top:8px;border-top:1px solid var(--ol);font-style:italic">📝 ${esc(c.observacao)}</div>`);
 
@@ -2768,41 +2741,32 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     const pedido_id = pedidoEmEdicao.id;
 
     if (!MODO_DEMO) {
-      const payloadPedido = {
+      // Atualiza o pedido
+      const resPed = await supabase('pedidos','PATCH',{
         cliente_id, descricao, valor,
         data_entrega, data_vencimento: data_vencimento||null,
         observacao: obs,
         forma_pagamento,
         prazo_dias: prazo_dias || null,
         prazos_boleto: prazos_boleto || null,
-      };
-
-      if (!navigator.onLine) {
-        adicionarNaFilaOffline({
-          tipo: 'editar-pedido',
-          pedidoId: pedido_id,
-          payload: payloadPedido,
-          itens,
-        });
-      } else {
-        const resBanco = await salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens);
-        if (!resBanco.ok) {
-          if (erroPareceConexao(resBanco.erro)) {
-            adicionarNaFilaOffline({
-              tipo: 'editar-pedido',
-              pedidoId: pedido_id,
-              payload: payloadPedido,
-              itens,
-            });
-          } else {
-            alert(
-              'Erro ao atualizar pedido.\n\n' +
-              'Etapa: ' + (resBanco.etapa || 'pedido') + '\n' +
-              'Detalhes: ' + (resBanco.erro || 'desconhecido')
-            );
-            return;
-          }
-        }
+      }, `?id=eq.${pedido_id}`);
+      if (!resPed.ok) {
+        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        return;
+      }
+      // Apaga itens antigos
+      const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
+      if (!resDel.ok) {
+        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
+        return;
+      }
+      // Insere itens novos
+      const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
+      })));
+      if (resItens.some(r => !r.ok)) {
+        alert('Erro ao salvar itens atualizados. Verifique no banco.');
+        return;
       }
     }
 
@@ -2991,6 +2955,28 @@ async function salvarCliente() {
 
   salvando = true;
   try {
+    // Geocoding automático do endereço (se mudou ou se cliente novo)
+    let latitude = null, longitude = null;
+    if (endereco) {
+      const enderecoAntigo = clienteSelecionado?.endereco || '';
+      const precisaGeocodar = !clienteSelecionado
+        || endereco !== enderecoAntigo
+        || !clienteSelecionado.latitude
+        || !clienteSelecionado.longitude;
+      if (precisaGeocodar) {
+        const resGeo = await geocodarEndereco(endereco);
+        if (resGeo.ok) {
+          latitude = resGeo.dados.latitude;
+          longitude = resGeo.dados.longitude;
+        }
+        // Se falhou, salva sem coords mesmo (não bloqueia o cadastro)
+      } else {
+        // Mantém as coords antigas
+        latitude = clienteSelecionado.latitude;
+        longitude = clienteSelecionado.longitude;
+      }
+    }
+
     // ==== EDIÇÃO ====
     if (clienteSelecionado) {
       const id = clienteSelecionado.id;
@@ -3004,6 +2990,7 @@ async function salvarCliente() {
         tipo_pessoa,
         inscricao_estadual: ieRaw || null,
         observacao: observacao || null,
+        latitude, longitude,
       };
       if (!MODO_DEMO) {
         const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
@@ -3038,6 +3025,7 @@ async function salvarCliente() {
       tipo_pessoa,
       inscricao_estadual: ieRaw || null,
       observacao: observacao || null,
+      latitude, longitude,
     };
     if (!MODO_DEMO) {
       const res = await supabase('clientes','POST', novo);
@@ -3730,93 +3718,13 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// BANNER INTELIGENTE DE CONEXÃO + FILA OFFLINE
-// ============================================================
-const FILA_OFFLINE_KEY = 'kg-fila-offline';
-const BANNER_CONEXAO_DURACAO_MS = 6500;
-const BANNER_CONEXAO_OK_MS = 3500;
-const BANNER_CONEXAO_REAVISO_MS = 60000;
-let bannerConexaoTimer = null;
-let ultimoAvisoFilaPendente = 0;
-let statusOnlineAnterior = navigator.onLine;
-let statusConexaoInicializado = false;
-
-function fecharBannerConexao() {
-  clearTimeout(bannerConexaoTimer);
-  bannerConexaoTimer = null;
-  const banner = document.getElementById('banner-offline');
-  if (!banner) return;
-  banner.classList.remove('visivel');
-  banner.setAttribute('aria-hidden', 'true');
-}
-
-function mensagemOfflineComFila(mensagemBase) {
-  const qtd = lerFilaOffline().length;
-  if (!qtd) return mensagemBase;
-  const plural = qtd === 1 ? 'ação pendente' : 'ações pendentes';
-  return `${mensagemBase} ${qtd} ${plural} na fila serão sincronizadas automaticamente.`;
-}
-
-function mostrarBannerConexao(tipo, titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
-  const banner = document.getElementById('banner-offline');
-  if (!banner) return;
-
-  const icone = document.getElementById('banner-offline-icone');
-  const tituloEl = document.getElementById('banner-offline-titulo');
-  const msgEl = document.getElementById('banner-offline-msg');
-  if (icone) {
-    icone.textContent = tipo === 'ok' ? '✓' : (tipo === 'syncing' ? '↻' : '⚠️');
-  }
-  if (tituloEl) tituloEl.textContent = titulo;
-  if (msgEl) msgEl.textContent = mensagem;
-
-  banner.classList.remove('ok', 'syncing');
-  if (tipo === 'ok' || tipo === 'syncing') banner.classList.add(tipo);
-  banner.classList.add('visivel');
-  banner.setAttribute('aria-hidden', 'false');
-
-  clearTimeout(bannerConexaoTimer);
-  if (duracao > 0) {
-    bannerConexaoTimer = setTimeout(fecharBannerConexao, duracao);
-  }
-}
-
-function avisarInstabilidadeConexao(titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
-  mostrarBannerConexao('offline', titulo, mensagemOfflineComFila(mensagem), duracao);
-}
-
-// ============================================================
 // DETECÇÃO DE STATUS ONLINE/OFFLINE
 // ============================================================
 function atualizarStatusConexao() {
-  const onlineAgora = navigator.onLine;
-  const ficouOffline = statusConexaoInicializado && statusOnlineAnterior && !onlineAgora;
-  const voltouOnline = statusConexaoInicializado && !statusOnlineAnterior && onlineAgora;
-
-  document.body.classList.toggle('offline', !onlineAgora);
-
-  if (!statusConexaoInicializado && !onlineAgora) {
-    avisarInstabilidadeConexao(
-      'MODO OFFLINE',
-      'Sem conexão agora. Você pode continuar e as ações pendentes serão guardadas.'
-    );
-  } else if (ficouOffline) {
-    avisarInstabilidadeConexao(
-      'MODO OFFLINE',
-      'A conexão caiu. Dados podem estar desatualizados.'
-    );
-  } else if (voltouOnline) {
-    mostrarBannerConexao(
-      'ok',
-      'CONEXÃO RESTAURADA',
-      'Internet voltou. Vou sincronizar ações pendentes, se houver.',
-      BANNER_CONEXAO_OK_MS
-    );
-  }
-
-  if (onlineAgora && usuario) processarFilaOffline();
-  statusOnlineAnterior = onlineAgora;
-  statusConexaoInicializado = true;
+  const offline = !navigator.onLine;
+  document.body.classList.toggle('offline', offline);
+  // Se voltou online, tenta processar fila de ações pendentes
+  if (!offline && usuario) processarFilaOffline();
 }
 
 window.addEventListener('online',  atualizarStatusConexao);
@@ -3829,6 +3737,7 @@ atualizarStatusConexao();
 // Quando entregador marca entregue offline, ação fica enfileirada
 // em localStorage. Quando volta online, envia tudo automaticamente.
 // ============================================================
+const FILA_OFFLINE_KEY = 'kg-fila-offline';
 
 function lerFilaOffline() {
   try {
@@ -3844,19 +3753,9 @@ function gravarFilaOffline(fila) {
 }
 
 function adicionarNaFilaOffline(acao) {
-  let fila = lerFilaOffline();
-  // Para edicao de pedido, mantem apenas a versao mais recente daquele pedido.
-  if (acao.tipo === 'editar-pedido' && acao.pedidoId != null) {
-    fila = fila.filter(a => !(a.tipo === 'editar-pedido' && a.pedidoId === acao.pedidoId));
-  }
+  const fila = lerFilaOffline();
   fila.push({ ...acao, ts: Date.now() });
   gravarFilaOffline(fila);
-  mostrarBannerConexao(
-    'syncing',
-    'AÇÃO SALVA OFFLINE',
-    mensagemOfflineComFila('Ela ficou guardada neste aparelho.'),
-    BANNER_CONEXAO_DURACAO_MS
-  );
 }
 
 let _processandoFila = false;
@@ -3881,15 +3780,6 @@ async function processarFilaOffline() {
         } else {
           falha.push(acao);
         }
-      } else if (acao.tipo === 'editar-pedido') {
-        const res = await salvarEdicaoPedidoNoBanco(acao.pedidoId, acao.payload, acao.itens || []);
-        if (res.ok) {
-          sucesso.push(acao);
-          const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
-          if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload, { itens: acao.itens || todosOsPedidos[idx].itens });
-        } else {
-          falha.push(acao);
-        }
       }
     } catch(e) {
       falha.push(acao);
@@ -3903,28 +3793,9 @@ async function processarFilaOffline() {
   if (sucesso.length) {
     // Notifica o usuário e re-renderiza
     console.log(`✓ ${sucesso.length} ação(ões) sincronizada(s) com sucesso`);
-    const pendentes = falha.length;
-    mostrarBannerConexao(
-      pendentes ? 'syncing' : 'ok',
-      pendentes ? 'SINCRONIZAÇÃO PARCIAL' : 'TUDO SINCRONIZADO',
-      pendentes
-        ? `${sucesso.length} ação(ões) sincronizada(s). ${pendentes} ainda pendente(s).`
-        : `${sucesso.length} ação(ões) sincronizada(s) com sucesso.`,
-      pendentes ? BANNER_CONEXAO_DURACAO_MS : BANNER_CONEXAO_OK_MS
-    );
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
       agendarRender('entregas');
-    }
-  } else if (falha.length) {
-    const agora = Date.now();
-    if (agora - ultimoAvisoFilaPendente > BANNER_CONEXAO_REAVISO_MS) {
-      ultimoAvisoFilaPendente = agora;
-      avisarInstabilidadeConexao(
-        'SINCRONIZAÇÃO PENDENTE',
-        'Ainda não foi possível enviar as ações guardadas.',
-        BANNER_CONEXAO_DURACAO_MS
-      );
     }
   }
 }
@@ -3981,5 +3852,3 @@ window.addEventListener('appinstalled', () => {
   _deferredPrompt = null;
   fecharBannerInstalar();
 });
-
-
