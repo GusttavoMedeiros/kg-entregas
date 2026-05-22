@@ -164,6 +164,48 @@ function matchBusca(termo, ...campos) {
   });
 }
 
+function tokensBusca(texto) {
+  return (normalizar(texto).match(/[a-z0-9]+/g) || []).filter(Boolean);
+}
+
+function tokenCombinaComPalavra(token, palavra, permitirMiolo = true) {
+  const tokenNorm = normalizar(token);
+  const palavraNorm = normalizar(palavra);
+  if (!tokenNorm || !palavraNorm) return false;
+  if (tokenNorm.startsWith(palavraNorm)) return true;
+  if (permitirMiolo && palavraNorm.length >= 3 && tokenNorm.includes(palavraNorm)) return true;
+  if (palavraNorm.length < 3) return false;
+
+  const tokenFuzzy = fuzzyKey(tokenNorm);
+  const palavraFuzzy = fuzzyKey(palavraNorm);
+  if (tokenFuzzy.startsWith(palavraFuzzy)) return true;
+  return permitirMiolo && palavraFuzzy.length >= 3 && tokenFuzzy.includes(palavraFuzzy);
+}
+
+// Busca especifica para produtos.
+// A categoria so entra por prefixo ("ra" -> "Racao"), evitando que "ca" ache "raCAo".
+function matchBuscaProduto(termo, produto) {
+  if (!termo || !termo.trim()) return true;
+
+  const palavras = termo.trim().split(/\s+/).filter(Boolean);
+  const nome = produto?.nome || '';
+  const categoria = produto?.categoria || '';
+  const termoNorm = normalizar(termo.trim());
+  const nomeNorm = normalizar(nome);
+
+  if (nomeNorm.includes(termoNorm)) return true;
+
+  const nomeTokens = tokensBusca(nome);
+  const categoriaTokens = tokensBusca(categoria);
+
+  return palavras.every(palavra => {
+    const bateNome = nomeTokens.some(token => tokenCombinaComPalavra(token, palavra, true));
+    if (bateNome) return true;
+
+    return categoriaTokens.some(token => tokenCombinaComPalavra(token, palavra, false));
+  });
+}
+
 // Aplica highlight dourado sem quebrar o HTML do card.
 // Antes o replace rodava em cima de tags <mark> ja criadas; buscar "Saborosa c"
 // destacava a letra "c" dentro de class="busca-match" e o HTML aparecia na tela.
@@ -2141,7 +2183,7 @@ function filtrarCatalogo(filtro, btn) {
 function _buscarProdutoImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBusca(t, p.nome, p.categoria || '')
+    matchBuscaProduto(t, p)
   );
   const el = document.getElementById('lista-catalogo');
   if (!lista.length) {
@@ -2158,7 +2200,7 @@ function _buscarProdutoImpl(termo) {
 function _buscarProdutoModalImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBusca(t, p.nome, p.categoria || '')
+    matchBuscaProduto(t, p)
   );
   const el = document.getElementById('lista-produto-modal');
   if (!lista.length) {
