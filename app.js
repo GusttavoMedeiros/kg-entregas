@@ -1138,7 +1138,7 @@ async function carregarTudo() {
       return;
     }
     if (!navigator.onLine) {
-      alert('Sem internet e ainda nÃ£o existem dados salvos neste aparelho. Abra o app uma vez com internet para ativar o modo offline.');
+      alert('Sem internet e ainda não existem dados salvos neste aparelho. Abra o app uma vez com internet para ativar o modo offline.');
       iniciarAutoRefresh();
       return;
     }
