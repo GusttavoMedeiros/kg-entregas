@@ -2769,6 +2769,7 @@ function gerarPDFRelatorio() {
   const porProduto = resumoProdutosRelatorio(pedidos);
   const geradoEm = new Date().toLocaleString('pt-BR');
   const titulo = `Relatório KG Entregas - ${dataBR(filtros.inicio)} a ${dataBR(filtros.fim)}`;
+  const logoUrl = new URL('logo.png', window.location.href).href;
 
   const html = `<!doctype html>
 <html lang="pt-BR">
@@ -2776,71 +2777,120 @@ function gerarPDFRelatorio() {
 <meta charset="utf-8">
 <title>${esc(titulo)}</title>
 <style>
-  *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#172118;background:#fff}
-  .pagina{padding:28px}.topo{border-bottom:3px solid #c8960c;padding-bottom:14px;margin-bottom:18px}
-  h1{margin:0 0 6px;font-size:24px;color:#0d3b24}.sub{font-size:12px;color:#516052;line-height:1.45}
-  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 18px}
-  .card{border:1px solid #d8decf;border-radius:8px;padding:10px;background:#f8faf4}
-  .num{font-size:18px;font-weight:800;color:#9b7208}.lbl{font-size:9px;text-transform:uppercase;color:#607060;margin-top:4px}
-  h2{font-size:15px;color:#0d3b24;margin:18px 0 8px;border-bottom:1px solid #d8decf;padding-bottom:5px}
-  table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px}
-  th,td{border:1px solid #d8decf;padding:6px;vertical-align:top;text-align:left}
-  th{background:#eef4e9;color:#0d3b24;text-transform:uppercase;font-size:9px}
-  tr.entregue td{background:#f0faef}tr.pendente td{background:#fffaf0}
-  .badge{display:inline-block;border-radius:999px;padding:2px 7px;font-weight:700;font-size:9px}
-  .ok{background:#dff5df;color:#176d32}.warn{background:#fff0c2;color:#8a6500}.bad{background:#ffe1dd;color:#9d2f25}
-  .obs{color:#5e6a5c}.itens{font-size:10px;color:#4f5d4c;line-height:1.35}
-  @media print{.pagina{padding:16px}.cards{grid-template-columns:repeat(5,1fr)}button{display:none}tr{break-inside:avoid}}
+  *{box-sizing:border-box}
+  :root{--verde:#092316;--verde2:#123a26;--dourado:#c8960c;--dourado2:#f0c94b;--linha:#dfe5d8;--texto:#18251b;--muted:#667365}
+  body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--texto);background:#e8ece6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pagina{max-width:980px;margin:0 auto;padding:26px}
+  .relatorio{background:#fff;border:1px solid #d8ded2;border-radius:22px;overflow:hidden;box-shadow:0 18px 42px rgba(9,35,22,.16)}
+  .topo{background:linear-gradient(135deg,var(--verde) 0%,var(--verde2) 68%,#21482f 100%);color:#fff;padding:26px 30px 22px;position:relative}
+  .topo:after{content:"";position:absolute;left:30px;right:30px;bottom:0;height:3px;background:linear-gradient(90deg,var(--dourado),var(--dourado2),transparent);border-radius:999px}
+  .marca{display:flex;align-items:center;gap:16px}
+  .logo-wrap{width:72px;height:72px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(240,201,75,.52);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .logo-wrap img{width:58px;height:58px;border-radius:50%;object-fit:cover;display:block}
+  h1{margin:0;font-size:25px;letter-spacing:.2px;line-height:1.1}
+  .empresa{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#f4d56b;font-weight:800;margin-bottom:5px}
+  .sub{font-size:12px;color:#d8e4d4;line-height:1.5;margin-top:8px}
+  .periodo-chip{margin-left:auto;align-self:flex-start;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:11px;font-weight:800;color:#ffe180;white-space:nowrap}
+  .conteudo-pdf{padding:22px 30px 30px}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 0 22px}
+  .card{border:1px solid var(--linha);border-radius:16px;padding:13px 12px;background:linear-gradient(180deg,#fff 0%,#f7faf4 100%);box-shadow:0 5px 16px rgba(19,50,31,.06)}
+  .num{font-size:18px;font-weight:900;color:#a67800;line-height:1.15;word-break:break-word}
+  .lbl{font-size:9px;text-transform:uppercase;color:var(--muted);margin-top:5px;font-weight:800;letter-spacing:.7px}
+  .secao{margin-top:20px}
+  .secao-titulo{display:flex;align-items:center;gap:9px;margin:0 0 10px;color:var(--verde);font-size:15px;font-weight:900}
+  .secao-titulo:before{content:"";width:8px;height:20px;border-radius:999px;background:linear-gradient(180deg,var(--dourado2),var(--dourado))}
+  table{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:12px;font-size:11px;border:1px solid var(--linha);border-radius:14px;overflow:hidden}
+  th,td{padding:9px 10px;vertical-align:top;text-align:left;border-bottom:1px solid var(--linha)}
+  th{background:#f1f6ec;color:#24422c;text-transform:uppercase;font-size:8.5px;letter-spacing:.6px;font-weight:900}
+  tr:last-child td{border-bottom:none}
+  tr.entregue td{background:#f4fbf1}
+  tr.pendente td{background:#fff9e8}
+  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-weight:900;font-size:9px;line-height:1.1;white-space:nowrap}
+  .ok{background:#dff5df;color:#176d32;border:1px solid #bfe5c2}
+  .warn{background:#fff0c2;color:#8a6500;border:1px solid #efd680}
+  .bad{background:#ffe1dd;color:#9d2f25;border:1px solid #efb7af}
+  .obs{display:block;color:var(--muted);margin-top:4px;font-size:10px;line-height:1.3}
+  .itens{font-size:10px;color:#455245;line-height:1.45}
+  .pedido-id{font-weight:900;color:var(--verde)}
+  .valor-final{font-weight:900;color:#9b7208}
+  .rodape{margin-top:18px;padding-top:12px;border-top:1px solid var(--linha);display:flex;justify-content:space-between;color:#7a8678;font-size:10px}
+  @page{size:A4;margin:10mm}
+  @media print{
+    body{background:#fff}.pagina{padding:0;max-width:none}.relatorio{border:none;border-radius:0;box-shadow:none}
+    .topo{border-radius:0}.conteudo-pdf{padding:18px 22px}.cards{grid-template-columns:repeat(5,1fr)}
+    .card{box-shadow:none}tr,.card,.secao{break-inside:avoid}button{display:none}
+  }
 </style>
 </head>
 <body>
 <div class="pagina">
-  <div class="topo">
-    <h1>Relatório KG Entregas</h1>
-    <div class="sub">${esc(textoFiltrosRelatorio(filtros))}<br>Gerado em ${esc(geradoEm)} · Usuário: Admin</div>
+  <div class="relatorio">
+    <div class="topo">
+      <div class="marca">
+        <div class="logo-wrap"><img src="${esc(logoUrl)}" alt="KG Agropet"></div>
+        <div>
+          <div class="empresa">KG Agropet</div>
+          <h1>Relatório de Entregas</h1>
+          <div class="sub">${esc(textoFiltrosRelatorio(filtros))}<br>Gerado em ${esc(geradoEm)} · Usuário: Admin</div>
+        </div>
+        <div class="periodo-chip">${dataBR(filtros.inicio)} — ${dataBR(filtros.fim)}</div>
+      </div>
+    </div>
+    <div class="conteudo-pdf">
+      <div class="cards">
+        <div class="card"><div class="num">${pedidos.length}</div><div class="lbl">Pedidos</div></div>
+        <div class="card"><div class="num">${moeda(resumo.total)}</div><div class="lbl">Total vendido</div></div>
+        <div class="card"><div class="num">${resumo.entregues}</div><div class="lbl">Entregues</div></div>
+        <div class="card"><div class="num">${moeda(resumo.abertoValor)}</div><div class="lbl">Em aberto</div></div>
+        <div class="card"><div class="num">${moeda(resumo.ticket)}</div><div class="lbl">Ticket médio</div></div>
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Resumo por origem da venda</div>
+        <table>
+          <thead><tr><th>Origem</th><th>Pedidos</th><th>Entregues</th><th>Total</th></tr></thead>
+          <tbody>${porVendedor.map(v => `<tr><td><b>${esc(v.nome)}</b></td><td>${v.qtd}</td><td>${v.entregues}</td><td class="valor-final">${moeda(v.total)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Produtos mais vendidos no período</div>
+        <table>
+          <thead><tr><th>Produto</th><th>Quantidade</th><th>Total estimado</th></tr></thead>
+          <tbody>${porProduto.length ? porProduto.map(p => `<tr><td><b>${esc(p.nome)}</b></td><td>${p.qtd}</td><td class="valor-final">${moeda(p.total)}</td></tr>`).join('') : '<tr><td colspan="3">Sem itens detalhados neste período.</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Pedidos detalhados</div>
+        <table>
+          <thead><tr><th>Pedido</th><th>Cliente</th><th>Venda</th><th>Status</th><th>Pagamento</th><th>Datas</th><th>Itens e observações</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${pedidos.map(p => {
+              const entregue = p.status === 'entregue';
+              const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (entregue ? 'Não registrado' : 'Aguardando');
+              const statusClass = entregue ? 'ok' : (isAtrasado(p) ? 'bad' : 'warn');
+              const pagamentoClass = foiPago(p) ? 'ok' : (p.status_pagamento === 'recusado' ? 'bad' : 'warn');
+              return `<tr class="${entregue ? 'entregue' : 'pendente'}">
+                <td><span class="pedido-id">#${esc(p.id || '–')}</span></td>
+                <td><b>${esc(p.cliente_nome || 'Cliente não informado')}</b><span class="obs">${esc(p.observacao || '')}</span></td>
+                <td>Vendido por: <b>${esc(nomeVendedorRelatorio(p.vendedor))}</b><br>Entregue por: <b>${esc(entreguePor)}</b></td>
+                <td><span class="badge ${statusClass}">${esc(nomeStatusRelatorio(p))}</span></td>
+                <td><span class="badge ${pagamentoClass}">${esc(nomePagamentoRelatorio(p))}</span></td>
+                <td>Entrega: ${dataBR(p.data_entrega)}<br>Venc.: ${dataBR(p.data_vencimento)}<br>Pago em: ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</td>
+                <td><div class="itens">${esc(itensPedidoTexto(p) || '–')}</div></td>
+                <td class="valor-final">${moeda(p.valor)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="rodape">
+        <span>KG Entregas · Relatório administrativo</span>
+        <span>${pedidos.length} pedido(s) analisado(s)</span>
+      </div>
+    </div>
   </div>
-  <div class="cards">
-    <div class="card"><div class="num">${pedidos.length}</div><div class="lbl">Pedidos</div></div>
-    <div class="card"><div class="num">${moeda(resumo.total)}</div><div class="lbl">Total vendido</div></div>
-    <div class="card"><div class="num">${resumo.entregues}</div><div class="lbl">Entregues</div></div>
-    <div class="card"><div class="num">${moeda(resumo.abertoValor)}</div><div class="lbl">Em aberto</div></div>
-    <div class="card"><div class="num">${moeda(resumo.ticket)}</div><div class="lbl">Ticket médio</div></div>
-  </div>
-
-  <h2>Resumo por origem da venda</h2>
-  <table>
-    <thead><tr><th>Origem</th><th>Pedidos</th><th>Entregues</th><th>Total</th></tr></thead>
-    <tbody>${porVendedor.map(v => `<tr><td>${esc(v.nome)}</td><td>${v.qtd}</td><td>${v.entregues}</td><td>${moeda(v.total)}</td></tr>`).join('')}</tbody>
-  </table>
-
-  <h2>Produtos mais vendidos no período</h2>
-  <table>
-    <thead><tr><th>Produto</th><th>Quantidade</th><th>Total estimado</th></tr></thead>
-    <tbody>${porProduto.length ? porProduto.map(p => `<tr><td>${esc(p.nome)}</td><td>${p.qtd}</td><td>${moeda(p.total)}</td></tr>`).join('') : '<tr><td colspan="3">Sem itens detalhados neste período.</td></tr>'}</tbody>
-  </table>
-
-  <h2>Pedidos detalhados</h2>
-  <table>
-    <thead><tr><th>Pedido</th><th>Cliente</th><th>Venda</th><th>Status</th><th>Pagamento</th><th>Datas</th><th>Itens e observações</th><th>Valor</th></tr></thead>
-    <tbody>
-      ${pedidos.map(p => {
-        const entregue = p.status === 'entregue';
-        const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (entregue ? 'Não registrado' : 'Aguardando');
-        const statusClass = entregue ? 'ok' : (isAtrasado(p) ? 'bad' : 'warn');
-        const pagamentoClass = foiPago(p) ? 'ok' : (p.status_pagamento === 'recusado' ? 'bad' : 'warn');
-        return `<tr class="${entregue ? 'entregue' : 'pendente'}">
-          <td>#${esc(p.id || '–')}</td>
-          <td><b>${esc(p.cliente_nome || 'Cliente não informado')}</b><br><span class="obs">${esc(p.observacao || '')}</span></td>
-          <td>Vendido por: <b>${esc(nomeVendedorRelatorio(p.vendedor))}</b><br>Entregue por: <b>${esc(entreguePor)}</b></td>
-          <td><span class="badge ${statusClass}">${esc(nomeStatusRelatorio(p))}</span></td>
-          <td><span class="badge ${pagamentoClass}">${esc(nomePagamentoRelatorio(p))}</span></td>
-          <td>Entrega: ${dataBR(p.data_entrega)}<br>Venc.: ${dataBR(p.data_vencimento)}<br>Pago em: ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</td>
-          <td><div class="itens">${esc(itensPedidoTexto(p) || '–')}</div></td>
-          <td><b>${moeda(p.valor)}</b></td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>
 </div>
 <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script>
 </body>
