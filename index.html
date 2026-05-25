@@ -869,6 +869,32 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 .fin-label{font-size:10px;color:var(--c3);margin-top:4px;letter-spacing:.5px;text-transform:uppercase}
 .fin-devendo{color:#e05a4e}.fin-recebido{color:var(--gn)}
 
+/* RELATÓRIOS */
+.relatorio-filtros{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);
+  padding:14px;margin-bottom:14px;box-shadow:var(--sv)}
+.relatorio-grid{display:grid;grid-template-columns:1fr;gap:10px}
+.relatorio-acoes{display:grid;grid-template-columns:1fr;gap:10px;margin-top:4px}
+.relatorio-resumo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.relatorio-card{background:rgba(10,26,16,.62);border:1px solid var(--ol);border-radius:var(--r);
+  padding:12px;text-align:center;min-width:0}
+.relatorio-numero{font-family:'Cinzel',serif;font-size:19px;font-weight:700;color:var(--o1);
+  overflow-wrap:anywhere}
+.relatorio-label{font-size:9px;color:var(--c3);letter-spacing:.8px;text-transform:uppercase;margin-top:4px}
+.relatorio-meta{font-size:12px;color:var(--c2);line-height:1.45;margin:0 0 12px}
+.relatorio-lista{display:grid;grid-template-columns:1fr;gap:10px}
+.relatorio-pedido{background:var(--gc);border:1px solid var(--ol);border-left:3px solid var(--ob);
+  border-radius:var(--r);padding:13px;box-shadow:var(--sv)}
+.relatorio-pedido.entregue{border-left-color:var(--gn);background:linear-gradient(145deg,rgba(30,64,48,.95),rgba(16,38,26,.96))}
+.relatorio-pedido.pendente{border-left-color:var(--am)}
+.relatorio-pedido-topo{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}
+.relatorio-pedido-cliente{font-size:14px;font-weight:800;color:var(--creme);line-height:1.25}
+.relatorio-pedido-desc{font-size:12px;color:var(--c2);margin-top:3px;line-height:1.35}
+.relatorio-pedido-valor{font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1);white-space:nowrap}
+.relatorio-detalhes{display:grid;grid-template-columns:1fr;gap:5px;font-size:12px;color:var(--c2);line-height:1.35}
+.relatorio-detalhes b{color:var(--o1)}
+.relatorio-pedido-itens{font-size:12px;color:var(--c3);margin-top:8px;padding-top:8px;border-top:1px solid var(--ol);line-height:1.4}
+.relatorio-vazio{background:var(--gc);border:1px solid var(--ol);border-radius:var(--r);padding:28px;text-align:center;color:var(--c3)}
+
 /* TOTAL CARRINHO */
 .total-carrinho{background:rgba(200,150,12,.08);border:1px solid var(--ob);border-radius:var(--r);
   padding:14px;margin:12px 0;display:flex;justify-content:space-between;align-items:center}
@@ -1029,6 +1055,26 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 14px;
+  }
+  .relatorio-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .relatorio-acoes {
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+  }
+  .relatorio-resumo {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+  .relatorio-lista {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .relatorio-detalhes {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
   }
   #lista-catalogo {
     display: grid;
@@ -1406,6 +1452,76 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
         <button class="aba" onclick="filtrarFinanceiro('em-dia',this)">Em dia</button>
       </div>
       <div id="lista-financeiro"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
+    </div>
+
+    <!-- RELATÓRIOS (admin) -->
+    <div class="tela" id="tela-relatorios">
+      <div class="relatorio-filtros">
+        <div class="relatorio-grid">
+          <div class="campo">
+            <label>Período</label>
+            <select id="rel-periodo" onchange="atualizarPeriodoRelatorio(this.value)">
+              <option value="semana">Últimos 7 dias</option>
+              <option value="mes" selected>Mês atual</option>
+              <option value="ano">Ano atual</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Data inicial</label>
+            <input type="date" id="rel-data-inicio" onchange="marcarPeriodoPersonalizado()">
+          </div>
+          <div class="campo">
+            <label>Data final</label>
+            <input type="date" id="rel-data-fim" onchange="marcarPeriodoPersonalizado()">
+          </div>
+          <div class="campo">
+            <label>Vendas de</label>
+            <select id="rel-vendedor" onchange="renderizarRelatorios()">
+              <option value="todos">Admin + vendedor</option>
+              <option value="vendedor">Somente vendedor</option>
+              <option value="admin">Somente admin</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Status</label>
+            <select id="rel-status" onchange="renderizarRelatorios()">
+              <option value="todos">Todos</option>
+              <option value="entregue">Entregues</option>
+              <option value="pendente">Pendentes</option>
+              <option value="entregue-pago">Entregues + pagos</option>
+              <option value="entregue-aberto">Entregues sem pagar</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Pagamento</label>
+            <select id="rel-pagamento" onchange="renderizarRelatorios()">
+              <option value="todos">Todos</option>
+              <option value="pago">Pago</option>
+              <option value="pendente">Pendente</option>
+              <option value="recusado">Recusado</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Buscar</label>
+            <input type="text" id="rel-busca" placeholder="Cliente, produto ou observação" oninput="renderizarRelatorios()">
+          </div>
+        </div>
+        <div class="relatorio-acoes">
+          <button class="btn-secundario" onclick="renderizarRelatorios()">Aplicar filtros</button>
+          <button class="btn-primario" onclick="gerarPDFRelatorio()">Gerar PDF</button>
+        </div>
+      </div>
+
+      <div class="relatorio-meta" id="rel-meta">Selecione os filtros para visualizar o relatório.</div>
+      <div class="relatorio-resumo">
+        <div class="relatorio-card"><div class="relatorio-numero" id="rel-total-pedidos">0</div><div class="relatorio-label">Pedidos</div></div>
+        <div class="relatorio-card"><div class="relatorio-numero" id="rel-total-vendido">R$ 0</div><div class="relatorio-label">Total vendido</div></div>
+        <div class="relatorio-card"><div class="relatorio-numero" id="rel-total-entregues">0</div><div class="relatorio-label">Entregues</div></div>
+        <div class="relatorio-card"><div class="relatorio-numero" id="rel-total-aberto">R$ 0</div><div class="relatorio-label">Em aberto</div></div>
+        <div class="relatorio-card"><div class="relatorio-numero" id="rel-ticket-medio">R$ 0</div><div class="relatorio-label">Ticket médio</div></div>
+      </div>
+      <div id="lista-relatorios" class="relatorio-lista"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
     </div>
 
     <!-- CATÁLOGO (admin: edita / vendedor: consulta) -->
@@ -1819,6 +1935,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=38"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>
