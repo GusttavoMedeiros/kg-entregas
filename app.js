@@ -4263,6 +4263,36 @@ document.addEventListener('keydown', e => {
 // ============================================================
 // SERVICE WORKER + DETECÇÃO OFFLINE + INSTALAR PWA
 // ============================================================
+let atualizacaoPwaPendente = false;
+
+function campoEditavelAtivo() {
+  const el = document.activeElement;
+  if (!el) return false;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable;
+}
+
+function telaLoginVisivel() {
+  const login = document.getElementById('tela-login');
+  return !!login && getComputedStyle(login).display !== 'none';
+}
+
+function podeRecarregarAtualizacaoPwa() {
+  if (campoEditavelAtivo()) return false;
+  if (telaLoginVisivel()) return false;
+  if (document.querySelector('.modal-overlay.aberto')) return false;
+  return true;
+}
+
+function avisarAtualizacaoPwaPendente() {
+  atualizacaoPwaPendente = true;
+  try { sessionStorage.setItem('kg-atualizacao-pendente', '1'); } catch(e) {}
+  mostrarBannerConexao(
+    'syncing',
+    'ATUALIZAÇÃO PRONTA',
+    'Uma versão nova foi baixada. Ela será aplicada quando você reabrir o app, sem apagar o que está digitando.',
+    9000
+  );
+}
 
 // Registra o Service Worker (silencioso em caso de erro)
 if ('serviceWorker' in navigator) {
@@ -4281,12 +4311,16 @@ if ('serviceWorker' in navigator) {
       });
     }).catch(err => console.warn('SW falhou ao registrar:', err));
 
-    // Recarrega quando o SW novo assumir controle (atualização suave)
+    // Recarrega quando o SW novo assumir controle, mas nunca enquanto o usuario digita.
     let recarregando = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (recarregando) return;
-      recarregando = true;
-      window.location.reload();
+      if (podeRecarregarAtualizacaoPwa()) {
+        recarregando = true;
+        window.location.reload();
+      } else {
+        avisarAtualizacaoPwaPendente();
+      }
     });
   });
 }
