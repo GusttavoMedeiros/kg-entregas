@@ -2779,7 +2779,7 @@ function gerarPDFRelatorio() {
 <style>
   *{box-sizing:border-box}
   :root{--verde:#092316;--verde2:#123a26;--dourado:#c8960c;--dourado2:#f0c94b;--linha:#dfe5d8;--texto:#18251b;--muted:#667365}
-  body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--texto);background:#e8ece6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{margin:0;font-family:"Aptos","Segoe UI Variable","Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;color:var(--texto);background:#e8ece6;-webkit-print-color-adjust:exact;print-color-adjust:exact;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
   .pagina{max-width:980px;margin:0 auto;padding:26px}
   .relatorio{background:#fff;border:1px solid #d8ded2;border-radius:22px;overflow:hidden;box-shadow:0 18px 42px rgba(9,35,22,.16)}
   .topo{background:linear-gradient(135deg,var(--verde) 0%,var(--verde2) 68%,#21482f 100%);color:#fff;padding:26px 30px 22px;position:relative}
@@ -2787,33 +2787,33 @@ function gerarPDFRelatorio() {
   .marca{display:flex;align-items:center;gap:16px}
   .logo-wrap{width:72px;height:72px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(240,201,75,.52);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
   .logo-wrap img{width:58px;height:58px;border-radius:50%;object-fit:cover;display:block}
-  h1{margin:0;font-size:25px;letter-spacing:.2px;line-height:1.1}
-  .empresa{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#f4d56b;font-weight:800;margin-bottom:5px}
-  .sub{font-size:12px;color:#d8e4d4;line-height:1.5;margin-top:8px}
+  h1{margin:0;font-size:26px;font-weight:800;letter-spacing:0;line-height:1.08}
+  .empresa{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:#f4d56b;font-weight:800;margin-bottom:5px}
+  .sub{font-size:12.5px;color:#d8e4d4;line-height:1.55;margin-top:8px;font-weight:450}
   .periodo-chip{margin-left:auto;align-self:flex-start;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:11px;font-weight:800;color:#ffe180;white-space:nowrap}
   .conteudo-pdf{padding:22px 30px 30px}
   .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 0 22px}
   .card{border:1px solid var(--linha);border-radius:16px;padding:13px 12px;background:linear-gradient(180deg,#fff 0%,#f7faf4 100%);box-shadow:0 5px 16px rgba(19,50,31,.06)}
-  .num{font-size:18px;font-weight:900;color:#a67800;line-height:1.15;word-break:break-word}
-  .lbl{font-size:9px;text-transform:uppercase;color:var(--muted);margin-top:5px;font-weight:800;letter-spacing:.7px}
+  .num{font-size:19px;font-weight:850;color:#a67800;line-height:1.15;word-break:break-word}
+  .lbl{font-size:9.5px;text-transform:uppercase;color:var(--muted);margin-top:5px;font-weight:800;letter-spacing:.55px}
   .secao{margin-top:20px}
   .secao-titulo{display:flex;align-items:center;gap:9px;margin:0 0 10px;color:var(--verde);font-size:15px;font-weight:900}
   .secao-titulo:before{content:"";width:8px;height:20px;border-radius:999px;background:linear-gradient(180deg,var(--dourado2),var(--dourado))}
-  table{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:12px;font-size:11px;border:1px solid var(--linha);border-radius:14px;overflow:hidden}
+  table{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:12px;font-size:11.5px;border:1px solid var(--linha);border-radius:14px;overflow:hidden}
   th,td{padding:9px 10px;vertical-align:top;text-align:left;border-bottom:1px solid var(--linha)}
-  th{background:#f1f6ec;color:#24422c;text-transform:uppercase;font-size:8.5px;letter-spacing:.6px;font-weight:900}
+  th{background:#f1f6ec;color:#24422c;text-transform:uppercase;font-size:9px;letter-spacing:.5px;font-weight:850}
   tr:last-child td{border-bottom:none}
   tr.entregue td{background:#f4fbf1}
   tr.pendente td{background:#fff9e8}
-  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-weight:900;font-size:9px;line-height:1.1;white-space:nowrap}
+  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-weight:800;font-size:9.5px;line-height:1.1;white-space:nowrap}
   .ok{background:#dff5df;color:#176d32;border:1px solid #bfe5c2}
   .warn{background:#fff0c2;color:#8a6500;border:1px solid #efd680}
   .bad{background:#ffe1dd;color:#9d2f25;border:1px solid #efb7af}
-  .obs{display:block;color:var(--muted);margin-top:4px;font-size:10px;line-height:1.3}
-  .itens{font-size:10px;color:#455245;line-height:1.45}
-  .pedido-id{font-weight:900;color:var(--verde)}
-  .valor-final{font-weight:900;color:#9b7208}
-  .rodape{margin-top:18px;padding-top:12px;border-top:1px solid var(--linha);display:flex;justify-content:space-between;color:#7a8678;font-size:10px}
+  .obs{display:block;color:var(--muted);margin-top:4px;font-size:10.5px;line-height:1.35}
+  .itens{font-size:10.5px;color:#455245;line-height:1.5}
+  .pedido-id{font-weight:850;color:var(--verde)}
+  .valor-final{font-weight:850;color:#9b7208}
+  .rodape{margin-top:18px;padding-top:12px;border-top:1px solid var(--linha);display:flex;justify-content:space-between;color:#7a8678;font-size:10.5px}
   @page{size:A4;margin:10mm}
   @media print{
     body{background:#fff}.pagina{padding:0;max-width:none}.relatorio{border:none;border-radius:0;box-shadow:none}
