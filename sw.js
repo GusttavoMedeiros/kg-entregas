@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v16';
+const CACHE_VERSION = 'kg-v17';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -15,7 +15,7 @@ const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
   './app.js',
-  './app.js?v=41',
+  './app.js?v=42',
   './manifest.json',
   './manifest.json?v=5',
   './logo.webp',
