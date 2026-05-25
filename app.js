@@ -359,7 +359,11 @@ function renderizarDadosAtuais() {
     renderizarInicioVendedor();
     renderizarMeusPedidos(filtroMeusPedidos);
   }
-  if (usuario?.perfil === 'admin') renderizarFinanceiro(filtroFinanceiro);
+  if (usuario?.perfil === 'admin') {
+    renderizarFinanceiro(filtroFinanceiro);
+    prepararRelatorios();
+    renderizarRelatorios();
+  }
   popularSelectClientes();
 }
 
@@ -1019,6 +1023,11 @@ function payloadEntregaBasico(payload) {
   };
 }
 
+function payloadEntregaSemResponsavel(payload) {
+  const { entregue_por, entregue_em, ...resto } = payload;
+  return resto;
+}
+
 async function inserirPedidoComFallback(payload) {
   let resPed = await supabase('pedidos','POST', payload);
   if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
@@ -1039,6 +1048,10 @@ async function atualizarPedidoComFallback(pedido_id, payload) {
 
 async function atualizarEntregaComFallback(pedido_id, payload) {
   let resPed = await supabase('pedidos','PATCH', payload, `?id=eq.${pedido_id}`);
+  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
+
+  console.warn('Entrega: tentando confirmar novamente sem campos de responsavel.', resPed.erro);
+  resPed = await supabase('pedidos','PATCH', payloadEntregaSemResponsavel(payload), `?id=eq.${pedido_id}`);
   if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
 
   console.warn('Entrega: tentando confirmar novamente apenas com campos basicos.', resPed.erro);
@@ -1157,6 +1170,7 @@ function sair() {
   filtroFinanceiro = 'atrasado';
   filtroCatalogo = 'todos';
   filtroMeusPedidos = 'pendente';
+  relatorioInicializado = false;
 
   // Fecha qualquer modal aberto
   document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
@@ -1169,7 +1183,7 @@ function sair() {
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';
   // Restaura telas que podem ter sido escondidas por outro perfil
-  ['tela-dashboard','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
+  ['tela-dashboard','tela-clientes','tela-financeiro','tela-relatorios','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
     .forEach(id => { document.getElementById(id).style.display=''; });
   const abasEl = document.getElementById('abas-entregas');
   if (abasEl) abasEl.style.display='';
@@ -1184,6 +1198,7 @@ const NAV = {
     { id:'entregas',   icone:'🚚', label:'Entregas',   tela:'tela-entregas'    },
     { id:'clientes',   icone:'🏪', label:'Clientes',   tela:'tela-clientes'    },
     { id:'financeiro', icone:'💰', label:'Financeiro', tela:'tela-financeiro'  },
+    { id:'relatorios', icone:'📊', label:'Relatórios', tela:'tela-relatorios'  },
     { id:'catalogo',   icone:'🛒', label:'Catálogo',   tela:'tela-catalogo'    },
   ],
   vendedor: [
@@ -1199,7 +1214,7 @@ const NAV = {
 
 const TITULOS = {
   dashboard:'Início', entregas:'Entregas', clientes:'Clientes',
-  financeiro:'Financeiro', catalogo:'Catálogo',
+  financeiro:'Financeiro', relatorios:'Relatórios', catalogo:'Catálogo',
   'meus-pedidos':'Meus Pedidos', 'inicio-vendedor':'Início',
 };
 
@@ -1216,7 +1231,7 @@ function configurarNav() {
 
   // Esconde telas que o perfil não usa
   const telasVisiveis = new Set(itens.map(i => i.tela));
-  ['tela-dashboard','tela-entregas','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-inicio-vendedor']
+  ['tela-dashboard','tela-entregas','tela-clientes','tela-financeiro','tela-relatorios','tela-catalogo','tela-meus-pedidos','tela-inicio-vendedor']
     .forEach(id => {
       document.getElementById(id).style.display = telasVisiveis.has(id) ? '' : 'none';
     });
@@ -1257,6 +1272,7 @@ function navegarPara(id) {
 
   if (id==='clientes')     renderizarClientes(todosOsClientes);
   if (id==='financeiro')   renderizarFinanceiro(filtroFinanceiro);
+  if (id==='relatorios')   renderizarRelatorios();
   if (id==='entregas')     renderizarEntregas(filtroEntregas);
   if (id==='catalogo')     renderizarCatalogo(filtroCatalogo);
   if (id==='meus-pedidos') renderizarMeusPedidos(filtroMeusPedidos);
@@ -1314,6 +1330,11 @@ async function carregarTudo() {
     renderizarInicioVendedor();
     renderizarMeusPedidos(filtroMeusPedidos);
   }
+  if (usuario.perfil==='admin') {
+    renderizarFinanceiro(filtroFinanceiro);
+    prepararRelatorios();
+    renderizarRelatorios();
+  }
   popularSelectClientes();
 
   // Limpa checklists antigos (>30 dias) e órfãos (pedidos deletados)
@@ -1354,6 +1375,7 @@ async function sincronizarDados() {
       const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}:${i.preco_catalogo||''}`).sort().join(',');
       return [
         p.id, p.status, p.status_pagamento || '', p.forma_pagamento_real || '', p.data_pagamento || '',
+        p.entregue_por || '', p.entregue_em || '',
         p.valor, p.cliente_id, p.data_entrega, p.data_vencimento, p.observacao || '',
         p.forma_pagamento || '', p.prazo_dias || '', p.prazos_boleto || '', itensHash
       ].join('|');
@@ -1377,7 +1399,10 @@ async function sincronizarDados() {
         renderizarInicioVendedor();
         renderizarMeusPedidos(filtroMeusPedidos);
       }
-      if (usuario.perfil==='admin')    renderizarFinanceiro(filtroFinanceiro);
+      if (usuario.perfil==='admin') {
+        renderizarFinanceiro(filtroFinanceiro);
+        renderizarRelatorios();
+      }
     }
   } catch (e) {
     console.warn('Sincronização falhou:', e);
@@ -2489,6 +2514,349 @@ function verDetalheCliente(id) {
 }
 
 // ============================================================
+// RELATÓRIOS (admin)
+// ============================================================
+let relatorioInicializado = false;
+
+function dataLocalISO(d) {
+  return fmt(d);
+}
+
+function calcularPeriodoRelatorio(periodo) {
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+  const fim = new Date(hoje);
+
+  if (periodo === 'semana') {
+    inicio.setDate(hoje.getDate() - 6);
+  } else if (periodo === 'ano') {
+    inicio.setMonth(0, 1);
+  } else {
+    inicio.setDate(1);
+  }
+
+  return { inicio: dataLocalISO(inicio), fim: dataLocalISO(fim) };
+}
+
+function prepararRelatorios() {
+  if (usuario?.perfil !== 'admin') return;
+  const periodoEl = document.getElementById('rel-periodo');
+  const inicioEl = document.getElementById('rel-data-inicio');
+  const fimEl = document.getElementById('rel-data-fim');
+  if (!periodoEl || !inicioEl || !fimEl) return;
+
+  if (!relatorioInicializado || !inicioEl.value || !fimEl.value) {
+    periodoEl.value = periodoEl.value || 'mes';
+    const periodo = calcularPeriodoRelatorio(periodoEl.value || 'mes');
+    inicioEl.value = periodo.inicio;
+    fimEl.value = periodo.fim;
+    relatorioInicializado = true;
+  }
+}
+
+function atualizarPeriodoRelatorio(periodo) {
+  const inicioEl = document.getElementById('rel-data-inicio');
+  const fimEl = document.getElementById('rel-data-fim');
+  if (!inicioEl || !fimEl) return;
+  if (periodo !== 'personalizado') {
+    const datas = calcularPeriodoRelatorio(periodo);
+    inicioEl.value = datas.inicio;
+    fimEl.value = datas.fim;
+  }
+  renderizarRelatorios();
+}
+
+function marcarPeriodoPersonalizado() {
+  const periodoEl = document.getElementById('rel-periodo');
+  if (periodoEl) periodoEl.value = 'personalizado';
+  renderizarRelatorios();
+}
+
+function nomeVendedorRelatorio(vendedor) {
+  if (vendedor === 'admin') return 'Admin';
+  if (vendedor === 'vendedor') return 'Vendedor';
+  if (vendedor === 'entregador') return 'Entregador';
+  return vendedor ? String(vendedor) : 'Não informado';
+}
+
+function nomePagamentoRelatorio(p) {
+  if (foiPago(p)) {
+    const forma = p.forma_pagamento_real === 'dinheiro' ? 'dinheiro' :
+                  p.forma_pagamento_real === 'pix' ? 'PIX/cartão' : '';
+    return `Pago${forma ? ` (${forma})` : ''}`;
+  }
+  if (p.status_pagamento === 'recusado') return 'Recusado';
+  return 'Pendente';
+}
+
+function nomeStatusRelatorio(p) {
+  if (p.status === 'entregue') return foiPago(p) ? 'Entregue + pago' : 'Entregue sem pagar';
+  return isAtrasado(p) ? 'Pendente atrasado' : 'Pendente';
+}
+
+function itensPedidoTexto(p) {
+  const itens = p.itens || [];
+  if (!itens.length) return p.descricao || '';
+  return itens.map(i => {
+    const qtd = Number(i.qtd) || 0;
+    const valor = Number(i.preco_unit) || 0;
+    return `${qtd}x ${i.nome || 'Produto'} (${moeda(valor)})`;
+  }).join(', ');
+}
+
+function filtrosRelatorioAtuais() {
+  prepararRelatorios();
+  let inicio = document.getElementById('rel-data-inicio')?.value || calcularPeriodoRelatorio('mes').inicio;
+  let fim = document.getElementById('rel-data-fim')?.value || calcularPeriodoRelatorio('mes').fim;
+  if (inicio && fim && inicio > fim) {
+    const tmp = inicio;
+    inicio = fim;
+    fim = tmp;
+  }
+  return {
+    periodo: document.getElementById('rel-periodo')?.value || 'mes',
+    inicio,
+    fim,
+    vendedor: document.getElementById('rel-vendedor')?.value || 'todos',
+    status: document.getElementById('rel-status')?.value || 'todos',
+    pagamento: document.getElementById('rel-pagamento')?.value || 'todos',
+    busca: document.getElementById('rel-busca')?.value.trim() || '',
+  };
+}
+
+function obterPedidosRelatorio() {
+  const filtros = filtrosRelatorioAtuais();
+  const inicio = filtros.inicio;
+  const fim = filtros.fim;
+
+  const pedidos = todosOsPedidos.filter(p => {
+    const dataRef = p.data_entrega || p.data_pagamento || '';
+    if (inicio && dataRef < inicio) return false;
+    if (fim && dataRef > fim) return false;
+
+    if (filtros.vendedor !== 'todos' && p.vendedor !== filtros.vendedor) return false;
+
+    if (filtros.status === 'entregue' && p.status !== 'entregue') return false;
+    if (filtros.status === 'pendente' && p.status === 'entregue') return false;
+    if (filtros.status === 'entregue-pago' && !(p.status === 'entregue' && foiPago(p))) return false;
+    if (filtros.status === 'entregue-aberto' && !(p.status === 'entregue' && !foiPago(p))) return false;
+
+    if (filtros.pagamento === 'pago' && !foiPago(p)) return false;
+    if (filtros.pagamento === 'pendente' && (foiPago(p) || p.status_pagamento === 'recusado')) return false;
+    if (filtros.pagamento === 'recusado' && p.status_pagamento !== 'recusado') return false;
+
+    if (filtros.busca) {
+      const itensTxt = (p.itens || []).map(i => i.nome).join(' ');
+      if (!matchBusca(filtros.busca, p.cliente_nome, p.descricao, p.observacao, itensTxt)) return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
+    const da = a.data_entrega || '';
+    const db = b.data_entrega || '';
+    if (da !== db) return db.localeCompare(da);
+    return Number(b.id || 0) - Number(a.id || 0);
+  });
+
+  const total = pedidos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const entregues = pedidos.filter(p => p.status === 'entregue');
+  const abertos = pedidos.filter(p => !foiPago(p));
+  const recebido = pedidos.filter(foiPago).reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const abertoValor = abertos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const ticket = pedidos.length ? total / pedidos.length : 0;
+
+  return {
+    filtros,
+    pedidos,
+    resumo: { total, recebido, abertoValor, ticket, entregues: entregues.length, pendentes: pedidos.length - entregues.length }
+  };
+}
+
+function textoFiltrosRelatorio(filtros) {
+  const vendedor = filtros.vendedor === 'todos' ? 'Admin + vendedor' : nomeVendedorRelatorio(filtros.vendedor);
+  const status = {
+    todos: 'todos os status',
+    entregue: 'somente entregues',
+    pendente: 'somente pendentes',
+    'entregue-pago': 'entregues e pagos',
+    'entregue-aberto': 'entregues sem pagar'
+  }[filtros.status] || filtros.status;
+  const pagamento = filtros.pagamento === 'todos' ? 'todos os pagamentos' : nomePagamentoRelatorio({ status_pagamento: filtros.pagamento });
+  return `${dataBR(filtros.inicio)} até ${dataBR(filtros.fim)} · ${vendedor} · ${status} · ${pagamento}`;
+}
+
+function renderizarRelatorios() {
+  if (usuario?.perfil !== 'admin') return;
+  const listaEl = document.getElementById('lista-relatorios');
+  if (!listaEl) return;
+
+  const { filtros, pedidos, resumo } = obterPedidosRelatorio();
+  document.getElementById('rel-meta').textContent = textoFiltrosRelatorio(filtros);
+  document.getElementById('rel-total-pedidos').textContent = pedidos.length;
+  document.getElementById('rel-total-vendido').textContent = moeda(resumo.total);
+  document.getElementById('rel-total-entregues').textContent = resumo.entregues;
+  document.getElementById('rel-total-aberto').textContent = moeda(resumo.abertoValor);
+  document.getElementById('rel-ticket-medio').textContent = moeda(resumo.ticket);
+
+  if (!pedidos.length) {
+    listaEl.innerHTML = `<div class="relatorio-vazio">Nenhum pedido encontrado com esses filtros.</div>`;
+    return;
+  }
+
+  listaEl.innerHTML = pedidos.map(p => {
+    const classe = p.status === 'entregue' ? 'entregue' : 'pendente';
+    const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (p.status === 'entregue' ? 'Não registrado' : 'Aguardando entrega');
+    return `
+      <div class="relatorio-pedido ${classe}">
+        <div class="relatorio-pedido-topo">
+          <div>
+            <div class="relatorio-pedido-cliente">${esc(p.cliente_nome || 'Cliente não informado')}</div>
+            <div class="relatorio-pedido-desc">Pedido #${esc(p.id || '–')} · ${esc(p.descricao || 'Sem descrição')}</div>
+          </div>
+          <div class="relatorio-pedido-valor">${moeda(p.valor)}</div>
+        </div>
+        <div class="relatorio-detalhes">
+          <div><b>Status:</b> ${esc(nomeStatusRelatorio(p))}</div>
+          <div><b>Pagamento:</b> ${esc(nomePagamentoRelatorio(p))}</div>
+          <div><b>Vendido por:</b> ${esc(nomeVendedorRelatorio(p.vendedor))}</div>
+          <div><b>Entregue por:</b> ${esc(entreguePor)}</div>
+          <div><b>Entrega:</b> ${dataBR(p.data_entrega)}</div>
+          <div><b>Vencimento:</b> ${dataBR(p.data_vencimento)}</div>
+          <div><b>Pagamento em:</b> ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</div>
+          <div><b>Observação:</b> ${esc(p.observacao || '–')}</div>
+        </div>
+        <div class="relatorio-pedido-itens"><b>Itens:</b> ${esc(itensPedidoTexto(p) || '–')}</div>
+      </div>`;
+  }).join('');
+}
+
+function resumoPorVendedorRelatorio(pedidos) {
+  const mapa = {};
+  pedidos.forEach(p => {
+    const chave = p.vendedor || 'nao-informado';
+    if (!mapa[chave]) mapa[chave] = { nome: nomeVendedorRelatorio(chave), qtd: 0, total: 0, entregues: 0 };
+    mapa[chave].qtd++;
+    mapa[chave].total += Number(p.valor) || 0;
+    if (p.status === 'entregue') mapa[chave].entregues++;
+  });
+  return Object.values(mapa).sort((a, b) => b.total - a.total);
+}
+
+function resumoProdutosRelatorio(pedidos) {
+  const mapa = {};
+  pedidos.forEach(p => (p.itens || []).forEach(i => {
+    const nome = i.nome || 'Produto';
+    if (!mapa[nome]) mapa[nome] = { nome, qtd: 0, total: 0 };
+    const qtd = Number(i.qtd) || 0;
+    mapa[nome].qtd += qtd;
+    mapa[nome].total += qtd * (Number(i.preco_unit) || 0);
+  }));
+  return Object.values(mapa).sort((a, b) => b.total - a.total).slice(0, 12);
+}
+
+function gerarPDFRelatorio() {
+  if (usuario?.perfil !== 'admin') {
+    alert('Apenas o admin pode gerar relatórios.');
+    return;
+  }
+  const { filtros, pedidos, resumo } = obterPedidosRelatorio();
+  if (!pedidos.length) {
+    alert('Nenhum pedido encontrado para gerar relatório.');
+    return;
+  }
+
+  const porVendedor = resumoPorVendedorRelatorio(pedidos);
+  const porProduto = resumoProdutosRelatorio(pedidos);
+  const geradoEm = new Date().toLocaleString('pt-BR');
+  const titulo = `Relatório KG Entregas - ${dataBR(filtros.inicio)} a ${dataBR(filtros.fim)}`;
+
+  const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>${esc(titulo)}</title>
+<style>
+  *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#172118;background:#fff}
+  .pagina{padding:28px}.topo{border-bottom:3px solid #c8960c;padding-bottom:14px;margin-bottom:18px}
+  h1{margin:0 0 6px;font-size:24px;color:#0d3b24}.sub{font-size:12px;color:#516052;line-height:1.45}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 18px}
+  .card{border:1px solid #d8decf;border-radius:8px;padding:10px;background:#f8faf4}
+  .num{font-size:18px;font-weight:800;color:#9b7208}.lbl{font-size:9px;text-transform:uppercase;color:#607060;margin-top:4px}
+  h2{font-size:15px;color:#0d3b24;margin:18px 0 8px;border-bottom:1px solid #d8decf;padding-bottom:5px}
+  table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px}
+  th,td{border:1px solid #d8decf;padding:6px;vertical-align:top;text-align:left}
+  th{background:#eef4e9;color:#0d3b24;text-transform:uppercase;font-size:9px}
+  tr.entregue td{background:#f0faef}tr.pendente td{background:#fffaf0}
+  .badge{display:inline-block;border-radius:999px;padding:2px 7px;font-weight:700;font-size:9px}
+  .ok{background:#dff5df;color:#176d32}.warn{background:#fff0c2;color:#8a6500}.bad{background:#ffe1dd;color:#9d2f25}
+  .obs{color:#5e6a5c}.itens{font-size:10px;color:#4f5d4c;line-height:1.35}
+  @media print{.pagina{padding:16px}.cards{grid-template-columns:repeat(5,1fr)}button{display:none}tr{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="pagina">
+  <div class="topo">
+    <h1>Relatório KG Entregas</h1>
+    <div class="sub">${esc(textoFiltrosRelatorio(filtros))}<br>Gerado em ${esc(geradoEm)} · Usuário: Admin</div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="num">${pedidos.length}</div><div class="lbl">Pedidos</div></div>
+    <div class="card"><div class="num">${moeda(resumo.total)}</div><div class="lbl">Total vendido</div></div>
+    <div class="card"><div class="num">${resumo.entregues}</div><div class="lbl">Entregues</div></div>
+    <div class="card"><div class="num">${moeda(resumo.abertoValor)}</div><div class="lbl">Em aberto</div></div>
+    <div class="card"><div class="num">${moeda(resumo.ticket)}</div><div class="lbl">Ticket médio</div></div>
+  </div>
+
+  <h2>Resumo por origem da venda</h2>
+  <table>
+    <thead><tr><th>Origem</th><th>Pedidos</th><th>Entregues</th><th>Total</th></tr></thead>
+    <tbody>${porVendedor.map(v => `<tr><td>${esc(v.nome)}</td><td>${v.qtd}</td><td>${v.entregues}</td><td>${moeda(v.total)}</td></tr>`).join('')}</tbody>
+  </table>
+
+  <h2>Produtos mais vendidos no período</h2>
+  <table>
+    <thead><tr><th>Produto</th><th>Quantidade</th><th>Total estimado</th></tr></thead>
+    <tbody>${porProduto.length ? porProduto.map(p => `<tr><td>${esc(p.nome)}</td><td>${p.qtd}</td><td>${moeda(p.total)}</td></tr>`).join('') : '<tr><td colspan="3">Sem itens detalhados neste período.</td></tr>'}</tbody>
+  </table>
+
+  <h2>Pedidos detalhados</h2>
+  <table>
+    <thead><tr><th>Pedido</th><th>Cliente</th><th>Venda</th><th>Status</th><th>Pagamento</th><th>Datas</th><th>Itens e observações</th><th>Valor</th></tr></thead>
+    <tbody>
+      ${pedidos.map(p => {
+        const entregue = p.status === 'entregue';
+        const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (entregue ? 'Não registrado' : 'Aguardando');
+        const statusClass = entregue ? 'ok' : (isAtrasado(p) ? 'bad' : 'warn');
+        const pagamentoClass = foiPago(p) ? 'ok' : (p.status_pagamento === 'recusado' ? 'bad' : 'warn');
+        return `<tr class="${entregue ? 'entregue' : 'pendente'}">
+          <td>#${esc(p.id || '–')}</td>
+          <td><b>${esc(p.cliente_nome || 'Cliente não informado')}</b><br><span class="obs">${esc(p.observacao || '')}</span></td>
+          <td>Vendido por: <b>${esc(nomeVendedorRelatorio(p.vendedor))}</b><br>Entregue por: <b>${esc(entreguePor)}</b></td>
+          <td><span class="badge ${statusClass}">${esc(nomeStatusRelatorio(p))}</span></td>
+          <td><span class="badge ${pagamentoClass}">${esc(nomePagamentoRelatorio(p))}</span></td>
+          <td>Entrega: ${dataBR(p.data_entrega)}<br>Venc.: ${dataBR(p.data_vencimento)}<br>Pago em: ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</td>
+          <td><div class="itens">${esc(itensPedidoTexto(p) || '–')}</div></td>
+          <td><b>${moeda(p.valor)}</b></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+</div>
+<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script>
+</body>
+</html>`;
+
+  const janela = window.open('', '_blank');
+  if (!janela) {
+    alert('O navegador bloqueou a janela do relatório. Libere pop-ups para gerar o PDF.');
+    return;
+  }
+  janela.document.open();
+  janela.document.write(html);
+  janela.document.close();
+}
+
+// ============================================================
 // FINANCEIRO (admin)
 // ============================================================
 function renderizarFinanceiro(filtro) {
@@ -3341,6 +3709,8 @@ async function confirmarEntrega() {
       status_pagamento,
       forma_pagamento_real,
       data_pagamento,
+      entregue_por: usuario?.login || '',
+      entregue_em: new Date().toISOString(),
     };
 
     if (!MODO_DEMO) {
