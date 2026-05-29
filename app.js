@@ -9,9 +9,9 @@ const MODO_DEMO = (SUPABASE_URL === 'SUA_URL_AQUI');
 // USUÁRIOS
 // ============================================================
 const USUARIOS = {
-  admin:      { senha: 'kg2024admin',  perfil: 'admin',       nome: 'Kleber'     },
-  vendedor:   { senha: 'kg2024venda',  perfil: 'vendedor',    nome: 'Vendedor'   },
-  entregador: { senha: 'kg2024',       perfil: 'entregador',  nome: 'Entregador' },
+  admin:      { senha: 'kg2024admin', perfil: 'admin',       nome: 'Kleber'     },
+  vendedor:   { senha: '1234',        perfil: 'vendedor',    nome: 'Vendedor'   },
+  entregador: { senha: '1234',        perfil: 'entregador',  nome: 'Entregador' },
 };
 
 // ============================================================
@@ -35,7 +35,6 @@ let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
-const DADOS_OFFLINE_KEY = 'kg-dados-offline-v2';
 
 // ============================================================
 // HELPERS
@@ -164,110 +163,34 @@ function matchBusca(termo, ...campos) {
   });
 }
 
-function tokensBusca(texto) {
-  return (normalizar(texto).match(/[a-z0-9]+/g) || []).filter(Boolean);
-}
-
-function tokenCombinaComPalavra(token, palavra, permitirMiolo = true) {
-  const tokenNorm = normalizar(token);
-  const palavraNorm = normalizar(palavra);
-  if (!tokenNorm || !palavraNorm) return false;
-  if (tokenNorm.startsWith(palavraNorm)) return true;
-  if (permitirMiolo && palavraNorm.length >= 3 && tokenNorm.includes(palavraNorm)) return true;
-  if (palavraNorm.length < 3) return false;
-
-  const tokenFuzzy = fuzzyKey(tokenNorm);
-  const palavraFuzzy = fuzzyKey(palavraNorm);
-  if (tokenFuzzy.startsWith(palavraFuzzy)) return true;
-  return permitirMiolo && palavraFuzzy.length >= 3 && tokenFuzzy.includes(palavraFuzzy);
-}
-
-// Busca especifica para produtos.
-// A categoria so entra por prefixo ("ra" -> "Racao"), evitando que "ca" ache "raCAo".
-function matchBuscaProduto(termo, produto) {
-  if (!termo || !termo.trim()) return true;
-
-  const palavras = termo.trim().split(/\s+/).filter(Boolean);
-  const nome = produto?.nome || '';
-  const categoria = produto?.categoria || '';
-  const termoNorm = normalizar(termo.trim());
-  const nomeNorm = normalizar(nome);
-
-  if (nomeNorm.includes(termoNorm)) return true;
-
-  const nomeTokens = tokensBusca(nome);
-  const categoriaTokens = tokensBusca(categoria);
-
-  return palavras.every(palavra => {
-    const bateNome = nomeTokens.some(token => tokenCombinaComPalavra(token, palavra, true));
-    if (bateNome) return true;
-
-    return categoriaTokens.some(token => tokenCombinaComPalavra(token, palavra, false));
-  });
-}
-
-// Aplica highlight dourado sem quebrar o HTML do card.
-// Antes o replace rodava em cima de tags <mark> ja criadas; buscar "Saborosa c"
-// destacava a letra "c" dentro de class="busca-match" e o HTML aparecia na tela.
+// Aplica highlight dourado nas palavras encontradas (com escape de HTML).
+// Mostra o texto ORIGINAL mas destaca os pedaços que casaram (com ou sem acento).
 function highlightBusca(textoOriginal, termo) {
-  const texto = String(textoOriginal || '');
-  if (!termo || !termo.trim()) return esc(texto);
-
-  const escapeRegex = valor => String(valor).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const variantes = {
-    a: '[a\u00e1\u00e0\u00e3\u00e2\u00e4A\u00c1\u00c0\u00c3\u00c2\u00c4]',
-    e: '[e\u00e9\u00e8\u00ea\u00ebE\u00c9\u00c8\u00ca\u00cb]',
-    i: '[i\u00ed\u00ec\u00ee\u00efI\u00cd\u00cc\u00ce\u00cf]',
-    o: '[o\u00f3\u00f2\u00f5\u00f4\u00f6O\u00d3\u00d2\u00d5\u00d4\u00d6]',
-    u: '[u\u00fa\u00f9\u00fb\u00fcU\u00da\u00d9\u00db\u00dc]',
-    c: '[c\u00e7C\u00c7]',
-    n: '[n\u00f1N\u00d1]'
-  };
-
-  const ranges = [];
-  termo.trim().split(/\s+/).filter(Boolean).forEach(palavra => {
+  const seguro = esc(textoOriginal || '');
+  if (!termo || !termo.trim()) return seguro;
+  const palavras = termo.trim().split(/\s+/).filter(Boolean);
+  // Para cada palavra, gera regex que ignora acentos do texto original
+  let resultado = seguro;
+  palavras.forEach(palavra => {
     const palavraNorm = normalizar(palavra);
     if (!palavraNorm) return;
-
-    const padrao = palavraNorm
-      .split('')
-      .map(c => variantes[c] || escapeRegex(c))
-      .join('');
-
+    // Constrói regex que casa a sequência de caracteres ignorando acentos
+    // Ex: "rac" casa "Rac", "ráç", "Raç" etc.
+    const padraoChars = palavraNorm.split('').map(c => {
+      // Map letra normalizada → classe de caracteres que ela representa
+      const variantes = {
+        'a': '[aáàãâäAÁÀÃÂÄ]', 'e': '[eéèêëEÉÈÊË]', 'i': '[iíìîïIÍÌÎÏ]',
+        'o': '[oóòõôöOÓÒÕÔÖ]', 'u': '[uúùûüUÚÙÛÜ]', 'c': '[cçCÇ]',
+        'n': '[nñNÑ]'
+      };
+      return variantes[c] || c;
+    }).join('');
     try {
-      const re = new RegExp(padrao, 'gi');
-      let match;
-      while ((match = re.exec(texto)) !== null) {
-        if (!match[0]) break;
-        ranges.push({ start: match.index, end: match.index + match[0].length });
-      }
-    } catch (e) {
-      // Regex invalida: ignora apenas essa palavra.
-    }
+      const re = new RegExp('(' + padraoChars + ')', 'gi');
+      resultado = resultado.replace(re, '<mark class="busca-match">$1</mark>');
+    } catch(e) { /* regex inválida — ignora highlight */ }
   });
-
-  if (!ranges.length) return esc(texto);
-
-  ranges.sort((a, b) => a.start - b.start || b.end - a.end);
-  const merged = [];
-  ranges.forEach(r => {
-    const ultimo = merged[merged.length - 1];
-    if (!ultimo || r.start > ultimo.end) {
-      merged.push({ ...r });
-    } else if (r.end > ultimo.end) {
-      ultimo.end = r.end;
-    }
-  });
-
-  let html = '';
-  let pos = 0;
-  merged.forEach(r => {
-    html += esc(texto.slice(pos, r.start));
-    html += `<mark class="busca-match">${esc(texto.slice(r.start, r.end))}</mark>`;
-    pos = r.end;
-  });
-  html += esc(texto.slice(pos));
-  return html;
+  return resultado;
 }
 
 // Debounce — evita re-render a cada tecla digitada em buscas (150ms = imperceptível)
@@ -298,88 +221,6 @@ function limparBusca(inputId, fnBusca) {
   input.focus();
 }
 
-// ============================================================
-// CACHE LOCAL DOS DADOS DO APP
-// Mantem uma copia dos ultimos pedidos/clientes/produtos no aparelho.
-// Assim o app continua abrindo com informacoes mesmo sem internet.
-// ============================================================
-function normalizarPedidosBanco(lista) {
-  return (lista || []).map(p => ({
-    ...p,
-    cliente_nome: p.clientes?.nome || p.cliente_nome || '–',
-    itens: p.itens_pedido || p.itens || [],
-    descricao: (p.itens_pedido || p.itens || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
-  }));
-}
-
-function salvarDadosOffline(origem = 'sync') {
-  if (MODO_DEMO) return;
-  try {
-    localStorage.setItem(DADOS_OFFLINE_KEY, JSON.stringify({
-      versao: 2,
-      origem,
-      salvo_em: new Date().toISOString(),
-      pedidos: todosOsPedidos,
-      clientes: todosOsClientes,
-      produtos: todosOsProdutos,
-    }));
-  } catch(e) {
-    console.warn('Nao foi possivel salvar dados offline:', e);
-  }
-}
-
-function carregarDadosOffline() {
-  try {
-    const raw = localStorage.getItem(DADOS_OFFLINE_KEY);
-    if (!raw) return null;
-    const cache = JSON.parse(raw);
-    if (!cache || !Array.isArray(cache.pedidos) || !Array.isArray(cache.clientes) || !Array.isArray(cache.produtos)) {
-      return null;
-    }
-    return cache;
-  } catch(e) {
-    console.warn('Nao foi possivel ler dados offline:', e);
-    return null;
-  }
-}
-
-function aplicarDadosOffline(cache) {
-  if (!cache) return false;
-  todosOsPedidos  = normalizarPedidosBanco(cache.pedidos);
-  todosOsClientes = cache.clientes || [];
-  todosOsProdutos = cache.produtos || [];
-  return true;
-}
-
-function renderizarDadosAtuais() {
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  renderizarCatalogo(filtroCatalogo);
-  if (usuario?.perfil === 'vendedor') {
-    renderizarInicioVendedor();
-    renderizarMeusPedidos(filtroMeusPedidos);
-  }
-  if (usuario?.perfil === 'admin') {
-    renderizarFinanceiro(filtroFinanceiro);
-    prepararRelatorios();
-    renderizarRelatorios();
-  }
-  popularSelectClientes();
-}
-
-function carregarCacheOfflineComAviso(motivo) {
-  const cache = carregarDadosOffline();
-  if (!aplicarDadosOffline(cache)) return false;
-  const quando = cache.salvo_em ? new Date(cache.salvo_em).toLocaleString('pt-BR') : 'data desconhecida';
-  avisarInstabilidadeConexao(
-    'MODO OFFLINE',
-    `Mostrando dados salvos neste aparelho (${quando}). As alteracoes pendentes sincronizam quando a internet voltar.`,
-    8000
-  );
-  console.log(`Dados offline carregados (${motivo})`, cache.salvo_em || '');
-  return true;
-}
-
 // Reseta todas as barras de busca e filtros visuais ao trocar de tela
 function resetarBuscasEFiltros() {
   // Apaga todos os inputs de busca conhecidos
@@ -404,9 +245,7 @@ function resetarBuscasEFiltros() {
     if (botoes[0]) botoes[0].classList.add('ativa');
   });
 
-  // Volta a área rolável do app para o topo sem mover a página inteira.
-  const areaConteudo = document.querySelector('.conteudo');
-  if (areaConteudo) areaConteudo.scrollTo({ top: 0, behavior: 'instant' });
+  // Volta scroll pro topo da tela
   window.scrollTo({top: 0, behavior: 'instant'});
 }
 
@@ -419,9 +258,6 @@ const _rendersPendentes = new Set();
 let _renderFrameId = null;
 function agendarRender(tela) {
   _rendersPendentes.add(tela);
-  if (!MODO_DEMO && usuario && (todosOsPedidos.length || todosOsClientes.length || todosOsProdutos.length)) {
-    salvarDadosOffline('mudanca-local');
-  }
   if (_renderFrameId !== null) return; // já tem um frame agendado
   _renderFrameId = requestAnimationFrame(() => {
     const telas = new Set(_rendersPendentes);
@@ -664,10 +500,150 @@ function marcarIsento() {
   }
 }
 
+// Geocoda em lote todos os clientes que ainda não têm coords.
+// Respeita 1 req/segundo do Nominatim → demora ~N segundos para N clientes.
+async function geocodarTodosClientes() {
+  if (!usuario || usuario.perfil !== 'admin') {
+    alert('Apenas o admin pode usar esta função.');
+    return;
+  }
+  if (MODO_DEMO) {
+    alert('Função disponível apenas no modo real (com banco conectado).');
+    return;
+  }
+
+  // Pega clientes com endereço mas sem coords
+  const pendentes = todosOsClientes.filter(c =>
+    c.endereco && c.endereco.trim() &&
+    (c.latitude == null || c.longitude == null)
+  );
+
+  if (!pendentes.length) {
+    alert('✓ Todos os clientes com endereço já estão geocodados!');
+    return;
+  }
+
+  const segundos = pendentes.length;
+  const ok = confirm(
+    `Geocodar ${pendentes.length} cliente(s)?\n\n` +
+    `⏱ Vai levar cerca de ${segundos} segundo(s) (1 consulta por segundo).\n\n` +
+    `O app continua funcionando, mas espere terminar antes de fechar a aba.`
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-geocodar');
+  const status = document.getElementById('geocodar-status');
+  if (btn) btn.disabled = true;
+  if (status) status.style.display = 'block';
+
+  let sucesso = 0, falha = 0;
+  for (let i = 0; i < pendentes.length; i++) {
+    const c = pendentes[i];
+    const pct = Math.round(((i) / pendentes.length) * 100);
+    if (status) {
+      status.className = 'processando';
+      status.innerHTML = `
+        <div>📍 Processando ${i + 1} de ${pendentes.length}: <strong>${esc(c.nome)}</strong></div>
+        <div style="font-size:11px;opacity:.8;margin-top:3px">✓ ${sucesso} geocodados · ✗ ${falha} falhas</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+    }
+
+    try {
+      const res = await geocodarEndereco(c.endereco);
+      if (res.ok) {
+        // Atualiza no banco
+        const payload = { latitude: res.dados.latitude, longitude: res.dados.longitude };
+        const r = await supabase('clientes', 'PATCH', payload, `?id=eq.${c.id}`);
+        if (r.ok) {
+          Object.assign(c, payload);
+          sucesso++;
+        } else {
+          falha++;
+        }
+      } else {
+        falha++;
+      }
+    } catch(e) {
+      falha++;
+    }
+  }
+
+  if (btn) btn.disabled = false;
+  if (status) {
+    status.className = 'concluido';
+    status.innerHTML = `
+      <div style="font-weight:700;margin-bottom:3px">✓ Concluído</div>
+      <div style="font-size:11px">${sucesso} clientes geocodados com sucesso · ${falha} falhas</div>
+      ${falha > 0 ? '<div style="font-size:11px;margin-top:4px;opacity:.8">Falhas geralmente ocorrem com endereços imprecisos. Edite o cliente e ajuste o endereço para tentar novamente.</div>' : ''}
+      <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>`;
+  }
+}
+
+// ============================================================
+// GEOCODING VIA NOMINATIM (OpenStreetMap, gratuito, sem cadastro)
+// Converte endereço em coordenadas (latitude, longitude).
+// Limite: 1 requisição/segundo. Por isso usamos throttle entre chamadas em lote.
+// ============================================================
+const _cacheGeoEndereco = new Map();
+let _ultimaConsultaNominatim = 0;
+
+async function geocodarEndereco(enderecoTexto) {
+  if (!enderecoTexto || !enderecoTexto.trim()) {
+    return { ok: false, erro: 'Endereço vazio' };
+  }
+  const chave = enderecoTexto.trim().toLowerCase();
+  if (_cacheGeoEndereco.has(chave)) {
+    return { ok: true, dados: _cacheGeoEndereco.get(chave), cached: true };
+  }
+
+  // Throttle: respeita 1 req/segundo do Nominatim (regra de uso)
+  const agora = Date.now();
+  const desdeUltima = agora - _ultimaConsultaNominatim;
+  if (desdeUltima < 1100) {
+    await new Promise(r => setTimeout(r, 1100 - desdeUltima));
+  }
+  _ultimaConsultaNominatim = Date.now();
+
+  // Acrescenta ", Brasil" no fim se não tiver país/UF claro (melhora muito a precisão)
+  const query = enderecoTexto.trim() + (/, brasil|, br|brazil/i.test(enderecoTexto) ? '' : ', Brasil');
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' + encodeURIComponent(query);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { ok: false, erro: `HTTP ${res.status}` };
+    const arr = await res.json();
+    if (!Array.isArray(arr) || !arr.length) {
+      return { ok: false, erro: 'Endereço não encontrado' };
+    }
+    const r = arr[0];
+    const dados = {
+      latitude: Number(r.lat),
+      longitude: Number(r.lon),
+      display_name: r.display_name || '',
+    };
+    if (isNaN(dados.latitude) || isNaN(dados.longitude)) {
+      return { ok: false, erro: 'Coordenadas inválidas retornadas' };
+    }
+    _cacheGeoEndereco.set(chave, dados);
+    return { ok: true, dados };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') return { ok: false, erro: 'Tempo esgotado' };
+    return { ok: false, erro: e.message || 'Falha ao geocodar' };
+  }
+}
+
 // ============================================================
 // CONSULTA DE CNPJ NA BRASILAPI (gratuita, sem cadastro)
 // ============================================================
-// Cache em memoria: evita consultar o mesmo CNPJ multiplas vezes
+// Cache em memória: evita consultar o mesmo CNPJ múltiplas vezes
 const _cacheCNPJ = new Map();
 
 async function consultarCNPJ(cnpjLimpo) {
@@ -945,13 +921,6 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
     if (!res.ok) {
       const txt = await res.text();
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
-      if (res.status >= 500 || res.status === 0) {
-        avisarInstabilidadeConexao(
-          'SERVIDOR INDISPONÍVEL',
-          'O servidor demorou ou recusou a resposta. Tente novamente em instantes.',
-          7000
-        );
-      }
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
     if (metodo==='DELETE') return { ok:true, dados:true };
@@ -959,146 +928,11 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
-      avisarInstabilidadeConexao(
-        'CONEXÃO LENTA',
-        'A operação demorou demais para responder.',
-        7000
-      );
       return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
     }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
-    document.body.classList.add('offline');
-    avisarInstabilidadeConexao(
-      navigator.onLine ? 'INSTABILIDADE NA CONEXÃO' : 'MODO OFFLINE',
-      'Não consegui falar com o servidor agora.',
-      7000
-    );
     return { ok:false, erro: e.message };
   }
-}
-
-function erroPareceConexao(erro) {
-  return /tempo esgotado|timeout|offline|failed\s*to\s*fetch|fetch failed|load failed|networkerror|network|internet|conex|cors|HTTP 0|HTTP 50\d|HTTP 502|HTTP 503|HTTP 504/i.test(String(erro || ''));
-}
-
-function erroPareceCampoAusente(erro) {
-  return /schema cache|could not find|column .* does not exist|PGRST204/i.test(String(erro || ''));
-}
-
-function payloadPedidoBasico(payload) {
-  return {
-    cliente_id: payload.cliente_id,
-    descricao: payload.descricao,
-    valor: payload.valor,
-    status: payload.status,
-    vendedor: payload.vendedor,
-    data_entrega: payload.data_entrega,
-    data_vencimento: payload.data_vencimento,
-    observacao: payload.observacao,
-  };
-}
-
-function payloadItemPedidoBasico(payload) {
-  return {
-    pedido_id: payload.pedido_id,
-    produto_id: payload.produto_id,
-    nome: payload.nome,
-    qtd: payload.qtd,
-    preco_unit: payload.preco_unit,
-  };
-}
-
-function payloadProdutoBasico(payload) {
-  return {
-    nome: payload.nome,
-    categoria: payload.categoria,
-    preco: payload.preco,
-  };
-}
-
-function payloadEntregaBasico(payload) {
-  return {
-    status: payload.status,
-    observacao: payload.observacao,
-  };
-}
-
-function payloadEntregaSemResponsavel(payload) {
-  const { entregue_por, entregue_em, ...resto } = payload;
-  return resto;
-}
-
-async function inserirPedidoComFallback(payload) {
-  let resPed = await supabase('pedidos','POST', payload);
-  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
-
-  console.warn('Pedido: tentando salvar novamente apenas com campos basicos.', resPed.erro);
-  return supabase('pedidos','POST', payloadPedidoBasico(payload));
-}
-
-async function atualizarPedidoComFallback(pedido_id, payload) {
-  let resPed = await supabase('pedidos','PATCH', payload, `?id=eq.${pedido_id}`);
-  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
-
-  // Alguns bancos podem nao ter ainda as colunas novas de pagamento.
-  // Nesse caso, salva o pedido com os campos essenciais para nao travar a edicao.
-  console.warn('Pedido: tentando atualizar novamente apenas com campos basicos.', resPed.erro);
-  return supabase('pedidos','PATCH', payloadPedidoBasico(payload), `?id=eq.${pedido_id}`);
-}
-
-async function atualizarEntregaComFallback(pedido_id, payload) {
-  let resPed = await supabase('pedidos','PATCH', payload, `?id=eq.${pedido_id}`);
-  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
-
-  console.warn('Entrega: tentando confirmar novamente sem campos de responsavel.', resPed.erro);
-  resPed = await supabase('pedidos','PATCH', payloadEntregaSemResponsavel(payload), `?id=eq.${pedido_id}`);
-  if (resPed.ok || !erroPareceCampoAusente(resPed.erro)) return resPed;
-
-  console.warn('Entrega: tentando confirmar novamente apenas com campos basicos.', resPed.erro);
-  return supabase('pedidos','PATCH', payloadEntregaBasico(payload), `?id=eq.${pedido_id}`);
-}
-
-async function inserirItemPedidoComFallback(payload) {
-  let resItem = await supabase('itens_pedido','POST', payload);
-  if (resItem.ok || !erroPareceCampoAusente(resItem.erro)) return resItem;
-
-  console.warn('Item do pedido: tentando salvar novamente sem preco_catalogo.', resItem.erro);
-  return supabase('itens_pedido','POST', payloadItemPedidoBasico(payload));
-}
-
-async function salvarProdutoComFallback(metodo, payload, filtros = '') {
-  let resProduto = await supabase('produtos', metodo, payload, filtros);
-  if (resProduto.ok || !erroPareceCampoAusente(resProduto.erro)) return resProduto;
-
-  console.warn('Produto: tentando salvar novamente sem preco_custo.', resProduto.erro);
-  return supabase('produtos', metodo, payloadProdutoBasico(payload), filtros);
-}
-
-async function salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens) {
-  const resPed = await atualizarPedidoComFallback(pedido_id, payloadPedido);
-  if (!resPed.ok) {
-    return { ok:false, etapa:'pedido', erro:resPed.erro || 'Erro ao atualizar pedido' };
-  }
-
-  const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
-  if (!resDel.ok) {
-    return { ok:false, etapa:'limpar itens antigos', erro:resDel.erro || 'Erro ao limpar itens antigos' };
-  }
-
-  const resItens = await Promise.all(itens.map(it => inserirItemPedidoComFallback({
-    pedido_id,
-    produto_id: it.produto_id,
-    nome: it.nome,
-    qtd: it.qtd,
-    preco_unit: it.preco_unit,
-    preco_catalogo: it.preco_catalogo,
-  })));
-  const erroItens = resItens.find(r => !r.ok);
-  if (erroItens) {
-    return { ok:false, etapa:'salvar itens', erro:erroItens.erro || 'Erro ao salvar itens do pedido' };
-  }
-
-  return { ok:true };
 }
 
 // ============================================================
@@ -1106,9 +940,9 @@ async function salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens) {
 // ============================================================
 function fazerLogin() {
   const u = document.getElementById('input-usuario').value.trim().toLowerCase();
-  const s = document.getElementById('input-senha').value;
+  const s = document.getElementById('input-senha').value.trim().toLowerCase();
   const user = USUARIOS[u];
-  if (!user || user.senha !== s) {
+  if (!user || user.senha.toLowerCase() !== s) {
     document.getElementById('erro-login').style.display = 'block';
     return;
   }
@@ -1170,7 +1004,6 @@ function sair() {
   filtroFinanceiro = 'atrasado';
   filtroCatalogo = 'todos';
   filtroMeusPedidos = 'pendente';
-  relatorioInicializado = false;
 
   // Fecha qualquer modal aberto
   document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
@@ -1183,7 +1016,7 @@ function sair() {
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';
   // Restaura telas que podem ter sido escondidas por outro perfil
-  ['tela-dashboard','tela-clientes','tela-financeiro','tela-relatorios','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
+  ['tela-dashboard','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
     .forEach(id => { document.getElementById(id).style.display=''; });
   const abasEl = document.getElementById('abas-entregas');
   if (abasEl) abasEl.style.display='';
@@ -1198,7 +1031,6 @@ const NAV = {
     { id:'entregas',   icone:'🚚', label:'Entregas',   tela:'tela-entregas'    },
     { id:'clientes',   icone:'🏪', label:'Clientes',   tela:'tela-clientes'    },
     { id:'financeiro', icone:'💰', label:'Financeiro', tela:'tela-financeiro'  },
-    { id:'relatorios', icone:'📊', label:'Relatórios', tela:'tela-relatorios'  },
     { id:'catalogo',   icone:'🛒', label:'Catálogo',   tela:'tela-catalogo'    },
   ],
   vendedor: [
@@ -1214,7 +1046,7 @@ const NAV = {
 
 const TITULOS = {
   dashboard:'Início', entregas:'Entregas', clientes:'Clientes',
-  financeiro:'Financeiro', relatorios:'Relatórios', catalogo:'Catálogo',
+  financeiro:'Financeiro', catalogo:'Catálogo',
   'meus-pedidos':'Meus Pedidos', 'inicio-vendedor':'Início',
 };
 
@@ -1231,7 +1063,7 @@ function configurarNav() {
 
   // Esconde telas que o perfil não usa
   const telasVisiveis = new Set(itens.map(i => i.tela));
-  ['tela-dashboard','tela-entregas','tela-clientes','tela-financeiro','tela-relatorios','tela-catalogo','tela-meus-pedidos','tela-inicio-vendedor']
+  ['tela-dashboard','tela-entregas','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-inicio-vendedor']
     .forEach(id => {
       document.getElementById(id).style.display = telasVisiveis.has(id) ? '' : 'none';
     });
@@ -1272,7 +1104,6 @@ function navegarPara(id) {
 
   if (id==='clientes')     renderizarClientes(todosOsClientes);
   if (id==='financeiro')   renderizarFinanceiro(filtroFinanceiro);
-  if (id==='relatorios')   renderizarRelatorios();
   if (id==='entregas')     renderizarEntregas(filtroEntregas);
   if (id==='catalogo')     renderizarCatalogo(filtroCatalogo);
   if (id==='meus-pedidos') renderizarMeusPedidos(filtroMeusPedidos);
@@ -1285,30 +1116,12 @@ function navegarPara(id) {
 // ============================================================
 async function carregarTudo() {
   if (!MODO_DEMO) {
-    if (!navigator.onLine && carregarCacheOfflineComAviso('sem internet ao abrir')) {
-      renderizarDadosAtuais();
-      if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
-      iniciarAutoRefresh();
-      return;
-    }
-    if (!navigator.onLine) {
-      alert('Sem internet e ainda não existem dados salvos neste aparelho. Abra o app uma vez com internet para ativar o modo offline.');
-      iniciarAutoRefresh();
-      return;
-    }
-
     const [resPed, resCli, resProd] = await Promise.all([
       supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
       supabase('clientes','GET',null,'?order=nome.asc'),
       supabase('produtos','GET',null,'?order=nome.asc'),
     ]);
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
-      if (carregarCacheOfflineComAviso('falha ao carregar online')) {
-        renderizarDadosAtuais();
-        if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
-        iniciarAutoRefresh();
-        return;
-      }
       alert('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
@@ -1320,8 +1133,6 @@ async function carregarTudo() {
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
-    todosOsPedidos = normalizarPedidosBanco(todosOsPedidos);
-    salvarDadosOffline('carregarTudo');
   }
   renderizarDashboard();
   renderizarEntregas(filtroEntregas);
@@ -1329,11 +1140,6 @@ async function carregarTudo() {
   if (usuario.perfil==='vendedor') {
     renderizarInicioVendedor();
     renderizarMeusPedidos(filtroMeusPedidos);
-  }
-  if (usuario.perfil==='admin') {
-    renderizarFinanceiro(filtroFinanceiro);
-    prepararRelatorios();
-    renderizarRelatorios();
   }
   popularSelectClientes();
 
@@ -1363,22 +1169,17 @@ async function sincronizarDados() {
     if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
 
     // Detecta se algo mudou (comparando hash completo dos pedidos)
-    const novosPedidos = normalizarPedidosBanco((resPed.dados || []).map(p => ({
+    const novosPedidos = (resPed.dados || []).map(p => ({
       ...p,
       cliente_nome: p.clientes?.nome || '–',
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
-    })));
+    }));
 
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
-      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}:${i.preco_catalogo||''}`).sort().join(',');
-      return [
-        p.id, p.status, p.status_pagamento || '', p.forma_pagamento_real || '', p.data_pagamento || '',
-        p.entregue_por || '', p.entregue_em || '',
-        p.valor, p.cliente_id, p.data_entrega, p.data_vencimento, p.observacao || '',
-        p.forma_pagamento || '', p.prazo_dias || '', p.prazos_boleto || '', itensHash
-      ].join('|');
+      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
+      return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
     const mudou =
       novosPedidos.map(hashPedido).join('\n') !== todosOsPedidos.map(hashPedido).join('\n') ||
@@ -1388,7 +1189,6 @@ async function sincronizarDados() {
     todosOsPedidos  = novosPedidos;
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
-    salvarDadosOffline('sincronizarDados');
 
     // Re-renderiza só se algo mudou (para não causar flicker)
     if (mudou) {
@@ -1399,10 +1199,7 @@ async function sincronizarDados() {
         renderizarInicioVendedor();
         renderizarMeusPedidos(filtroMeusPedidos);
       }
-      if (usuario.perfil==='admin') {
-        renderizarFinanceiro(filtroFinanceiro);
-        renderizarRelatorios();
-      }
+      if (usuario.perfil==='admin')    renderizarFinanceiro(filtroFinanceiro);
     }
   } catch (e) {
     console.warn('Sincronização falhou:', e);
@@ -2208,7 +2005,7 @@ function filtrarCatalogo(filtro, btn) {
 function _buscarProdutoImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBuscaProduto(t, p)
+    matchBusca(t, p.nome, p.categoria || '')
   );
   const el = document.getElementById('lista-catalogo');
   if (!lista.length) {
@@ -2225,7 +2022,7 @@ function _buscarProdutoImpl(termo) {
 function _buscarProdutoModalImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBuscaProduto(t, p)
+    matchBusca(t, p.nome, p.categoria || '')
   );
   const el = document.getElementById('lista-produto-modal');
   if (!lista.length) {
@@ -2489,7 +2286,18 @@ function verDetalheCliente(id) {
   if (c.whatsapp)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📲 ${esc(mascaraTelefone(c.whatsapp))}</div>`);
   if (c.telefone_fixo)      linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📞 ${esc(mascaraTelefone(c.telefone_fixo))}</div>`);
   if (c.email)              linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📧 ${esc(c.email)}</div>`);
-  if (c.endereco) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}</div>`);
+  if (c.endereco) {
+    // Indicador de geocoding (só admin vê)
+    let geoIcon = '';
+    if (usuario.perfil === 'admin') {
+      if (c.latitude && c.longitude) {
+        geoIcon = ' <span style="font-size:10px;color:#7ec850;margin-left:4px" title="Endereço geocodado: rota inteligente funciona">📡</span>';
+      } else {
+        geoIcon = ' <span style="font-size:10px;color:#f4a04a;margin-left:4px" title="Endereço sem coordenadas: edite o cliente para geocodar">⚠</span>';
+      }
+    }
+    linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}${geoIcon}</div>`);
+  }
   if (c.inscricao_estadual) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">🏷️ IE: ${esc(c.inscricao_estadual)}</div>`);
   if (c.observacao)         linhas.push(`<div style="font-size:13px;color:var(--c2);margin-top:8px;padding-top:8px;border-top:1px solid var(--ol);font-style:italic">📝 ${esc(c.observacao)}</div>`);
 
@@ -2511,399 +2319,6 @@ function verDetalheCliente(id) {
     ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="fecharModal('modal-detalhe-cliente'); abrirModalNovoCliente(${c.id})">✏️ Editar cliente</button>` : ''}
     ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-8" onclick="fecharModal('modal-detalhe-cliente'); excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
   abrirModal('modal-detalhe-cliente');
-}
-
-// ============================================================
-// RELATÓRIOS (admin)
-// ============================================================
-let relatorioInicializado = false;
-
-function dataLocalISO(d) {
-  return fmt(d);
-}
-
-function calcularPeriodoRelatorio(periodo) {
-  const hoje = new Date();
-  const inicio = new Date(hoje);
-  const fim = new Date(hoje);
-
-  if (periodo === 'semana') {
-    inicio.setDate(hoje.getDate() - 6);
-  } else if (periodo === 'ano') {
-    inicio.setMonth(0, 1);
-  } else {
-    inicio.setDate(1);
-  }
-
-  return { inicio: dataLocalISO(inicio), fim: dataLocalISO(fim) };
-}
-
-function prepararRelatorios() {
-  if (usuario?.perfil !== 'admin') return;
-  const periodoEl = document.getElementById('rel-periodo');
-  const inicioEl = document.getElementById('rel-data-inicio');
-  const fimEl = document.getElementById('rel-data-fim');
-  if (!periodoEl || !inicioEl || !fimEl) return;
-
-  if (!relatorioInicializado || !inicioEl.value || !fimEl.value) {
-    periodoEl.value = periodoEl.value || 'mes';
-    const periodo = calcularPeriodoRelatorio(periodoEl.value || 'mes');
-    inicioEl.value = periodo.inicio;
-    fimEl.value = periodo.fim;
-    relatorioInicializado = true;
-  }
-}
-
-function atualizarPeriodoRelatorio(periodo) {
-  const inicioEl = document.getElementById('rel-data-inicio');
-  const fimEl = document.getElementById('rel-data-fim');
-  if (!inicioEl || !fimEl) return;
-  if (periodo !== 'personalizado') {
-    const datas = calcularPeriodoRelatorio(periodo);
-    inicioEl.value = datas.inicio;
-    fimEl.value = datas.fim;
-  }
-  renderizarRelatorios();
-}
-
-function marcarPeriodoPersonalizado() {
-  const periodoEl = document.getElementById('rel-periodo');
-  if (periodoEl) periodoEl.value = 'personalizado';
-  renderizarRelatorios();
-}
-
-function nomeVendedorRelatorio(vendedor) {
-  if (vendedor === 'admin') return 'Admin';
-  if (vendedor === 'vendedor') return 'Vendedor';
-  if (vendedor === 'entregador') return 'Entregador';
-  return vendedor ? String(vendedor) : 'Não informado';
-}
-
-function nomePagamentoRelatorio(p) {
-  if (foiPago(p)) {
-    const forma = p.forma_pagamento_real === 'dinheiro' ? 'dinheiro' :
-                  p.forma_pagamento_real === 'pix' ? 'PIX/cartão' : '';
-    return `Pago${forma ? ` (${forma})` : ''}`;
-  }
-  if (p.status_pagamento === 'recusado') return 'Recusado';
-  return 'Pendente';
-}
-
-function nomeStatusRelatorio(p) {
-  if (p.status === 'entregue') return foiPago(p) ? 'Entregue + pago' : 'Entregue sem pagar';
-  return isAtrasado(p) ? 'Pendente atrasado' : 'Pendente';
-}
-
-function itensPedidoTexto(p) {
-  const itens = p.itens || [];
-  if (!itens.length) return p.descricao || '';
-  return itens.map(i => {
-    const qtd = Number(i.qtd) || 0;
-    const valor = Number(i.preco_unit) || 0;
-    return `${qtd}x ${i.nome || 'Produto'} (${moeda(valor)})`;
-  }).join(', ');
-}
-
-function filtrosRelatorioAtuais() {
-  prepararRelatorios();
-  let inicio = document.getElementById('rel-data-inicio')?.value || calcularPeriodoRelatorio('mes').inicio;
-  let fim = document.getElementById('rel-data-fim')?.value || calcularPeriodoRelatorio('mes').fim;
-  if (inicio && fim && inicio > fim) {
-    const tmp = inicio;
-    inicio = fim;
-    fim = tmp;
-  }
-  return {
-    periodo: document.getElementById('rel-periodo')?.value || 'mes',
-    inicio,
-    fim,
-    vendedor: document.getElementById('rel-vendedor')?.value || 'todos',
-    status: document.getElementById('rel-status')?.value || 'todos',
-    pagamento: document.getElementById('rel-pagamento')?.value || 'todos',
-    busca: document.getElementById('rel-busca')?.value.trim() || '',
-  };
-}
-
-function obterPedidosRelatorio() {
-  const filtros = filtrosRelatorioAtuais();
-  const inicio = filtros.inicio;
-  const fim = filtros.fim;
-
-  const pedidos = todosOsPedidos.filter(p => {
-    const dataRef = p.data_entrega || p.data_pagamento || '';
-    if (inicio && dataRef < inicio) return false;
-    if (fim && dataRef > fim) return false;
-
-    if (filtros.vendedor !== 'todos' && p.vendedor !== filtros.vendedor) return false;
-
-    if (filtros.status === 'entregue' && p.status !== 'entregue') return false;
-    if (filtros.status === 'pendente' && p.status === 'entregue') return false;
-    if (filtros.status === 'entregue-pago' && !(p.status === 'entregue' && foiPago(p))) return false;
-    if (filtros.status === 'entregue-aberto' && !(p.status === 'entregue' && !foiPago(p))) return false;
-
-    if (filtros.pagamento === 'pago' && !foiPago(p)) return false;
-    if (filtros.pagamento === 'pendente' && (foiPago(p) || p.status_pagamento === 'recusado')) return false;
-    if (filtros.pagamento === 'recusado' && p.status_pagamento !== 'recusado') return false;
-
-    if (filtros.busca) {
-      const itensTxt = (p.itens || []).map(i => i.nome).join(' ');
-      if (!matchBusca(filtros.busca, p.cliente_nome, p.descricao, p.observacao, itensTxt)) return false;
-    }
-
-    return true;
-  }).sort((a, b) => {
-    const da = a.data_entrega || '';
-    const db = b.data_entrega || '';
-    if (da !== db) return db.localeCompare(da);
-    return Number(b.id || 0) - Number(a.id || 0);
-  });
-
-  const total = pedidos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const entregues = pedidos.filter(p => p.status === 'entregue');
-  const abertos = pedidos.filter(p => !foiPago(p));
-  const recebido = pedidos.filter(foiPago).reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const abertoValor = abertos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const ticket = pedidos.length ? total / pedidos.length : 0;
-
-  return {
-    filtros,
-    pedidos,
-    resumo: { total, recebido, abertoValor, ticket, entregues: entregues.length, pendentes: pedidos.length - entregues.length }
-  };
-}
-
-function textoFiltrosRelatorio(filtros) {
-  const vendedor = filtros.vendedor === 'todos' ? 'Admin + vendedor' : nomeVendedorRelatorio(filtros.vendedor);
-  const status = {
-    todos: 'todos os status',
-    entregue: 'somente entregues',
-    pendente: 'somente pendentes',
-    'entregue-pago': 'entregues e pagos',
-    'entregue-aberto': 'entregues sem pagar'
-  }[filtros.status] || filtros.status;
-  const pagamento = filtros.pagamento === 'todos' ? 'todos os pagamentos' : nomePagamentoRelatorio({ status_pagamento: filtros.pagamento });
-  return `${dataBR(filtros.inicio)} até ${dataBR(filtros.fim)} · ${vendedor} · ${status} · ${pagamento}`;
-}
-
-function renderizarRelatorios() {
-  if (usuario?.perfil !== 'admin') return;
-  const listaEl = document.getElementById('lista-relatorios');
-  if (!listaEl) return;
-
-  const { filtros, pedidos, resumo } = obterPedidosRelatorio();
-  document.getElementById('rel-meta').textContent = textoFiltrosRelatorio(filtros);
-  document.getElementById('rel-total-pedidos').textContent = pedidos.length;
-  document.getElementById('rel-total-vendido').textContent = moeda(resumo.total);
-  document.getElementById('rel-total-entregues').textContent = resumo.entregues;
-  document.getElementById('rel-total-aberto').textContent = moeda(resumo.abertoValor);
-  document.getElementById('rel-ticket-medio').textContent = moeda(resumo.ticket);
-
-  if (!pedidos.length) {
-    listaEl.innerHTML = `<div class="relatorio-vazio">Nenhum pedido encontrado com esses filtros.</div>`;
-    return;
-  }
-
-  listaEl.innerHTML = pedidos.map(p => {
-    const classe = p.status === 'entregue' ? 'entregue' : 'pendente';
-    const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (p.status === 'entregue' ? 'Não registrado' : 'Aguardando entrega');
-    return `
-      <div class="relatorio-pedido ${classe}">
-        <div class="relatorio-pedido-topo">
-          <div>
-            <div class="relatorio-pedido-cliente">${esc(p.cliente_nome || 'Cliente não informado')}</div>
-            <div class="relatorio-pedido-desc">Pedido #${esc(p.id || '–')} · ${esc(p.descricao || 'Sem descrição')}</div>
-          </div>
-          <div class="relatorio-pedido-valor">${moeda(p.valor)}</div>
-        </div>
-        <div class="relatorio-detalhes">
-          <div><b>Status:</b> ${esc(nomeStatusRelatorio(p))}</div>
-          <div><b>Pagamento:</b> ${esc(nomePagamentoRelatorio(p))}</div>
-          <div><b>Vendido por:</b> ${esc(nomeVendedorRelatorio(p.vendedor))}</div>
-          <div><b>Entregue por:</b> ${esc(entreguePor)}</div>
-          <div><b>Entrega:</b> ${dataBR(p.data_entrega)}</div>
-          <div><b>Vencimento:</b> ${dataBR(p.data_vencimento)}</div>
-          <div><b>Pagamento em:</b> ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</div>
-          <div><b>Observação:</b> ${esc(p.observacao || '–')}</div>
-        </div>
-        <div class="relatorio-pedido-itens"><b>Itens:</b> ${esc(itensPedidoTexto(p) || '–')}</div>
-      </div>`;
-  }).join('');
-}
-
-function resumoPorVendedorRelatorio(pedidos) {
-  const mapa = {};
-  pedidos.forEach(p => {
-    const chave = p.vendedor || 'nao-informado';
-    if (!mapa[chave]) mapa[chave] = { nome: nomeVendedorRelatorio(chave), qtd: 0, total: 0, entregues: 0 };
-    mapa[chave].qtd++;
-    mapa[chave].total += Number(p.valor) || 0;
-    if (p.status === 'entregue') mapa[chave].entregues++;
-  });
-  return Object.values(mapa).sort((a, b) => b.total - a.total);
-}
-
-function resumoProdutosRelatorio(pedidos) {
-  const mapa = {};
-  pedidos.forEach(p => (p.itens || []).forEach(i => {
-    const nome = i.nome || 'Produto';
-    if (!mapa[nome]) mapa[nome] = { nome, qtd: 0, total: 0 };
-    const qtd = Number(i.qtd) || 0;
-    mapa[nome].qtd += qtd;
-    mapa[nome].total += qtd * (Number(i.preco_unit) || 0);
-  }));
-  return Object.values(mapa).sort((a, b) => b.total - a.total).slice(0, 12);
-}
-
-function gerarPDFRelatorio() {
-  if (usuario?.perfil !== 'admin') {
-    alert('Apenas o admin pode gerar relatórios.');
-    return;
-  }
-  const { filtros, pedidos, resumo } = obterPedidosRelatorio();
-  if (!pedidos.length) {
-    alert('Nenhum pedido encontrado para gerar relatório.');
-    return;
-  }
-
-  const porVendedor = resumoPorVendedorRelatorio(pedidos);
-  const porProduto = resumoProdutosRelatorio(pedidos);
-  const geradoEm = new Date().toLocaleString('pt-BR');
-  const titulo = `Relatório KG Entregas - ${dataBR(filtros.inicio)} a ${dataBR(filtros.fim)}`;
-  const logoUrl = new URL('logo.png', window.location.href).href;
-
-  const html = `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<title>${esc(titulo)}</title>
-<style>
-  *{box-sizing:border-box}
-  :root{--verde:#092316;--verde2:#123a26;--dourado:#c8960c;--dourado2:#f0c94b;--linha:#dfe5d8;--texto:#18251b;--muted:#667365}
-  body{margin:0;font-family:"Aptos","Segoe UI Variable","Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;color:var(--texto);background:#e8ece6;-webkit-print-color-adjust:exact;print-color-adjust:exact;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
-  .pagina{max-width:980px;margin:0 auto;padding:26px}
-  .relatorio{background:#fff;border:1px solid #d8ded2;border-radius:22px;overflow:hidden;box-shadow:0 18px 42px rgba(9,35,22,.16)}
-  .topo{background:linear-gradient(135deg,var(--verde) 0%,var(--verde2) 68%,#21482f 100%);color:#fff;padding:26px 30px 22px;position:relative}
-  .topo:after{content:"";position:absolute;left:30px;right:30px;bottom:0;height:3px;background:linear-gradient(90deg,var(--dourado),var(--dourado2),transparent);border-radius:999px}
-  .marca{display:flex;align-items:center;gap:16px}
-  .logo-wrap{width:72px;height:72px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(240,201,75,.52);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
-  .logo-wrap img{width:58px;height:58px;border-radius:50%;object-fit:cover;display:block}
-  h1{margin:0;font-size:26px;font-weight:800;letter-spacing:0;line-height:1.08}
-  .empresa{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:#f4d56b;font-weight:800;margin-bottom:5px}
-  .sub{font-size:12.5px;color:#d8e4d4;line-height:1.55;margin-top:8px;font-weight:450}
-  .periodo-chip{margin-left:auto;align-self:flex-start;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:11px;font-weight:800;color:#ffe180;white-space:nowrap}
-  .conteudo-pdf{padding:22px 30px 30px}
-  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 0 22px}
-  .card{border:1px solid var(--linha);border-radius:16px;padding:13px 12px;background:linear-gradient(180deg,#fff 0%,#f7faf4 100%);box-shadow:0 5px 16px rgba(19,50,31,.06)}
-  .num{font-size:19px;font-weight:850;color:#a67800;line-height:1.15;word-break:break-word}
-  .lbl{font-size:9.5px;text-transform:uppercase;color:var(--muted);margin-top:5px;font-weight:800;letter-spacing:.55px}
-  .secao{margin-top:20px}
-  .secao-titulo{display:flex;align-items:center;gap:9px;margin:0 0 10px;color:var(--verde);font-size:15px;font-weight:900}
-  .secao-titulo:before{content:"";width:8px;height:20px;border-radius:999px;background:linear-gradient(180deg,var(--dourado2),var(--dourado))}
-  table{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:12px;font-size:11.5px;border:1px solid var(--linha);border-radius:14px;overflow:hidden}
-  th,td{padding:9px 10px;vertical-align:top;text-align:left;border-bottom:1px solid var(--linha)}
-  th{background:#f1f6ec;color:#24422c;text-transform:uppercase;font-size:9px;letter-spacing:.5px;font-weight:850}
-  tr:last-child td{border-bottom:none}
-  tr.entregue td{background:#f4fbf1}
-  tr.pendente td{background:#fff9e8}
-  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-weight:800;font-size:9.5px;line-height:1.1;white-space:nowrap}
-  .ok{background:#dff5df;color:#176d32;border:1px solid #bfe5c2}
-  .warn{background:#fff0c2;color:#8a6500;border:1px solid #efd680}
-  .bad{background:#ffe1dd;color:#9d2f25;border:1px solid #efb7af}
-  .obs{display:block;color:var(--muted);margin-top:4px;font-size:10.5px;line-height:1.35}
-  .itens{font-size:10.5px;color:#455245;line-height:1.5}
-  .pedido-id{font-weight:850;color:var(--verde)}
-  .valor-final{font-weight:850;color:#9b7208}
-  .rodape{margin-top:18px;padding-top:12px;border-top:1px solid var(--linha);display:flex;justify-content:space-between;color:#7a8678;font-size:10.5px}
-  @page{size:A4;margin:10mm}
-  @media print{
-    body{background:#fff}.pagina{padding:0;max-width:none}.relatorio{border:none;border-radius:0;box-shadow:none}
-    .topo{border-radius:0}.conteudo-pdf{padding:18px 22px}.cards{grid-template-columns:repeat(5,1fr)}
-    .card{box-shadow:none}tr,.card,.secao{break-inside:avoid}button{display:none}
-  }
-</style>
-</head>
-<body>
-<div class="pagina">
-  <div class="relatorio">
-    <div class="topo">
-      <div class="marca">
-        <div class="logo-wrap"><img src="${esc(logoUrl)}" alt="KG Agropet"></div>
-        <div>
-          <div class="empresa">KG Agropet</div>
-          <h1>Relatório de Entregas</h1>
-          <div class="sub">${esc(textoFiltrosRelatorio(filtros))}<br>Gerado em ${esc(geradoEm)} · Usuário: Admin</div>
-        </div>
-        <div class="periodo-chip">${dataBR(filtros.inicio)} — ${dataBR(filtros.fim)}</div>
-      </div>
-    </div>
-    <div class="conteudo-pdf">
-      <div class="cards">
-        <div class="card"><div class="num">${pedidos.length}</div><div class="lbl">Pedidos</div></div>
-        <div class="card"><div class="num">${moeda(resumo.total)}</div><div class="lbl">Total vendido</div></div>
-        <div class="card"><div class="num">${resumo.entregues}</div><div class="lbl">Entregues</div></div>
-        <div class="card"><div class="num">${moeda(resumo.abertoValor)}</div><div class="lbl">Em aberto</div></div>
-        <div class="card"><div class="num">${moeda(resumo.ticket)}</div><div class="lbl">Ticket médio</div></div>
-      </div>
-
-      <div class="secao">
-        <div class="secao-titulo">Resumo por origem da venda</div>
-        <table>
-          <thead><tr><th>Origem</th><th>Pedidos</th><th>Entregues</th><th>Total</th></tr></thead>
-          <tbody>${porVendedor.map(v => `<tr><td><b>${esc(v.nome)}</b></td><td>${v.qtd}</td><td>${v.entregues}</td><td class="valor-final">${moeda(v.total)}</td></tr>`).join('')}</tbody>
-        </table>
-      </div>
-
-      <div class="secao">
-        <div class="secao-titulo">Produtos mais vendidos no período</div>
-        <table>
-          <thead><tr><th>Produto</th><th>Quantidade</th><th>Total estimado</th></tr></thead>
-          <tbody>${porProduto.length ? porProduto.map(p => `<tr><td><b>${esc(p.nome)}</b></td><td>${p.qtd}</td><td class="valor-final">${moeda(p.total)}</td></tr>`).join('') : '<tr><td colspan="3">Sem itens detalhados neste período.</td></tr>'}</tbody>
-        </table>
-      </div>
-
-      <div class="secao">
-        <div class="secao-titulo">Pedidos detalhados</div>
-        <table>
-          <thead><tr><th>Pedido</th><th>Cliente</th><th>Venda</th><th>Status</th><th>Pagamento</th><th>Datas</th><th>Itens e observações</th><th>Valor</th></tr></thead>
-          <tbody>
-            ${pedidos.map(p => {
-              const entregue = p.status === 'entregue';
-              const entreguePor = p.entregue_por ? nomeVendedorRelatorio(p.entregue_por) : (entregue ? 'Não registrado' : 'Aguardando');
-              const statusClass = entregue ? 'ok' : (isAtrasado(p) ? 'bad' : 'warn');
-              const pagamentoClass = foiPago(p) ? 'ok' : (p.status_pagamento === 'recusado' ? 'bad' : 'warn');
-              return `<tr class="${entregue ? 'entregue' : 'pendente'}">
-                <td><span class="pedido-id">#${esc(p.id || '–')}</span></td>
-                <td><b>${esc(p.cliente_nome || 'Cliente não informado')}</b><span class="obs">${esc(p.observacao || '')}</span></td>
-                <td>Vendido por: <b>${esc(nomeVendedorRelatorio(p.vendedor))}</b><br>Entregue por: <b>${esc(entreguePor)}</b></td>
-                <td><span class="badge ${statusClass}">${esc(nomeStatusRelatorio(p))}</span></td>
-                <td><span class="badge ${pagamentoClass}">${esc(nomePagamentoRelatorio(p))}</span></td>
-                <td>Entrega: ${dataBR(p.data_entrega)}<br>Venc.: ${dataBR(p.data_vencimento)}<br>Pago em: ${p.data_pagamento ? dataBR(p.data_pagamento) : '–'}</td>
-                <td><div class="itens">${esc(itensPedidoTexto(p) || '–')}</div></td>
-                <td class="valor-final">${moeda(p.valor)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div class="rodape">
-        <span>KG Entregas · Relatório administrativo</span>
-        <span>${pedidos.length} pedido(s) analisado(s)</span>
-      </div>
-    </div>
-  </div>
-</div>
-<script>window.onload=function(){setTimeout(function(){window.print()},350)}</script>
-</body>
-</html>`;
-
-  const janela = window.open('', '_blank');
-  if (!janela) {
-    alert('O navegador bloqueou a janela do relatório. Libere pop-ups para gerar o PDF.');
-    return;
-  }
-  janela.document.open();
-  janela.document.write(html);
-  janela.document.close();
 }
 
 // ============================================================
@@ -3326,41 +2741,32 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     const pedido_id = pedidoEmEdicao.id;
 
     if (!MODO_DEMO) {
-      const payloadPedido = {
+      // Atualiza o pedido
+      const resPed = await supabase('pedidos','PATCH',{
         cliente_id, descricao, valor,
         data_entrega, data_vencimento: data_vencimento||null,
         observacao: obs,
         forma_pagamento,
         prazo_dias: prazo_dias || null,
         prazos_boleto: prazos_boleto || null,
-      };
-
-      if (!navigator.onLine) {
-        adicionarNaFilaOffline({
-          tipo: 'editar-pedido',
-          pedidoId: pedido_id,
-          payload: payloadPedido,
-          itens,
-        });
-      } else {
-        const resBanco = await salvarEdicaoPedidoNoBanco(pedido_id, payloadPedido, itens);
-        if (!resBanco.ok) {
-          if (erroPareceConexao(resBanco.erro)) {
-            adicionarNaFilaOffline({
-              tipo: 'editar-pedido',
-              pedidoId: pedido_id,
-              payload: payloadPedido,
-              itens,
-            });
-          } else {
-            alert(
-              'Erro ao atualizar pedido.\n\n' +
-              'Etapa: ' + (resBanco.etapa || 'pedido') + '\n' +
-              'Detalhes: ' + (resBanco.erro || 'desconhecido')
-            );
-            return;
-          }
-        }
+      }, `?id=eq.${pedido_id}`);
+      if (!resPed.ok) {
+        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        return;
+      }
+      // Apaga itens antigos
+      const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
+      if (!resDel.ok) {
+        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
+        return;
+      }
+      // Insere itens novos
+      const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
+      })));
+      if (resItens.some(r => !r.ok)) {
+        alert('Erro ao salvar itens atualizados. Verifique no banco.');
+        return;
       }
     }
 
@@ -3400,7 +2806,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   };
 
   if (!MODO_DEMO) {
-    const resPed = await inserirPedidoComFallback({
+    const resPed = await supabase('pedidos','POST',{
       cliente_id, descricao, valor, status:'pendente',
       data_entrega, data_vencimento:data_vencimento||null,
       observacao:obs, vendedor:usuario.login,
@@ -3414,9 +2820,8 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     const pedido_id = resPed.dados[0].id;
     novoPedido.id = pedido_id;
     // Salvar itens do pedido e VERIFICAR cada um
-    const resItens = await Promise.all(itens.map(it => inserirItemPedidoComFallback({
-      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
-      preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
+    const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
+      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
     })));
     const falhouItens = resItens.some(r => !r.ok);
     if (falhouItens) {
@@ -3550,6 +2955,28 @@ async function salvarCliente() {
 
   salvando = true;
   try {
+    // Geocoding automático do endereço (se mudou ou se cliente novo)
+    let latitude = null, longitude = null;
+    if (endereco) {
+      const enderecoAntigo = clienteSelecionado?.endereco || '';
+      const precisaGeocodar = !clienteSelecionado
+        || endereco !== enderecoAntigo
+        || !clienteSelecionado.latitude
+        || !clienteSelecionado.longitude;
+      if (precisaGeocodar) {
+        const resGeo = await geocodarEndereco(endereco);
+        if (resGeo.ok) {
+          latitude = resGeo.dados.latitude;
+          longitude = resGeo.dados.longitude;
+        }
+        // Se falhou, salva sem coords mesmo (não bloqueia o cadastro)
+      } else {
+        // Mantém as coords antigas
+        latitude = clienteSelecionado.latitude;
+        longitude = clienteSelecionado.longitude;
+      }
+    }
+
     // ==== EDIÇÃO ====
     if (clienteSelecionado) {
       const id = clienteSelecionado.id;
@@ -3563,6 +2990,7 @@ async function salvarCliente() {
         tipo_pessoa,
         inscricao_estadual: ieRaw || null,
         observacao: observacao || null,
+        latitude, longitude,
       };
       if (!MODO_DEMO) {
         const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
@@ -3597,10 +3025,10 @@ async function salvarCliente() {
       tipo_pessoa,
       inscricao_estadual: ieRaw || null,
       observacao: observacao || null,
+      latitude, longitude,
     };
     if (!MODO_DEMO) {
-      const { id: _idTemporario, ...payloadNovoCliente } = novo;
-      const res = await supabase('clientes','POST', payloadNovoCliente);
+      const res = await supabase('clientes','POST', novo);
       if (!res.ok || !res.dados?.[0]) {
         alert('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
@@ -3759,8 +3187,6 @@ async function confirmarEntrega() {
       status_pagamento,
       forma_pagamento_real,
       data_pagamento,
-      entregue_por: usuario?.login || '',
-      entregue_em: new Date().toISOString(),
     };
 
     if (!MODO_DEMO) {
@@ -3778,7 +3204,7 @@ async function confirmarEntrega() {
           'Continue suas entregas normalmente.'
         );
       } else {
-        const res = await atualizarEntregaComFallback(id, payload);
+        const res = await supabase('pedidos','PATCH', payload, `?id=eq.${id}`);
         if (!res.ok) {
           // Se falhou por timeout (rede ruim), também enfileira
           if (res.erro && /tempo esgotado|timeout|offline/i.test(res.erro)) {
@@ -3938,7 +3364,7 @@ async function salvarProduto() {
       const custoMudou = produtoAntigo && (Number(produtoAntigo.preco_custo || 0) !== Number(preco_custo || 0));
 
       if (!MODO_DEMO) {
-        const res = await salvarProdutoComFallback('PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
+        const res = await supabase('produtos','PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
         if (!res.ok) {
           alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
           return;
@@ -3959,7 +3385,7 @@ async function salvarProduto() {
       // === NOVO ===
       const novo = { id: Date.now(), nome, categoria, preco, preco_custo };
       if (!MODO_DEMO) {
-        const res = await salvarProdutoComFallback('POST', { nome, categoria, preco, preco_custo });
+        const res = await supabase('produtos','POST', { nome, categoria, preco, preco_custo });
         if (!res.ok || !res.dados?.[0]) {
           alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
           return;
@@ -4263,36 +3689,6 @@ document.addEventListener('keydown', e => {
 // ============================================================
 // SERVICE WORKER + DETECÇÃO OFFLINE + INSTALAR PWA
 // ============================================================
-let atualizacaoPwaPendente = false;
-
-function campoEditavelAtivo() {
-  const el = document.activeElement;
-  if (!el) return false;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable;
-}
-
-function telaLoginVisivel() {
-  const login = document.getElementById('tela-login');
-  return !!login && getComputedStyle(login).display !== 'none';
-}
-
-function podeRecarregarAtualizacaoPwa() {
-  if (campoEditavelAtivo()) return false;
-  if (telaLoginVisivel()) return false;
-  if (document.querySelector('.modal-overlay.aberto')) return false;
-  return true;
-}
-
-function avisarAtualizacaoPwaPendente() {
-  atualizacaoPwaPendente = true;
-  try { sessionStorage.setItem('kg-atualizacao-pendente', '1'); } catch(e) {}
-  mostrarBannerConexao(
-    'syncing',
-    'ATUALIZAÇÃO PRONTA',
-    'Uma versão nova foi baixada. Ela será aplicada quando você reabrir o app, sem apagar o que está digitando.',
-    9000
-  );
-}
 
 // Registra o Service Worker (silencioso em caso de erro)
 if ('serviceWorker' in navigator) {
@@ -4311,108 +3707,24 @@ if ('serviceWorker' in navigator) {
       });
     }).catch(err => console.warn('SW falhou ao registrar:', err));
 
-    // Recarrega quando o SW novo assumir controle, mas nunca enquanto o usuario digita.
+    // Recarrega quando o SW novo assumir controle (atualização suave)
     let recarregando = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (recarregando) return;
-      if (podeRecarregarAtualizacaoPwa()) {
-        recarregando = true;
-        window.location.reload();
-      } else {
-        avisarAtualizacaoPwaPendente();
-      }
+      recarregando = true;
+      window.location.reload();
     });
   });
-}
-
-// ============================================================
-// BANNER INTELIGENTE DE CONEXÃO + FILA OFFLINE
-// ============================================================
-const FILA_OFFLINE_KEY = 'kg-fila-offline';
-const BANNER_CONEXAO_DURACAO_MS = 6500;
-const BANNER_CONEXAO_OK_MS = 3500;
-const BANNER_CONEXAO_REAVISO_MS = 60000;
-let bannerConexaoTimer = null;
-let ultimoAvisoFilaPendente = 0;
-let statusOnlineAnterior = navigator.onLine;
-let statusConexaoInicializado = false;
-
-function fecharBannerConexao() {
-  clearTimeout(bannerConexaoTimer);
-  bannerConexaoTimer = null;
-  const banner = document.getElementById('banner-offline');
-  if (!banner) return;
-  banner.classList.remove('visivel');
-  banner.setAttribute('aria-hidden', 'true');
-}
-
-function mensagemOfflineComFila(mensagemBase) {
-  const qtd = lerFilaOffline().length;
-  if (!qtd) return mensagemBase;
-  const plural = qtd === 1 ? 'ação pendente' : 'ações pendentes';
-  return `${mensagemBase} ${qtd} ${plural} na fila serão sincronizadas automaticamente.`;
-}
-
-function mostrarBannerConexao(tipo, titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
-  const banner = document.getElementById('banner-offline');
-  if (!banner) return;
-
-  const icone = document.getElementById('banner-offline-icone');
-  const tituloEl = document.getElementById('banner-offline-titulo');
-  const msgEl = document.getElementById('banner-offline-msg');
-  if (icone) {
-    icone.textContent = tipo === 'ok' ? '✓' : (tipo === 'syncing' ? '↻' : '⚠️');
-  }
-  if (tituloEl) tituloEl.textContent = titulo;
-  if (msgEl) msgEl.textContent = mensagem;
-
-  banner.classList.remove('ok', 'syncing');
-  if (tipo === 'ok' || tipo === 'syncing') banner.classList.add(tipo);
-  banner.classList.add('visivel');
-  banner.setAttribute('aria-hidden', 'false');
-
-  clearTimeout(bannerConexaoTimer);
-  if (duracao > 0) {
-    bannerConexaoTimer = setTimeout(fecharBannerConexao, duracao);
-  }
-}
-
-function avisarInstabilidadeConexao(titulo, mensagem, duracao = BANNER_CONEXAO_DURACAO_MS) {
-  mostrarBannerConexao('offline', titulo, mensagemOfflineComFila(mensagem), duracao);
 }
 
 // ============================================================
 // DETECÇÃO DE STATUS ONLINE/OFFLINE
 // ============================================================
 function atualizarStatusConexao() {
-  const onlineAgora = navigator.onLine;
-  const ficouOffline = statusConexaoInicializado && statusOnlineAnterior && !onlineAgora;
-  const voltouOnline = statusConexaoInicializado && !statusOnlineAnterior && onlineAgora;
-
-  document.body.classList.toggle('offline', !onlineAgora);
-
-  if (!statusConexaoInicializado && !onlineAgora) {
-    avisarInstabilidadeConexao(
-      'MODO OFFLINE',
-      'Sem conexão agora. Você pode continuar e as ações pendentes serão guardadas.'
-    );
-  } else if (ficouOffline) {
-    avisarInstabilidadeConexao(
-      'MODO OFFLINE',
-      'A conexão caiu. Dados podem estar desatualizados.'
-    );
-  } else if (voltouOnline) {
-    mostrarBannerConexao(
-      'ok',
-      'CONEXÃO RESTAURADA',
-      'Internet voltou. Vou sincronizar ações pendentes, se houver.',
-      BANNER_CONEXAO_OK_MS
-    );
-  }
-
-  if (onlineAgora && usuario) processarFilaOffline();
-  statusOnlineAnterior = onlineAgora;
-  statusConexaoInicializado = true;
+  const offline = !navigator.onLine;
+  document.body.classList.toggle('offline', offline);
+  // Se voltou online, tenta processar fila de ações pendentes
+  if (!offline && usuario) processarFilaOffline();
 }
 
 window.addEventListener('online',  atualizarStatusConexao);
@@ -4425,6 +3737,7 @@ atualizarStatusConexao();
 // Quando entregador marca entregue offline, ação fica enfileirada
 // em localStorage. Quando volta online, envia tudo automaticamente.
 // ============================================================
+const FILA_OFFLINE_KEY = 'kg-fila-offline';
 
 function lerFilaOffline() {
   try {
@@ -4440,19 +3753,9 @@ function gravarFilaOffline(fila) {
 }
 
 function adicionarNaFilaOffline(acao) {
-  let fila = lerFilaOffline();
-  // Para edicao de pedido, mantem apenas a versao mais recente daquele pedido.
-  if (acao.tipo === 'editar-pedido' && acao.pedidoId != null) {
-    fila = fila.filter(a => !(a.tipo === 'editar-pedido' && a.pedidoId === acao.pedidoId));
-  }
+  const fila = lerFilaOffline();
   fila.push({ ...acao, ts: Date.now() });
   gravarFilaOffline(fila);
-  mostrarBannerConexao(
-    'syncing',
-    'AÇÃO SALVA OFFLINE',
-    mensagemOfflineComFila('Ela ficou guardada neste aparelho.'),
-    BANNER_CONEXAO_DURACAO_MS
-  );
 }
 
 let _processandoFila = false;
@@ -4468,21 +3771,12 @@ async function processarFilaOffline() {
   for (const acao of fila) {
     try {
       if (acao.tipo === 'marcar-entregue') {
-        const res = await atualizarEntregaComFallback(acao.pedidoId, acao.payload);
+        const res = await supabase('pedidos', 'PATCH', acao.payload, `?id=eq.${acao.pedidoId}`);
         if (res.ok) {
           sucesso.push(acao);
           // Atualiza no estado local
           const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
           if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload);
-        } else {
-          falha.push(acao);
-        }
-      } else if (acao.tipo === 'editar-pedido') {
-        const res = await salvarEdicaoPedidoNoBanco(acao.pedidoId, acao.payload, acao.itens || []);
-        if (res.ok) {
-          sucesso.push(acao);
-          const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
-          if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload, { itens: acao.itens || todosOsPedidos[idx].itens });
         } else {
           falha.push(acao);
         }
@@ -4499,28 +3793,9 @@ async function processarFilaOffline() {
   if (sucesso.length) {
     // Notifica o usuário e re-renderiza
     console.log(`✓ ${sucesso.length} ação(ões) sincronizada(s) com sucesso`);
-    const pendentes = falha.length;
-    mostrarBannerConexao(
-      pendentes ? 'syncing' : 'ok',
-      pendentes ? 'SINCRONIZAÇÃO PARCIAL' : 'TUDO SINCRONIZADO',
-      pendentes
-        ? `${sucesso.length} ação(ões) sincronizada(s). ${pendentes} ainda pendente(s).`
-        : `${sucesso.length} ação(ões) sincronizada(s) com sucesso.`,
-      pendentes ? BANNER_CONEXAO_DURACAO_MS : BANNER_CONEXAO_OK_MS
-    );
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
       agendarRender('entregas');
-    }
-  } else if (falha.length) {
-    const agora = Date.now();
-    if (agora - ultimoAvisoFilaPendente > BANNER_CONEXAO_REAVISO_MS) {
-      ultimoAvisoFilaPendente = agora;
-      avisarInstabilidadeConexao(
-        'SINCRONIZAÇÃO PENDENTE',
-        'Ainda não foi possível enviar as ações guardadas.',
-        BANNER_CONEXAO_DURACAO_MS
-      );
     }
   }
 }
