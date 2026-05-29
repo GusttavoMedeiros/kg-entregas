@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v17';
+const CACHE_VERSION = 'kg-v2';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -15,15 +15,9 @@ const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
   './app.js',
-  './app.js?v=42',
   './manifest.json',
-  './manifest.json?v=5',
   './logo.webp',
   './logo.png',
-  './app-icon-180.png',
-  './app-icon-192.png',
-  './app-icon-512.png',
-  './app-icon-maskable-512.png',
 ];
 
 // ============================================================
@@ -72,7 +66,7 @@ self.addEventListener('fetch', event => {
   }
 
   // 3) APIs externas (BrasilAPI): network-only com cache de sucesso
-  //    Se falhar, devolve do cache (consulta CNPJ antigos)
+  //    Se falhar, devolve do cache (consultas de CNPJ antigas)
   if (ehBrasilAPI) {
     event.respondWith(estrategiaNetworkPrimeiro(event.request, DATA_CACHE));
     return;
@@ -84,15 +78,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) Paginas HTML: rede primeiro, para evitar tela antiga presa no cache.
-  const aceitaHtml = event.request.mode === 'navigate' ||
-    (event.request.headers.get('accept') || '').includes('text/html');
-  if (aceitaHtml) {
-    event.respondWith(estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE));
-    return;
-  }
-
-  // 6) Assets da própria origem: cache-first (instantâneo)
+  // 5) Assets da própria origem: cache-first (instantâneo)
   event.respondWith(estrategiaCachePrimeiro(event.request, ASSETS_CACHE));
 });
 
