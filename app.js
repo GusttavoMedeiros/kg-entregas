@@ -2244,6 +2244,11 @@ function verFinanceiroCliente(id) {
   const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && p.status!=='entregue');
   const total = pedidos.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const wa = (c.whatsapp||'').replace(/\D/g,'');
+
+  // Monta mensagem de cobrança pronta e inteligente
+  const msgCobranca = montarMensagemCobranca(c, pedidos, total);
+  const linkWa = wa ? `https://wa.me/55${wa}?text=${encodeURIComponent(msgCobranca)}` : '';
+
   document.getElementById('fin-cliente-nome').textContent = c.nome;
   document.getElementById('fin-cliente-conteudo').innerHTML = `
     <div style="font-size:13px;color:var(--c2);margin-bottom:14px">📱 ${esc(c.whatsapp||'–')}</div>
@@ -2260,11 +2265,45 @@ function verFinanceiroCliente(id) {
       </div>`).join('')
     : '<div class="vazio" style="padding:20px"><p>Sem entregas em aberto</p></div>'}
     <div style="margin-top:12px;font-weight:700;color:var(--o1);font-size:15px">Total: ${moeda(total)}</div>
-    ${wa?`<a href="https://wa.me/55${wa}" target="_blank" rel="noopener"
+    ${linkWa?`<a href="${linkWa}" target="_blank" rel="noopener"
       style="display:block;margin-top:12px;background:var(--gnb);color:var(--gn);border:1px solid rgba(39,174,96,.3);
              border-radius:var(--r);padding:12px;text-align:center;text-decoration:none;font-weight:700;font-size:14px">
       📲 Enviar cobrança no WhatsApp</a>`:''}`;
   abrirModal('modal-fin-cliente');
+}
+
+// Monta uma mensagem de cobrança pronta, educada e detalhada.
+// Lista cada pedido com vencimento, marca atrasados e fecha com o total.
+function montarMensagemCobranca(cliente, pedidos, total) {
+  const saudacao = obterSaudacao(); // Bom dia / Boa tarde / Boa noite
+  const nome = cliente.responsavel || cliente.nome || 'cliente';
+
+  // Se tem mais de um pedido, lista item por item
+  let corpo;
+  if (pedidos.length === 1) {
+    const p = pedidos[0];
+    const atrasado = isAtrasado(p);
+    corpo = atrasado
+      ? `Consta em nosso sistema um pagamento *em atraso* referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`
+      : `Passando para lembrar do pagamento referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
+  } else {
+    const linhas = pedidos.map(p => {
+      const flag = isAtrasado(p) ? ' ⚠ (em atraso)' : '';
+      return `• ${p.descricao} — ${moeda(p.valor)} (venc. ${dataBR(p.data_vencimento)})${flag}`;
+    }).join('\n');
+    const temAtraso = pedidos.some(p => isAtrasado(p));
+    corpo = `${temAtraso ? 'Constam alguns pagamentos pendentes' : 'Segue um resumo dos pagamentos em aberto'} referentes aos seus pedidos:\n\n${linhas}\n\n*Total: ${moeda(total)}*`;
+  }
+
+  return `${saudacao}, ${nome}! 🌿\n\nAqui é da *KG Agropet*. ${corpo}\n\nQualquer dúvida estou à disposição. Agradecemos a preferência! 🙏`;
+}
+
+// Retorna saudação conforme a hora do dia
+function obterSaudacao() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
 }
 
 async function marcarPagoCliente() {
