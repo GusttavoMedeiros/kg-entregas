@@ -2295,7 +2295,7 @@ function montarMensagemCobranca(cliente, pedidos, total) {
     corpo = `${temAtraso ? 'Constam alguns pagamentos pendentes' : 'Segue um resumo dos pagamentos em aberto'} referentes aos seus pedidos:\n\n${linhas}\n\n*Total: ${moeda(total)}*`;
   }
 
-  return `${saudacao}, ${nome}! 🌿\n\nAqui é da *KG Agropet*. ${corpo}\n\nQualquer dúvida estou à disposição. Agradecemos a preferência! 🙏`;
+  return `${saudacao}, ${nome}! 🌿\n\nAqui é da *KG Agropet*. ${corpo}\n\nQualquer dúvida estou à disposição. Agradecemos a preferência! 🙏\n\n_Mensagem automática de lembrete. Se já efetuou o pagamento, por favor desconsidere._ 😊`;
 }
 
 // Retorna saudação conforme a hora do dia
