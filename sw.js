@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v2';
+const CACHE_VERSION = 'kg-v3';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -78,27 +78,47 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) Assets da própria origem: cache-first (instantâneo)
-  event.respondWith(estrategiaCachePrimeiro(event.request, ASSETS_CACHE));
+  // 5) Assets da própria origem: stale-while-revalidate
+  //    (serve do cache instantâneo E atualiza em background)
+  event.respondWith(estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
 });
 
 // ============================================================
-// ESTRATÉGIA: cache-first (assets)
-// Usa cache se tiver. Senão, busca rede e guarda.
+// ESTRATÉGIA: stale-while-revalidate (assets)
+// Devolve do cache na hora (rápido!) e, em paralelo, busca a versão
+// nova da rede pra atualizar o cache pro próximo acesso.
+// O melhor dos dois mundos: velocidade + sempre atualizado.
+// ============================================================
+async function estrategiaStaleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+
+  // Busca a versão nova em background (não bloqueia a resposta)
+  const buscaRede = fetch(request).then(fresh => {
+    if (fresh && fresh.status === 200) {
+      cache.put(request, fresh.clone()).catch(() => {});
+    }
+    return fresh;
+  }).catch(() => null);
+
+  // Se tem no cache, devolve já (instantâneo). Senão, espera a rede.
+  return cached || buscaRede || new Response('', { status: 503, statusText: 'Offline' });
+}
+
+// ============================================================
+// ESTRATÉGIA: cache-first (fallback legado, mantido por segurança)
 // ============================================================
 async function estrategiaCachePrimeiro(request, cacheName) {
   try {
     const cached = await caches.match(request);
     if (cached) return cached;
     const fresh = await fetch(request);
-    // Guarda no cache (só se status 200)
     if (fresh && fresh.status === 200) {
       const cache = await caches.open(cacheName);
       cache.put(request, fresh.clone());
     }
     return fresh;
   } catch (e) {
-    // Sem rede e sem cache → devolve resposta vazia em vez de quebrar
     return new Response('', { status: 503, statusText: 'Offline' });
   }
 }
