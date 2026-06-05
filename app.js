@@ -370,7 +370,6 @@ function limpezaChecklistAntigos() {
       } catch(e) { remover.push(key); }
     }
     remover.forEach(k => localStorage.removeItem(k));
-    if (remover.length) console.log(`Checklist: ${remover.length} entradas antigas removidas`);
   } catch(e) { /* silencioso */ }
 }
 
@@ -3617,8 +3616,7 @@ async function processarFilaOffline() {
   _processandoFila = false;
 
   if (sucesso.length) {
-    // Notifica o usuário e re-renderiza
-    console.log(`✓ ${sucesso.length} ação(ões) sincronizada(s) com sucesso`);
+    // Re-renderiza telas afetadas após sincronizar
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
       agendarRender('entregas');
@@ -3658,10 +3656,7 @@ async function instalarApp() {
     return;
   }
   _deferredPrompt.prompt();
-  const { outcome } = await _deferredPrompt.userChoice;
-  if (outcome === 'accepted') {
-    console.log('App instalado!');
-  }
+  await _deferredPrompt.userChoice;
   _deferredPrompt = null;
   fecharBannerInstalar();
 }
