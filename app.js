@@ -596,18 +596,14 @@ async function aplicarDadosReceita(dados) {
     }
   }
 
-  // Telefone (DDD + número juntos vêm como "8133214455")
+  // Telefone da Receita: limpa TUDO que não é dígito antes de classificar.
+  // 11 dígitos (DDD + 9) = celular → preenche o WhatsApp.
+  // 10 dígitos (DDD + 8) = fixo → não há mais campo; o número aparece
+  // no painel de status da consulta para o usuário decidir o que fazer.
   const inputWa = document.getElementById('cliente-whatsapp');
-  const inputTel = document.getElementById('cliente-telefone-fixo');
-  const telReceita = dados.ddd_telefone_1 || '';
-  if (telReceita) {
-    // Detecta se é celular (9 dígitos após DDD) — vai pro WhatsApp; senão, fixo
-    const ehCelular = telReceita.length === 11;
-    if (ehCelular && inputWa && !inputWa.value.trim()) {
-      inputWa.value = mascaraTelefone(telReceita);
-    } else if (!ehCelular && inputTel && !inputTel.value.trim()) {
-      inputTel.value = mascaraTelefone(telReceita);
-    }
+  const telReceita = soDigitos(String(dados.ddd_telefone_1 || ''));
+  if (telReceita.length === 11 && inputWa && !inputWa.value.trim()) {
+    inputWa.value = mascaraTelefone(telReceita);
   }
 
   // E-mail
@@ -674,10 +670,32 @@ async function tentarConsultarCNPJ() {
   const sitTxt = (d.descricao_situacao_cadastral || 'ATIVA').toUpperCase();
   const sitClass = sitTxt === 'ATIVA' ? 'ok' : 'aviso';
 
+  // Checklist transparente: o que a Receita forneceu e o que não está disponível.
+  // (A Receita Federal NÃO divulga e-mail/telefone de todas as empresas, e a
+  //  Inscrição Estadual é dado da SEFAZ estadual — raramente vem nessa consulta.)
+  const telLimpo = soDigitos(String(d.ddd_telefone_1 || ''));
+  const checks = [
+    { ok: !!(d.logradouro || d.municipio), label: 'Endereço' },
+    { ok: telLimpo.length === 11, label: 'Celular' },
+    { ok: !!d.email, label: 'E-mail' },
+  ];
+  const linhaChecks = checks.map(c =>
+    `<span style="opacity:${c.ok ? '1' : '.45'}">${c.ok ? '✓' : '✗'} ${c.label}</span>`
+  ).join(' · ');
+
+  // Se a Receita só tem telefone FIXO (10 dígitos), mostra como informação —
+  // não preenche campo nenhum (fixo não serve para cobrança via WhatsApp).
+  const linhaFixo = telLimpo.length === 10
+    ? `<div style="font-size:11px;margin-top:3px;opacity:.8">ℹ Fixo na Receita: ${mascaraTelefone(telLimpo)} (anote na observação se precisar)</div>`
+    : '';
+
   status.className = 'cnpj-status ' + sitClass;
   status.innerHTML = `
     <div style="font-weight:700;margin-bottom:3px">${sitTxt === 'ATIVA' ? '✓' : '⚠'} ${esc(nomeUsar)}</div>
-    <div style="font-size:11px;opacity:.85">Situação: ${esc(sitTxt)}${res.cached ? ' · em cache' : ''}</div>`;
+    <div style="font-size:11px;opacity:.85">Situação: ${esc(sitTxt)}${res.cached ? ' · em cache' : ''}</div>
+    <div style="font-size:11px;margin-top:4px">${linhaChecks}</div>
+    ${linhaFixo}
+    <div style="font-size:10px;opacity:.6;margin-top:3px">Itens com ✗ não são divulgados pela Receita para este CNPJ</div>`;
 
   // Aplica os dados (com confirmações se necessário)
   await aplicarDadosReceita(d);
@@ -687,7 +705,6 @@ async function tentarConsultarCNPJ() {
 function aplicarMascarasCliente() {
   const inputDoc = document.getElementById('cliente-cnpj-cpf');
   const inputWa  = document.getElementById('cliente-whatsapp');
-  const inputTel = document.getElementById('cliente-telefone-fixo');
   const inputIE  = document.getElementById('cliente-ie');
   if (!inputDoc) return; // modal não está aberto
 
@@ -712,7 +729,6 @@ function aplicarMascarasCliente() {
     }
   });
   inputWa.addEventListener('input',  e => { e.target.value = mascaraTelefone(e.target.value); });
-  inputTel.addEventListener('input', e => { e.target.value = mascaraTelefone(e.target.value); });
   inputIE.addEventListener('input',  e => {
     if (e.target.value.toUpperCase() === 'ISENTO') return;
     e.target.value = mascaraIE(e.target.value);
@@ -2144,7 +2160,6 @@ function verDetalheCliente(id) {
   if (docFmt) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">${docFmt}</div>`);
   if (c.responsavel)        linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">👤 ${esc(c.responsavel)}</div>`);
   if (c.whatsapp)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📲 ${esc(mascaraTelefone(c.whatsapp))}</div>`);
-  if (c.telefone_fixo)      linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📞 ${esc(mascaraTelefone(c.telefone_fixo))}</div>`);
   if (c.email)              linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📧 ${esc(c.email)}</div>`);
   if (c.endereco)           linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">📍 ${esc(c.endereco)}</div>`);
   if (c.inscricao_estadual) linhas.push(`<div style="font-size:13px;color:var(--c2);margin-bottom:5px">🏷️ IE: ${esc(c.inscricao_estadual)}</div>`);
@@ -2734,7 +2749,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
 // MODAL NOVO CLIENTE
 // ============================================================
 function abrirModalNovoCliente(idEdit) {
-  const ids = ['cliente-nome','cliente-responsavel','cliente-whatsapp','cliente-telefone-fixo',
+  const ids = ['cliente-nome','cliente-responsavel','cliente-whatsapp',
                'cliente-email','cliente-endereco','cliente-cnpj-cpf','cliente-ie','cliente-observacao'];
 
   if (idEdit) {
@@ -2747,7 +2762,6 @@ function abrirModalNovoCliente(idEdit) {
     document.getElementById('cliente-nome').value           = c.nome || '';
     document.getElementById('cliente-responsavel').value    = c.responsavel || '';
     document.getElementById('cliente-whatsapp').value       = c.whatsapp ? mascaraTelefone(c.whatsapp) : '';
-    document.getElementById('cliente-telefone-fixo').value  = c.telefone_fixo ? mascaraTelefone(c.telefone_fixo) : '';
     document.getElementById('cliente-email').value          = c.email || '';
     document.getElementById('cliente-endereco').value       = c.endereco || '';
     document.getElementById('cliente-observacao').value     = c.observacao || '';
@@ -2805,7 +2819,6 @@ async function salvarCliente() {
   const responsavel = document.getElementById('cliente-responsavel').value.trim();
   const docRaw      = soDigitos(document.getElementById('cliente-cnpj-cpf').value);
   const whatsappRaw = soDigitos(document.getElementById('cliente-whatsapp').value);
-  const telefoneRaw = soDigitos(document.getElementById('cliente-telefone-fixo').value);
   const email       = document.getElementById('cliente-email').value.trim();
   const endereco    = document.getElementById('cliente-endereco').value.trim();
   const ieRaw       = document.getElementById('cliente-ie').value.trim();
@@ -2849,7 +2862,6 @@ async function salvarCliente() {
       const payload = {
         nome, responsavel,
         whatsapp: whatsappRaw,
-        telefone_fixo: telefoneRaw || null,
         email: email || null,
         endereco,
         cnpj_cpf: docRaw,
@@ -2883,7 +2895,6 @@ async function salvarCliente() {
       id: Date.now(),
       nome, responsavel,
       whatsapp: whatsappRaw,
-      telefone_fixo: telefoneRaw || null,
       email: email || null,
       endereco,
       cnpj_cpf: docRaw,
@@ -3429,6 +3440,150 @@ async function verDetalheProduto(id) {
 // ============================================================
 // DETALHE PEDIDO
 // ============================================================
+// Formata a forma de pagamento de um pedido em texto legível.
+// Usado no detalhe do pedido e na via de impressão.
+function formatarPagamento(p) {
+  if (p.forma_pagamento === 'avista') return '💵 À vista';
+  if (p.forma_pagamento === 'cheque') return '📝 Cheque';
+  if (p.forma_pagamento === 'boleto') {
+    // Tenta usar prazos_boleto (CSV); senão cai pra prazo_dias antigo
+    let prazos = [];
+    if (p.prazos_boleto) {
+      prazos = String(p.prazos_boleto).split(',').map(x => Number(x.trim())).filter(x => x > 0);
+    } else if (p.prazo_dias) {
+      prazos = [Number(p.prazo_dias)];
+    }
+    if (prazos.length > 1) return `📄 Boleto ${prazos.length}× (${prazos.join(' + ')} dias)`;
+    if (prazos.length === 1) return `📄 Boleto ${prazos[0]} dias`;
+    return '📄 Boleto';
+  }
+  return 'Não informado';
+}
+
+// ============================================================
+// VIA DE PEDIDO — imprimir / salvar PDF / enviar no WhatsApp
+// Disponível para admin e vendedor.
+// ============================================================
+function gerarViaPedido(id) {
+  const p = todosOsPedidos.find(x => x.id === id);
+  if (!p) return;
+  const c = todosOsClientes.find(x => x.id === p.cliente_id);
+
+  // Linhas de itens (usa preco_unit real, que considera ajustes de preço)
+  const itensRows = (p.itens?.length)
+    ? p.itens.map(i => `
+        <tr>
+          <td>${i.qtd}</td>
+          <td>${esc(i.nome || i.produto_nome || '')}</td>
+          <td>${moeda(i.preco_unit)}</td>
+          <td>${moeda(i.preco_unit * i.qtd)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="4">${esc(p.descricao || '')}</td></tr>`;
+
+  // Dados do cliente (só o que existe)
+  const cliLinhas = [];
+  if (c?.responsavel) cliLinhas.push(`<div class="via-linha">Responsável: ${esc(c.responsavel)}</div>`);
+  if (c?.whatsapp)    cliLinhas.push(`<div class="via-linha">WhatsApp: ${esc(mascaraTelefone(c.whatsapp))}</div>`);
+  if (c?.endereco)    cliLinhas.push(`<div class="via-linha">Endereço: ${esc(c.endereco)}</div>`);
+  if (c?.cnpj_cpf) {
+    const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
+    cliLinhas.push(`<div class="via-linha">${c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}: ${docFmt}</div>`);
+  }
+
+  // Forma de pagamento sem emoji (documento impresso fica mais sóbrio)
+  const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
+
+  const agora = new Date();
+  const emissao = `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()} às ${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
+
+  document.getElementById('via-papel').innerHTML = `
+    <div class="via-cab">
+      <img src="logo.png" alt="KG Agropet">
+      <div>
+        <div class="via-cab-nome">KG AGROPET</div>
+        <div class="via-cab-sub">Glória do Goitá — PE</div>
+      </div>
+      <div class="via-doc-titulo">
+        <b>Via do Pedido</b>
+        <span>Nº ${p.id}</span>
+      </div>
+    </div>
+
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Cliente</div>
+      <div class="via-linha" style="font-weight:700;font-size:14px">${esc(p.cliente_nome || c?.nome || '')}</div>
+      ${cliLinhas.join('')}
+    </div>
+
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Itens do pedido</div>
+      <table class="via-tabela">
+        <thead><tr><th>Qtd</th><th>Produto</th><th>Unit.</th><th>Subtotal</th></tr></thead>
+        <tbody>${itensRows}</tbody>
+      </table>
+      <div class="via-total">
+        <span class="via-total-label">Total</span>
+        <span class="via-total-valor">${moeda(p.valor)}</span>
+      </div>
+    </div>
+
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Pagamento e prazos</div>
+      <div class="via-linha">Forma de pagamento: <b>${esc(pagto)}</b></div>
+      <div class="via-linha">Data de entrega: ${dataBR(p.data_entrega)}</div>
+      ${p.data_vencimento ? `<div class="via-linha">Vencimento: ${dataBR(p.data_vencimento)}</div>` : ''}
+    </div>
+
+    ${p.observacao ? `
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Observações</div>
+      <div class="via-linha">${esc(p.observacao)}</div>
+    </div>` : ''}
+
+    <div class="via-rodape">Documento emitido em ${emissao} · KG Agropet · Este documento não substitui nota fiscal</div>`;
+
+  // Botão de WhatsApp: só aparece se o cliente tem número
+  const btnZap = document.getElementById('via-btn-whatsapp');
+  const waNum = (c?.whatsapp || '').replace(/\D/g, '');
+  if (waNum) {
+    btnZap.style.display = '';
+    btnZap.onclick = () => enviarPedidoWhatsApp(p.id);
+  } else {
+    btnZap.style.display = 'none';
+  }
+
+  document.getElementById('via-overlay').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function fecharViaPedido() {
+  document.getElementById('via-overlay').style.display = 'none';
+}
+
+// Envia o resumo do pedido (texto formatado) direto no WhatsApp do cliente
+function enviarPedidoWhatsApp(id) {
+  const p = todosOsPedidos.find(x => x.id === id);
+  if (!p) return;
+  const c = todosOsClientes.find(x => x.id === p.cliente_id);
+  const waNum = (c?.whatsapp || '').replace(/\D/g, '');
+  if (!waNum) { alert('Este cliente não tem WhatsApp cadastrado.'); return; }
+
+  const itensTxt = (p.itens?.length)
+    ? p.itens.map(i => `• ${i.qtd}x ${i.nome || i.produto_nome || ''} — ${moeda(i.preco_unit * i.qtd)}`).join('\n')
+    : `• ${p.descricao || ''}`;
+  const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
+
+  const msg = `${obterSaudacao()}, ${c?.responsavel || c?.nome || ''}! 🌿\n\n` +
+    `Segue o resumo do seu pedido na *KG Agropet*:\n\n${itensTxt}\n\n` +
+    `*Total: ${moeda(p.valor)}*\n` +
+    `Pagamento: ${pagto}\n` +
+    `Entrega: ${dataBR(p.data_entrega)}` +
+    (p.data_vencimento ? `\nVencimento: ${dataBR(p.data_vencimento)}` : '') +
+    `\n\nQualquer dúvida estou à disposição. Obrigado pela preferência! 🙏`;
+
+  window.open(`https://wa.me/55${waNum}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+}
+
 function verDetalhePedido(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
@@ -3441,26 +3596,7 @@ function verDetalhePedido(id) {
         </div>`).join('')
     : `<div style="font-size:13px;color:var(--c2);padding:8px 0">${esc(p.descricao)}</div>`;
 
-  // Formata forma de pagamento
-  let pagtoTxt = 'Não informado';
-  if (p.forma_pagamento === 'avista') pagtoTxt = '💵 À vista';
-  else if (p.forma_pagamento === 'cheque') pagtoTxt = '📝 Cheque';
-  else if (p.forma_pagamento === 'boleto') {
-    // Tenta usar prazos_boleto (CSV); senão cai pra prazo_dias antigo
-    let prazos = [];
-    if (p.prazos_boleto) {
-      prazos = String(p.prazos_boleto).split(',').map(x => Number(x.trim())).filter(x => x > 0);
-    } else if (p.prazo_dias) {
-      prazos = [Number(p.prazo_dias)];
-    }
-    if (prazos.length > 1) {
-      pagtoTxt = `📄 Boleto ${prazos.length}× (${prazos.join(' + ')} dias)`;
-    } else if (prazos.length === 1) {
-      pagtoTxt = `📄 Boleto ${prazos[0]} dias`;
-    } else {
-      pagtoTxt = '📄 Boleto';
-    }
-  }
+  const pagtoTxt = formatarPagamento(p);
 
   // Status de pagamento (se entregue)
   let statusPagtoLinha = '';
@@ -3515,6 +3651,14 @@ function verDetalhePedido(id) {
       <span style="font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1)">${moeda(p.valor)}</span>
     </div>
     ${p.observacao?`<div style="font-size:12px;color:var(--c3);margin-top:4px">📝 ${esc(p.observacao)}</div>`:''}`;
+
+  // Botão de via do pedido: admin e vendedor (entregador não emite documento)
+  const acoesVia = document.getElementById('detalhe-pedido-acoes-via');
+  if (acoesVia) {
+    acoesVia.innerHTML = (usuario.perfil === 'admin' || usuario.perfil === 'vendedor')
+      ? `<button class="btn-primario mt-12" onclick="fecharModal('modal-detalhe-pedido'); gerarViaPedido(${p.id})">📄 Via do pedido (PDF / Imprimir)</button>`
+      : '';
+  }
   abrirModal('modal-detalhe-pedido');
 }
 
@@ -3542,6 +3686,12 @@ function fecharModal(id) {
 // Fecha modal aberto ao pressionar ESC
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    // Via de pedido aberta? Fecha ela primeiro
+    const via = document.getElementById('via-overlay');
+    if (via && via.style.display !== 'none') {
+      fecharViaPedido();
+      return;
+    }
     const aberto = document.querySelector('.modal-overlay.aberto');
     if (aberto) {
       aberto.classList.remove('aberto');
@@ -3712,3 +3862,256 @@ window.addEventListener('appinstalled', () => {
   _deferredPrompt = null;
   fecharBannerInstalar();
 });
+
+// ============================================================
+// BOTÃO FLUTUANTE "VOLTAR AO TOPO"
+// Aparece quando o usuário rola mais de 500px em qualquer lista.
+// ============================================================
+(function() {
+  const btn = document.getElementById('btn-topo');
+  if (!btn) return;
+  let visivel = false;
+  window.addEventListener('scroll', () => {
+    const deve = window.scrollY > 500;
+    if (deve !== visivel) {
+      visivel = deve;
+      btn.classList.toggle('visivel', deve);
+    }
+  }, { passive: true });
+})();
+
+// ============================================================
+// RELATÓRIOS — semanal, quinzenal e mensal (admin e vendedor)
+// Admin vê todos os pedidos; vendedor vê apenas os dele.
+// Base do período: data_entrega do pedido.
+// ============================================================
+let relTipo = 'semanal';   // 'semanal' | 'quinzenal' | 'mensal'
+let relOffset = 0;         // 0 = período atual, -1 = anterior...
+
+function abrirModalRelatorio() {
+  relTipo = 'semanal';
+  relOffset = 0;
+  // Reseta abas visuais para a primeira
+  document.querySelectorAll('#abas-relatorio .aba').forEach((b, i) => {
+    b.classList.toggle('ativa', i === 0);
+  });
+  renderizarRelatorio();
+  abrirModal('modal-relatorio');
+}
+
+function mudarTipoRelatorio(tipo, btn) {
+  relTipo = tipo;
+  relOffset = 0; // sempre volta pro período atual ao trocar de tipo
+  document.querySelectorAll('#abas-relatorio .aba').forEach(b => b.classList.remove('ativa'));
+  if (btn) btn.classList.add('ativa');
+  renderizarRelatorio();
+}
+
+function navegarPeriodoRelatorio(delta) {
+  // Não deixa avançar para o futuro
+  if (relOffset + delta > 0) return;
+  relOffset += delta;
+  renderizarRelatorio();
+}
+
+// Calcula a janela [ini, fim] (strings YYYY-MM-DD) + label legível
+function calcularJanelaRelatorio(tipo, offset) {
+  const hoje = new Date();
+
+  if (tipo === 'semanal') {
+    // Semana de segunda a domingo
+    const base = new Date(hoje);
+    base.setDate(base.getDate() + offset * 7);
+    const diaSemana = (base.getDay() + 6) % 7; // 0 = segunda
+    const ini = new Date(base); ini.setDate(base.getDate() - diaSemana);
+    const fim = new Date(ini);  fim.setDate(ini.getDate() + 6);
+    return { ini: fmt(ini), fim: fmt(fim), label: `Semana ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
+  }
+
+  if (tipo === 'quinzenal') {
+    // Índice absoluto de quinzena: cada mês tem Q1 (1–15) e Q2 (16–fim)
+    let idx = hoje.getFullYear() * 24 + hoje.getMonth() * 2 + (hoje.getDate() > 15 ? 1 : 0);
+    idx += offset;
+    const ano = Math.floor(idx / 24);
+    const resto = idx % 24;
+    const mes = Math.floor(resto / 2);
+    const metade = resto % 2;
+    const ini = new Date(ano, mes, metade ? 16 : 1);
+    const fim = metade ? new Date(ano, mes + 1, 0) : new Date(ano, mes, 15);
+    return { ini: fmt(ini), fim: fmt(fim), label: `${metade ? '2ª' : '1ª'} quinzena · ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
+  }
+
+  // mensal
+  const ano = hoje.getFullYear();
+  const mes = hoje.getMonth() + offset;
+  const ini = new Date(ano, mes, 1);
+  const fim = new Date(ano, mes + 1, 0);
+  const nomesMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                      'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  return { ini: fmt(ini), fim: fmt(fim), label: `${nomesMeses[ini.getMonth()]} de ${ini.getFullYear()}` };
+}
+
+// Filtra pedidos do período (e do vendedor, se for o perfil dele)
+function pedidosDoRelatorio(ini, fim) {
+  return todosOsPedidos.filter(p => {
+    if (!p.data_entrega) return false;
+    if (p.data_entrega < ini || p.data_entrega > fim) return false;
+    if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
+    return true;
+  });
+}
+
+// Agrega os números e tops do período
+function calcularDadosRelatorio(pedidos) {
+  const total     = pedidos.reduce((s,p) => s + (Number(p.valor)||0), 0);
+  const recebido  = pedidos.filter(p => foiPago(p)).reduce((s,p) => s + (Number(p.valor)||0), 0);
+  const aReceber  = total - recebido;
+
+  // Top produtos (por valor) a partir dos itens
+  const porProduto = {};
+  pedidos.forEach(p => (p.itens||[]).forEach(i => {
+    const nome = i.nome || i.produto_nome || 'Produto';
+    if (!porProduto[nome]) porProduto[nome] = { valor: 0, qtd: 0 };
+    porProduto[nome].valor += (Number(i.preco_unit)||0) * (Number(i.qtd)||0);
+    porProduto[nome].qtd   += Number(i.qtd)||0;
+  }));
+  const topProdutos = Object.entries(porProduto)
+    .map(([nome, d]) => ({ nome, ...d }))
+    .sort((a,b) => b.valor - a.valor).slice(0, 5);
+
+  // Top clientes (por valor)
+  const porCliente = {};
+  pedidos.forEach(p => {
+    const nome = p.cliente_nome || 'Cliente';
+    if (!porCliente[nome]) porCliente[nome] = { valor: 0, pedidos: 0 };
+    porCliente[nome].valor   += Number(p.valor)||0;
+    porCliente[nome].pedidos += 1;
+  });
+  const topClientes = Object.entries(porCliente)
+    .map(([nome, d]) => ({ nome, ...d }))
+    .sort((a,b) => b.valor - a.valor).slice(0, 5);
+
+  return { total, recebido, aReceber, nPedidos: pedidos.length, topProdutos, topClientes };
+}
+
+function renderizarRelatorio() {
+  const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
+  document.getElementById('rel-periodo-label').textContent = label;
+
+  // Desabilita seta "próximo" quando já está no período atual
+  const btnProx = document.getElementById('rel-nav-proximo');
+  if (btnProx) btnProx.disabled = (relOffset >= 0);
+
+  const pedidos = pedidosDoRelatorio(ini, fim);
+  const d = calcularDadosRelatorio(pedidos);
+  const el = document.getElementById('relatorio-conteudo');
+
+  if (!pedidos.length) {
+    el.innerHTML = `<div class="rel-vazio">Nenhum pedido com entrega neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="rel-cards">
+      <div class="rel-card">
+        <div class="rel-card-valor">${moeda(d.total)}</div>
+        <div class="rel-card-label">Total vendido</div>
+      </div>
+      <div class="rel-card">
+        <div class="rel-card-valor">${d.nPedidos}</div>
+        <div class="rel-card-label">Pedidos</div>
+      </div>
+      <div class="rel-card rel-verde">
+        <div class="rel-card-valor">${moeda(d.recebido)}</div>
+        <div class="rel-card-label">Recebido</div>
+      </div>
+      <div class="rel-card rel-laranja">
+        <div class="rel-card-valor">${moeda(d.aReceber)}</div>
+        <div class="rel-card-label">A receber</div>
+      </div>
+    </div>
+
+    <div class="rel-lista-titulo">🏆 Top produtos</div>
+    ${d.topProdutos.map(t => `
+      <div class="rel-item">
+        <span class="rel-item-nome">${esc(t.nome)}</span>
+        <span class="rel-item-extra">${t.qtd}un</span>
+        <span class="rel-item-valor">${moeda(t.valor)}</span>
+      </div>`).join('') || '<div class="rel-vazio">Sem itens detalhados</div>'}
+
+    <div class="rel-lista-titulo">🏪 Top clientes</div>
+    ${d.topClientes.map(t => `
+      <div class="rel-item">
+        <span class="rel-item-nome">${esc(t.nome)}</span>
+        <span class="rel-item-extra">${t.pedidos} ped.</span>
+        <span class="rel-item-valor">${moeda(t.valor)}</span>
+      </div>`).join('')}`;
+}
+
+// Monta o relatório no "papel" da via e abre para imprimir/salvar PDF
+function imprimirRelatorio() {
+  const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
+  const pedidos = pedidosDoRelatorio(ini, fim);
+  const d = calcularDadosRelatorio(pedidos);
+
+  const agora = new Date();
+  const emissao = `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()} às ${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
+  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login}` : 'Todos os pedidos';
+
+  document.getElementById('via-papel').innerHTML = `
+    <div class="via-cab">
+      <img src="logo.png" alt="KG Agropet">
+      <div>
+        <div class="via-cab-nome">KG AGROPET</div>
+        <div class="via-cab-sub">Glória do Goitá — PE</div>
+      </div>
+      <div class="via-doc-titulo">
+        <b>Relatório de Vendas</b>
+        <span>${esc(label)}</span>
+      </div>
+    </div>
+
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Resumo do período</div>
+      <table class="via-tabela">
+        <tbody>
+          <tr><td>Total vendido</td><td style="text-align:right;font-weight:700">${moeda(d.total)}</td></tr>
+          <tr><td>Pedidos no período</td><td style="text-align:right;font-weight:700">${d.nPedidos}</td></tr>
+          <tr><td>Recebido</td><td style="text-align:right;font-weight:700">${moeda(d.recebido)}</td></tr>
+          <tr><td>A receber</td><td style="text-align:right;font-weight:700">${moeda(d.aReceber)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    ${d.topProdutos.length ? `
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Top produtos</div>
+      <table class="via-tabela">
+        <thead><tr><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead>
+        <tbody>${d.topProdutos.map(t => `
+          <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.qtd}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    ${d.topClientes.length ? `
+    <div class="via-bloco">
+      <div class="via-bloco-titulo">Top clientes</div>
+      <table class="via-tabela">
+        <thead><tr><th>Cliente</th><th>Pedidos</th><th>Valor</th></tr></thead>
+        <tbody>${d.topClientes.map(t => `
+          <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.pedidos}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    <div class="via-rodape">${esc(escopo)} · Emitido em ${emissao} · KG Agropet</div>`;
+
+  // Esconde o botão de WhatsApp (só faz sentido na via de pedido)
+  const btnZap = document.getElementById('via-btn-whatsapp');
+  if (btnZap) btnZap.style.display = 'none';
+
+  fecharModal('modal-relatorio');
+  document.getElementById('via-overlay').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
