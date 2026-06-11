@@ -883,6 +883,7 @@ function sair() {
 
   // Fecha qualquer modal aberto
   document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
+  document.body.classList.remove('modal-aberto');
 
   document.getElementById('tela-login').style.display='flex';
   const appEl = document.getElementById('app');
@@ -3672,12 +3673,22 @@ function isAtrasado(p) {
   return p.data_vencimento < fmt(new Date());
 }
 
-function abrirModal(id) { const m=document.getElementById(id); if(m) m.classList.add('aberto'); }
+function abrirModal(id) {
+  const m = document.getElementById(id);
+  if (m) {
+    m.classList.add('aberto');
+    document.body.classList.add('modal-aberto'); // congela o app por trás
+  }
+}
 function fecharModal(id) {
-  const m=document.getElementById(id);
-  if(m) m.classList.remove('aberto');
+  const m = document.getElementById(id);
+  if (m) m.classList.remove('aberto');
   // Limpa o estado de edição quando fecha o modal de pedido
   if (id === 'modal-pedido') pedidoEmEdicao = null;
+  // Só libera a trava do body se NÃO houver outro modal ainda aberto
+  if (!document.querySelector('.modal-overlay.aberto')) {
+    document.body.classList.remove('modal-aberto');
+  }
 }
 
 // Modais só fecham pelo X, pelo botão Cancelar ou pela tecla ESC.
@@ -3694,8 +3705,7 @@ document.addEventListener('keydown', e => {
     }
     const aberto = document.querySelector('.modal-overlay.aberto');
     if (aberto) {
-      aberto.classList.remove('aberto');
-      if (aberto.id === 'modal-pedido') pedidoEmEdicao = null;
+      fecharModal(aberto.id);
     }
   }
 });
