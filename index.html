@@ -759,6 +759,11 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   padding:calc(8px + var(--safe-top)) calc(8px + var(--safe-right))
           calc(8px + var(--safe-bot)) calc(8px + var(--safe-left))}
 .modal-overlay.aberto{display:flex}
+/* Congela o app por trás enquanto um modal está aberto — impede o
+   scroll do formulário de "vazar" e mover a página de fundo (iOS) */
+body.modal-aberto #app,
+body.modal-aberto #tela-login{overflow:hidden !important}
+body.modal-aberto{overflow:hidden;touch-action:none}
 /* MOBILE: modal flutuante (cartão arredondado centralizado) */
 .modal-sheet{background:linear-gradient(180deg,#1e4030 0%,#0f2419 100%);
   border:1px solid var(--ob);
@@ -768,6 +773,8 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   max-height:calc(100vh - 16px);
   max-height:calc(100dvh - var(--safe-top) - var(--safe-bot) - 16px);
   overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
   -webkit-overflow-scrolling:touch;
   animation:fadeScale .25s cubic-bezier(.32,.72,0,1);
   box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(200,150,12,.12),inset 0 1px 0 rgba(200,150,12,.18)}
@@ -1967,6 +1974,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=36"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>
