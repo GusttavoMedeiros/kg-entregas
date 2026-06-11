@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="KG Entregas">
 <meta name="description" content="Sistema de gestão de entregas - KG Agropet">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="logo.png">
+<link rel="apple-touch-icon" href="app-icon-180.png">
 <title>KG Entregas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,13 +51,13 @@
 /* Inputs e textareas precisam permitir seleção e edição */
 input,textarea,select,[contenteditable]{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation;height:100%}
-body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100dvh;overflow-x:hidden;
+body{font-family:'Nunito',sans-serif;background:var(--v1);color:var(--creme);min-height:100vh;min-height:100dvh;overflow-x:hidden;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
   overscroll-behavior-y:contain;
   width:100%}
 
 /* Container interno que rola — comportamento de app nativo */
-#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;min-height:100dvh}
+#tela-login,#app{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;min-height:100vh;min-height:100dvh}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse 70% 50% at 15% 5%,rgba(200,150,12,.05) 0%,transparent 60%),
              radial-gradient(ellipse 60% 70% at 85% 90%,rgba(46,99,71,.12) 0%,transparent 60%)}
@@ -66,7 +66,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background-size:80px 80px}
 
 /* LOGIN */
-#tela-login{min-height:100dvh;display:flex;flex-direction:column;align-items:center;
+#tela-login{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:40px 24px;position:relative;background:var(--gv);overflow:hidden;z-index:1}
 #tela-login svg.deco{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .logo-login{text-align:center;margin-bottom:28px;position:relative;z-index:1;animation:fadeD .6s ease-out both}
@@ -144,7 +144,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .erro-login{color:#e05a4e;font-size:13px;text-align:center;margin-top:10px;display:none}
 
 /* APP */
-#app{display:none;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
+#app{display:none;min-height:100vh;min-height:100dvh;flex-direction:column;position:relative;z-index:1}
 .header{background:linear-gradient(180deg,#0d2218 0%,#0a1a10 100%);border-bottom:1px solid var(--ob);
   padding:12px var(--pad-lat);display:flex;align-items:center;justify-content:space-between;
   position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.45),0 1px 0 rgba(200,150,12,.12);
@@ -513,6 +513,110 @@ body.offline #app{padding-top:54px}
 .btn-instalar-fechar:hover{color:var(--c1)}
 @keyframes slideUp{from{transform:translateY(120%);opacity:0}to{transform:translateY(0);opacity:1}}
 
+/* ========== RELATÓRIOS (admin e vendedor) ========== */
+.rel-navegacao{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);
+  padding:7px 9px;margin-bottom:14px}
+.rel-nav-btn{background:rgba(200,150,12,.12);border:1px solid var(--ob);color:var(--o1);
+  width:34px;height:34px;border-radius:9px;font-size:19px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:background .15s}
+.rel-nav-btn:active{transform:scale(.93)}
+.rel-nav-btn:disabled{opacity:.3;cursor:not-allowed}
+.rel-periodo-label{font-size:13px;font-weight:700;color:var(--creme);text-align:center;flex:1;
+  letter-spacing:.3px}
+.rel-cards{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px}
+.rel-card{background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);
+  padding:11px 12px;text-align:center}
+.rel-card-valor{font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1);line-height:1.2}
+.rel-card-label{font-size:9.5px;font-weight:700;color:var(--c3);letter-spacing:1px;
+  text-transform:uppercase;margin-top:3px}
+.rel-card.rel-verde .rel-card-valor{color:#7ec850}
+.rel-card.rel-laranja .rel-card-valor{color:#f4a04a}
+.rel-lista-titulo{font-size:10px;font-weight:800;color:var(--o0);letter-spacing:1.3px;
+  text-transform:uppercase;border-bottom:1px solid var(--ol);padding-bottom:4px;margin:14px 0 8px}
+.rel-item{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:6px 0;border-bottom:1px dashed rgba(200,150,12,.1);font-size:12.5px}
+.rel-item-nome{color:var(--c1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rel-item-valor{font-weight:700;color:var(--o1);white-space:nowrap}
+.rel-item-extra{font-size:11px;color:var(--c3);white-space:nowrap}
+.rel-vazio{text-align:center;padding:18px;color:var(--c3);font-size:13px}
+
+/* ========== TOPO FIXO DO CATÁLOGO (busca + abas seguem o scroll) ========== */
+.topo-fixo-catalogo{position:sticky;top:calc(54px + var(--safe-top));z-index:60;
+  background:var(--v1);
+  margin:0 calc(-1 * var(--pad-lat));
+  padding:8px var(--pad-lat) 2px;
+  box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
+.topo-fixo-catalogo .search-bar{margin-bottom:10px}
+.topo-fixo-catalogo .abas{margin-bottom:10px}
+
+/* ========== BOTÃO FLUTUANTE "VOLTAR AO TOPO" ========== */
+.btn-topo{position:fixed;right:14px;bottom:calc(86px + var(--safe-bot));z-index:90;
+  width:44px;height:44px;border-radius:50%;border:1px solid var(--ob);
+  background:linear-gradient(145deg,#1a3a2a,#0d2218);color:var(--o1);
+  font-size:19px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(0,0,0,.5),0 0 0 1px rgba(200,150,12,.12);
+  opacity:0;pointer-events:none;transform:translateY(8px);
+  transition:opacity .25s,transform .25s;-webkit-tap-highlight-color:transparent}
+.btn-topo.visivel{opacity:1;pointer-events:auto;transform:translateY(0)}
+.btn-topo:active{transform:scale(.92)}
+
+/* ========== VIA DE PEDIDO (impressão / PDF) ========== */
+#via-overlay{position:fixed;inset:0;z-index:2000;background:rgba(5,12,8,.96);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;padding:64px 12px 24px}
+.via-acoes{position:fixed;top:0;left:0;right:0;z-index:2001;display:flex;gap:8px;
+  padding:10px 12px;background:linear-gradient(180deg,#0d2218,#0a1a10);
+  border-bottom:1px solid var(--ob);flex-wrap:wrap;
+  padding-top:calc(10px + var(--safe-top))}
+.via-btn{border:none;border-radius:9px;padding:9px 13px;font-size:12px;font-weight:700;
+  font-family:'Nunito',sans-serif;cursor:pointer;letter-spacing:.3px;
+  -webkit-tap-highlight-color:transparent}
+.via-btn-imprimir{background:var(--go);color:var(--v1);flex:1;min-width:150px}
+.via-btn-zap{background:rgba(39,174,96,.15);color:#7ec850;border:1px solid rgba(39,174,96,.35)}
+.via-btn-fechar{background:rgba(192,57,43,.12);color:#e05a4e;border:1px solid rgba(192,57,43,.3)}
+
+/* O "papel" branco da via — documento limpo, preto no branco */
+.via-papel{background:#fff;color:#1a1a1a;max-width:640px;margin:0 auto;
+  border-radius:6px;padding:28px 26px;font-family:'Nunito',Arial,sans-serif;
+  box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.via-cab{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #0d2218;
+  padding-bottom:14px;margin-bottom:16px}
+.via-cab img{width:52px;height:52px;border-radius:50%;border:2px solid #c8960c}
+.via-cab-nome{font-family:'Cinzel',Georgia,serif;font-size:21px;font-weight:700;
+  color:#0d2218;letter-spacing:1.5px;line-height:1.1}
+.via-cab-sub{font-size:10.5px;color:#666;letter-spacing:.5px;margin-top:2px}
+.via-doc-titulo{text-align:right;margin-left:auto}
+.via-doc-titulo b{display:block;font-size:13px;color:#0d2218;letter-spacing:1px;text-transform:uppercase}
+.via-doc-titulo span{font-size:10.5px;color:#888}
+.via-bloco{margin-bottom:14px}
+.via-bloco-titulo{font-size:10px;font-weight:800;color:#8a6508;letter-spacing:1.4px;
+  text-transform:uppercase;border-bottom:1px solid #e8e0d0;padding-bottom:3px;margin-bottom:7px}
+.via-linha{font-size:12.5px;color:#333;margin-bottom:3px;line-height:1.45}
+.via-tabela{width:100%;border-collapse:collapse;font-size:12.5px}
+.via-tabela th{text-align:left;font-size:10px;font-weight:800;color:#8a6508;
+  letter-spacing:1px;text-transform:uppercase;padding:5px 6px;border-bottom:1.5px solid #0d2218}
+.via-tabela th:nth-child(3),.via-tabela th:nth-child(4),
+.via-tabela td:nth-child(3),.via-tabela td:nth-child(4){text-align:right;white-space:nowrap}
+.via-tabela td{padding:7px 6px;border-bottom:1px solid #eee8da;color:#333;vertical-align:top}
+.via-total{display:flex;justify-content:flex-end;gap:18px;align-items:baseline;
+  margin-top:10px;padding-top:9px;border-top:2px solid #0d2218}
+.via-total-label{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#555}
+.via-total-valor{font-family:'Cinzel',Georgia,serif;font-size:21px;font-weight:700;color:#0d2218}
+.via-rodape{margin-top:20px;padding-top:10px;border-top:1px solid #e8e0d0;
+  font-size:10px;color:#999;text-align:center;letter-spacing:.4px}
+
+/* IMPRESSÃO: esconde TODO o app e mostra só o papel da via, em A4 limpo */
+@media print {
+  body > *:not(#via-overlay){display:none !important}
+  #via-overlay{position:static !important;background:#fff !important;padding:0 !important;overflow:visible !important}
+  .via-acoes{display:none !important}
+  .via-papel{box-shadow:none !important;border-radius:0 !important;max-width:100% !important;
+    padding:0 !important;margin:0 !important}
+  @page{margin:14mm}
+}
+
 /* ========== HIGHLIGHT DE BUSCA INTELIGENTE ========== */
 mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,150,12,.25));
   color:var(--o0);font-weight:700;padding:1px 4px;border-radius:5px;
@@ -661,6 +765,7 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   border-radius:var(--rxl);
   padding:calc(var(--pad-vert) + 4px) var(--pad-lat) var(--pad-vert);
   width:100%;max-width:480px;
+  max-height:calc(100vh - 16px);
   max-height:calc(100dvh - var(--safe-top) - var(--safe-bot) - 16px);
   overflow-y:auto;overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
@@ -672,10 +777,11 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 .modal-sheet textarea,.modal-sheet input,.modal-sheet select{width:100%}
 #lista-produto-modal,#carrinho-lista{width:100%;overflow-x:hidden}
 .modal-handle{display:none}
-.modal-close-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;
-  background:rgba(200,150,12,.1);border:1px solid var(--ob);color:var(--o2);
+.modal-close-x{position:sticky;top:0;margin-left:auto;margin-bottom:-34px;width:34px;height:34px;border-radius:50%;
+  background:rgba(13,34,24,.92);border:1px solid var(--ob);color:var(--o2);
   font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  z-index:10;transition:background .15s,transform .15s;line-height:1;padding:0}
+  z-index:30;transition:background .15s,transform .15s;line-height:1;padding:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.35)}
 .modal-close-x:hover{background:rgba(200,150,12,.2);transform:scale(1.05)}
 .modal-close-x:active{transform:scale(.95)}
 .modal-titulo{font-family:'Cinzel',serif;font-size:16px;font-weight:600;margin-bottom:16px;letter-spacing:1px;
@@ -691,13 +797,16 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   .modal-sheet {
     padding: 14px 14px 16px;
     border-radius: 18px;
-    max-height: calc(100dvh - 16px);
+    /* Respeita a status bar/notch do iPhone — sem isso o topo do modal
+       entra na zona morta do iOS e o X fica inacessível */
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 20px);
   }
 
-  /* Botão X bem destacado e fácil de alcançar com o polegar */
+  /* Botão X bem destacado, sempre visível mesmo rolando (sticky) */
   .modal-close-x {
-    top: 10px;
-    right: 10px;
+    top: 0;
+    margin-bottom: -38px;
     width: 38px;
     height: 38px;
     background: var(--go);
@@ -1128,6 +1237,7 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     max-width: 580px;
     width: 100%;
     height: auto;
+    max-height: 88vh;
     max-height: 88dvh;
     padding: 32px 32px 36px;
     animation: modalFade .25s cubic-bezier(.4,0,.2,1);
@@ -1296,6 +1406,10 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
           <span class="atalho-icone">🛒</span>
           <span class="atalho-label">Ver Catálogo</span>
         </button>
+        <button class="atalho-card" onclick="abrirModalRelatorio()">
+          <span class="atalho-icone">📊</span>
+          <span class="atalho-label">Relatórios</span>
+        </button>
       </div>
 
       <!-- GRÁFICO DE VENDAS 30 DIAS -->
@@ -1402,15 +1516,17 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 
     <!-- CATÁLOGO (admin: edita / vendedor: consulta) -->
     <div class="tela" id="tela-catalogo">
-      <div class="search-bar">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="busca-catalogo" placeholder="Buscar produto..." oninput="buscarProduto(this.value); atualizarBotaoLimpar(this)">
-        <button type="button" class="search-clear" onclick="limparBusca('busca-catalogo', buscarProduto)" aria-label="Limpar busca">×</button>
-      </div>
-      <div class="abas" id="abas-catalogo">
-        <button class="aba ativa" onclick="filtrarCatalogo('todos',this)">Todos</button>
-        <button class="aba" onclick="filtrarCatalogo('Ração',this)">Ração</button>
-        <button class="aba" onclick="filtrarCatalogo('Agropecuário',this)">Agro</button>
+      <div class="topo-fixo-catalogo">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="busca-catalogo" placeholder="Buscar produto..." oninput="buscarProduto(this.value); atualizarBotaoLimpar(this)">
+          <button type="button" class="search-clear" onclick="limparBusca('busca-catalogo', buscarProduto)" aria-label="Limpar busca">×</button>
+        </div>
+        <div class="abas" id="abas-catalogo">
+          <button class="aba ativa" onclick="filtrarCatalogo('todos',this)">Todos</button>
+          <button class="aba" onclick="filtrarCatalogo('Ração',this)">Ração</button>
+          <button class="aba" onclick="filtrarCatalogo('Agropecuário',this)">Agro</button>
+        </div>
       </div>
       <div class="toggle-margem" id="toggle-margem-catalogo" onclick="alternarMostrarMargem()" style="display:none">
         <div class="toggle-margem-switch"></div>
@@ -1455,6 +1571,10 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
         <button class="atalho-card atalho-cobrar" onclick="navegarPara('clientes')">
           <span class="atalho-icone">🏪</span>
           <span class="atalho-label">Meus Clientes</span>
+        </button>
+        <button class="atalho-card" onclick="abrirModalRelatorio()">
+          <span class="atalho-icone">📊</span>
+          <span class="atalho-label">Meus Relatórios</span>
         </button>
       </div>
 
@@ -1607,10 +1727,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="campo">
       <label>WhatsApp <span class="campo-obrig">*</span></label>
       <input type="tel" id="cliente-whatsapp" inputmode="numeric" placeholder="(81) 99999-9999" autocomplete="off">
-    </div>
-    <div class="campo">
-      <label>Telefone fixo (opcional)</label>
-      <input type="tel" id="cliente-telefone-fixo" inputmode="numeric" placeholder="(81) 3000-0000" autocomplete="off">
     </div>
     <div class="campo">
       <label>E-mail (opcional)</label>
@@ -1767,8 +1883,48 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
     <div class="modal-handle"></div>
     <div class="modal-titulo" id="detalhe-pedido-titulo">Detalhes do Pedido</div>
     <div id="detalhe-pedido-conteudo"></div>
+    <div id="detalhe-pedido-acoes-via"></div>
     <button class="btn-secundario mt-16" onclick="fecharModal('modal-detalhe-pedido')">Fechar</button>
   </div>
+</div>
+
+<!-- MODAL RELATÓRIOS (admin e vendedor) -->
+<div class="modal-overlay" id="modal-relatorio">
+  <div class="modal-sheet">
+    <button class="modal-close-x" onclick="fecharModal('modal-relatorio')" aria-label="Fechar">×</button>
+    <div class="modal-handle"></div>
+    <div class="modal-titulo">📊 Relatórios</div>
+
+    <div class="abas" id="abas-relatorio">
+      <button class="aba ativa" onclick="mudarTipoRelatorio('semanal',this)">Semanal</button>
+      <button class="aba" onclick="mudarTipoRelatorio('quinzenal',this)">Quinzenal</button>
+      <button class="aba" onclick="mudarTipoRelatorio('mensal',this)">Mensal</button>
+    </div>
+
+    <div class="rel-navegacao">
+      <button class="rel-nav-btn" onclick="navegarPeriodoRelatorio(-1)" aria-label="Período anterior">‹</button>
+      <span class="rel-periodo-label" id="rel-periodo-label">—</span>
+      <button class="rel-nav-btn" id="rel-nav-proximo" onclick="navegarPeriodoRelatorio(1)" aria-label="Próximo período">›</button>
+    </div>
+
+    <div id="relatorio-conteudo"></div>
+
+    <button class="btn-primario mt-12" onclick="imprimirRelatorio()">🖨️ Imprimir / Salvar PDF</button>
+    <button class="btn-secundario mt-8" onclick="fecharModal('modal-relatorio')">Fechar</button>
+  </div>
+</div>
+
+<!-- BOTÃO FLUTUANTE: VOLTAR AO TOPO (aparece ao rolar listas longas) -->
+<button class="btn-topo" id="btn-topo" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Voltar ao topo">↑</button>
+
+<!-- VIA DE PEDIDO (impressão / salvar PDF) — admin e vendedor -->
+<div id="via-overlay" style="display:none">
+  <div class="via-acoes">
+    <button class="via-btn via-btn-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+    <button class="via-btn via-btn-zap" id="via-btn-whatsapp" onclick="">📲 Resumo no WhatsApp</button>
+    <button class="via-btn via-btn-fechar" onclick="fecharViaPedido()">× Fechar</button>
+  </div>
+  <div class="via-papel" id="via-papel"></div>
 </div>
 
 <!-- MODAL RESET HISTÓRICO (admin only) -->
@@ -1811,6 +1967,6 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   </div>
 </div>
 
-<script src="app.js?v=32"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>
