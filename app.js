@@ -3673,9 +3673,13 @@ function isAtrasado(p) {
   return p.data_vencimento < fmt(new Date());
 }
 
+let _scrollSalvo = 0;
 function abrirModal(id) {
   const m = document.getElementById(id);
   if (m) {
+    // Salva a posição de scroll da área que rola (desktop = .conteudo)
+    const sc = document.querySelector('.conteudo');
+    _scrollSalvo = sc ? sc.scrollTop : window.scrollY;
     m.classList.add('aberto');
     document.body.classList.add('modal-aberto'); // congela o app por trás
   }
@@ -3688,6 +3692,9 @@ function fecharModal(id) {
   // Só libera a trava do body se NÃO houver outro modal ainda aberto
   if (!document.querySelector('.modal-overlay.aberto')) {
     document.body.classList.remove('modal-aberto');
+    // Restaura a posição de scroll (evita o "pulo" ao fechar no desktop)
+    const sc = document.querySelector('.conteudo');
+    if (sc && _scrollSalvo) sc.scrollTop = _scrollSalvo;
   }
 }
 
@@ -3875,19 +3882,45 @@ window.addEventListener('appinstalled', () => {
 
 // ============================================================
 // BOTÃO FLUTUANTE "VOLTAR AO TOPO"
-// Aparece quando o usuário rola mais de 500px em qualquer lista.
+// Aparece quando rola mais de 500px. No mobile quem rola é a janela;
+// no desktop quem rola é a área .conteudo — escutamos os dois.
 // ============================================================
 (function() {
   const btn = document.getElementById('btn-topo');
   if (!btn) return;
   let visivel = false;
-  window.addEventListener('scroll', () => {
-    const deve = window.scrollY > 500;
+
+  function getScroller() {
+    const conteudo = document.querySelector('.conteudo');
+    // No desktop a .conteudo tem rolagem própria; usamos ela se tiver scroll
+    if (conteudo && conteudo.scrollHeight > conteudo.clientHeight + 5
+        && getComputedStyle(conteudo).overflowY === 'auto') {
+      return conteudo;
+    }
+    return window;
+  }
+
+  function checar() {
+    const sc = getScroller();
+    const y = (sc === window) ? window.scrollY : sc.scrollTop;
+    const deve = y > 500;
     if (deve !== visivel) {
       visivel = deve;
       btn.classList.toggle('visivel', deve);
     }
-  }, { passive: true });
+  }
+
+  window.addEventListener('scroll', checar, { passive: true });
+  // Captura o scroll da .conteudo (desktop) — usa fase de captura pois
+  // o evento scroll não borbulha
+  document.addEventListener('scroll', checar, { passive: true, capture: true });
+
+  // Ação do botão: rola o container certo de volta ao topo
+  btn.onclick = () => {
+    const sc = getScroller();
+    if (sc === window) window.scrollTo({ top: 0, behavior: 'smooth' });
+    else sc.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 })();
 
 // ============================================================
