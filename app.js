@@ -3901,6 +3901,13 @@ window.addEventListener('appinstalled', () => {
   }
 
   function checar() {
+    // Não mostra o botão se um modal ou a via estiver aberto
+    const viaAberta = document.getElementById('via-overlay')?.style.display === 'block';
+    const modalAberto = !!document.querySelector('.modal-overlay.aberto');
+    if (viaAberta || modalAberto) {
+      if (visivel) { visivel = false; btn.classList.remove('visivel'); }
+      return;
+    }
     const sc = getScroller();
     const y = (sc === window) ? window.scrollY : sc.scrollTop;
     const deve = y > 500;
