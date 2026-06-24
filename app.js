@@ -1754,7 +1754,7 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     ? `<div class="item-acoes"><button class="btn-sm" onclick="verDetalhePedido(${p.id})">Ver detalhes</button></div>` : '');
 
   return `
-    <div class="item-card ${classe}">
+    <div class="item-card stagger-in ${classe}">
       <div class="item-header">
         <div class="item-nome">${esc(p.cliente_nome)}</div>
         ${badge}
@@ -1860,7 +1860,7 @@ function montarCardProduto(p, isAdmin, termoBusca = '') {
   const nomeHtml = termoBusca ? highlightBusca(p.nome, termoBusca) : esc(p.nome);
 
   return `
-    <div class="item-produto-card">
+    <div class="item-produto-card stagger-in">
       <div class="flex-entre" style="margin-bottom:6px">
         <div class="produto-nome">${nomeHtml}</div>
         ${badgeCategoria(p.categoria)}
@@ -2124,7 +2124,7 @@ function renderizarClientes(lista, termoBusca = '') {
     const responsavelHtml = termoBusca ? highlightBusca(c.responsavel || '–', termoBusca) : esc(c.responsavel || '–');
     const whatsappHtml = termoBusca ? highlightBusca(c.whatsapp || '–', termoBusca) : esc(c.whatsapp || '–');
     return `
-      <div class="item-cliente-card" onclick="verDetalheCliente(${c.id})">
+      <div class="item-cliente-card stagger-in" onclick="verDetalheCliente(${c.id})">
         <div>
           <div class="cliente-nome">${nomeHtml}</div>
           <div class="cliente-info">${responsavelHtml} · ${whatsappHtml}</div>
@@ -2236,7 +2236,7 @@ function renderizarFinanceiro(filtro) {
     const info = atras.length ? `${atras.length} entrega(s) atrasada(s)`
                : dev.length  ? `${dev.length} entrega(s) em aberto` : 'Sem pendências';
     return `
-      <div class="item-cliente-card" onclick="verFinanceiroCliente(${c.id})">
+      <div class="item-cliente-card stagger-in" onclick="verFinanceiroCliente(${c.id})">
         <div>
           <div class="cliente-nome">${esc(c.nome)}</div>
           <div class="cliente-info">${info}</div>
