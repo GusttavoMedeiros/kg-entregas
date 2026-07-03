@@ -29,6 +29,17 @@ let filtroMeusPedidos  = 'pendente';
 let carrinho           = [];      // [{produto, qtd}]
 let autoRefreshTimer   = null;    // timer de sincronização automática
 let salvando           = false;   // trava anti double-submit em operações async
+
+// Feedback visual nos botões de salvar: desabilita e mostra "Salvando…"
+// enquanto a operação roda. Em conexão lenta (3G), sem isso o usuário
+// não vê nada acontecer e clica de novo achando que falhou.
+function botaoSalvando(onclickNome, ativo, textoNormal) {
+  const b = document.querySelector(`button[onclick="${onclickNome}()"]`);
+  if (!b) return;
+  b.disabled = ativo;
+  b.style.opacity = ativo ? '.65' : '';
+  b.textContent = ativo ? '⏳ Salvando…' : textoNormal;
+}
 let modoEntregas       = 'lista'; // 'lista' ou 'rota' (entregador)
 let mostrarMargem      = false;   // admin: exibe custo/margem no catálogo
 let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
@@ -1058,10 +1069,15 @@ async function sincronizarDados() {
       const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
       return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
+    // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
+    // (Antes comparava por length — preço editado pelo admin não aparecia
+    //  na tela do vendedor até a quantidade de itens mudar.)
+    const hashProduto = (p) => `${p.id}|${p.nome}|${p.preco}|${p.preco_custo||''}|${p.categoria||''}`;
+    const hashCliente = (c) => `${c.id}|${c.nome}|${c.whatsapp||''}|${c.endereco||''}|${c.email||''}|${c.observacao||''}`;
     const mudou =
       novosPedidos.map(hashPedido).join('\n') !== todosOsPedidos.map(hashPedido).join('\n') ||
-      (resCli.dados || []).length !== todosOsClientes.length ||
-      (resProd.dados || []).length !== todosOsProdutos.length;
+      (resCli.dados || []).map(hashCliente).join('\n') !== todosOsClientes.map(hashCliente).join('\n') ||
+      (resProd.dados || []).map(hashProduto).join('\n') !== todosOsProdutos.map(hashProduto).join('\n');
 
     todosOsPedidos  = novosPedidos;
     todosOsClientes = resCli.dados || [];
@@ -1071,7 +1087,15 @@ async function sincronizarDados() {
     if (mudou) {
       renderizarDashboard();
       renderizarEntregas(filtroEntregas);
-      renderizarCatalogo(filtroCatalogo);
+      // Catálogo: preserva a busca que o usuário estiver digitando
+      rerenderizarCatalogoMantendoBusca();
+      // Clientes: idem — não apaga a busca ativa
+      const buscaCli = document.getElementById('busca-clientes');
+      if (buscaCli && buscaCli.value.trim()) {
+        _buscarClienteImpl(buscaCli.value);
+      } else {
+        renderizarClientes(todosOsClientes);
+      }
       if (usuario.perfil==='vendedor') {
         renderizarInicioVendedor();
         renderizarMeusPedidos(filtroMeusPedidos);
@@ -1461,7 +1485,10 @@ function cobrarTodosAtrasados() {
     </div>
     ${lista.map(({cliente,total,pedidos}) => {
       const wa = (cliente?.whatsapp || '').replace(/\D/g,'');
-      const msg = `Olá ${cliente?.responsavel || cliente?.nome || ''}! Tudo bem? Passando para lembrar do pagamento pendente referente ao(s) pedido(s) da KG Agropet, no valor total de ${moeda(total)}. Conto com você! 🙏`;
+      // Usa a MESMA mensagem completa da ficha do cliente (saudação por hora,
+      // pedidos com vencimento, nota de mensagem automática) — antes o atalho
+      // enviava um texto genérico diferente, inconsistente com o resto do app.
+      const msg = montarMensagemCobranca(cliente || {}, pedidos, total);
       const link = wa ? `https://wa.me/55${wa}?text=${encodeURIComponent(msg)}` : '';
       return `
         <div style="background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:var(--r);
@@ -2595,6 +2622,17 @@ async function salvarPedido() {
   if (!cliente_id || !data_entrega) { alert('Selecione o cliente e a data do pedido.'); return; }
   if (!carrinho.length) { alert('Adicione pelo menos um produto ao carrinho.'); return; }
 
+  // Data no passado em pedido NOVO: quase sempre é erro de digitação no
+  // seletor de data — avisa mas não bloqueia (pedido retroativo é legítimo).
+  // Na EDIÇÃO não avisa: pedidos antigos têm data passada por natureza.
+  if (!pedidoEmEdicao && data_entrega < fmt(new Date())) {
+    const seguir = confirm(
+      `⚠️ A data de entrega (${dataBR(data_entrega)}) já passou.\n\n` +
+      `Salvar mesmo assim?`
+    );
+    if (!seguir) return;
+  }
+
   // Validação: se boleto, valida prazos
   if (forma === 'boleto') {
     const erro = validarPrazosBoleto(prazos);
@@ -2607,6 +2645,7 @@ async function salvarPedido() {
   const prazos_boleto = (forma === 'boleto' && prazos?.length) ? prazos.join(',') : null;
 
   salvando = true;
+  botaoSalvando('salvarPedido', true, 'Salvar Pedido');
   try {
     await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma, prazo, prazos_boleto);
   } catch (e) {
@@ -2614,6 +2653,7 @@ async function salvarPedido() {
     alert('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
   } finally {
     salvando = false;
+    botaoSalvando('salvarPedido', false, 'Salvar Pedido');
   }
 }
 
@@ -2856,6 +2896,7 @@ async function salvarCliente() {
   }
 
   salvando = true;
+  botaoSalvando('salvarCliente', true, 'Salvar Cliente');
   try {
     // ==== EDIÇÃO ====
     if (clienteSelecionado) {
@@ -2919,6 +2960,7 @@ async function salvarCliente() {
     if (numCli) numCli.textContent = todosOsClientes.length;
   } finally {
     salvando = false;
+    botaoSalvando('salvarCliente', false, 'Salvar Cliente');
   }
 }
 
@@ -3230,6 +3272,7 @@ async function salvarProduto() {
   if (!preco) { alert('Informe o preço de venda.'); return; }
 
   salvando = true;
+  botaoSalvando('salvarProduto', true, 'Salvar Produto');
   try {
     if (idEdit) {
       // === EDITAR ===
@@ -3281,6 +3324,7 @@ async function salvarProduto() {
     rerenderizarCatalogoMantendoBusca();
   } finally {
     salvando = false;
+    botaoSalvando('salvarProduto', false, 'Salvar Produto');
   }
 }
 

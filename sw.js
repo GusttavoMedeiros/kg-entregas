@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v7';
+const CACHE_VERSION = 'kg-v8';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -109,23 +109,6 @@ async function estrategiaStaleWhileRevalidate(request, cacheName) {
   return cached || buscaRede || new Response('', { status: 503, statusText: 'Offline' });
 }
 
-// ============================================================
-// ESTRATÉGIA: cache-first (fallback legado, mantido por segurança)
-// ============================================================
-async function estrategiaCachePrimeiro(request, cacheName) {
-  try {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    const fresh = await fetch(request);
-    if (fresh && fresh.status === 200) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, fresh.clone());
-    }
-    return fresh;
-  } catch (e) {
-    return new Response('', { status: 503, statusText: 'Offline' });
-  }
-}
 
 // ============================================================
 // ESTRATÉGIA: network-first (dados)
