@@ -970,7 +970,8 @@ async function authLogin(email, senha) {
     if (!res.ok) return { ok:false };
     return { ok:true, sessao: montarSessao(await res.json()) };
   } catch(e) {
-    return { ok:false, erro:e.message };
+    // Erro de rede ≠ senha errada — quem chama mostra mensagem apropriada
+    return { ok:false, rede:true, erro:e.message };
   }
 }
 
@@ -1019,7 +1020,14 @@ async function restaurarSessao() {
 
   // Começa com um token fresco. Se o refresh falhar E o access já expirou,
   // descarta e cai na tela de login normalmente.
+  // EXCEÇÃO: sem internet o refresh sempre falha — nesse caso MANTÉM a sessão
+  // e entra mesmo assim (offline-first: os dados vêm do cache do Service Worker
+  // e a fila offline segura as ações até a conexão voltar).
   const renovou = await authRefresh();
+  if (!renovou && !navigator.onLine) {
+    entrarNoApp();
+    return;
+  }
   if (!renovou && Date.now() >= sessao.expires_at) {
     sessao = null; usuario = null; persistirSessao();
     return;
@@ -1049,7 +1057,14 @@ async function fazerLogin() {
 
   if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
 
-  if (!r.ok) { mostrarErroLogin(); return; }
+  if (!r.ok) {
+    if (r.rede) {
+      toast('📡 Sem conexão com o servidor. Verifique sua internet e tente novamente.', 'erro');
+    } else {
+      mostrarErroLogin();
+    }
+    return;
+  }
 
   sessao  = r.sessao;
   usuario = { login:u, ...perfil };
@@ -1305,7 +1320,7 @@ async function sincronizarDados() {
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
       const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
-      return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
+      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
     // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
     // (Antes comparava por length — preço editado pelo admin não aparecia
@@ -1410,15 +1425,17 @@ function renderizarDashboard() {
     tend.textContent = faturamento > 0 ? 'Primeiro mês com vendas' : 'Sem vendas ainda';
   }
 
-  // Card 2: A receber (pedidos pendentes + entregues mas NÃO pagos)
+  // Card 2: A receber = dinheiro que ainda não entrou (qualquer pedido não-pago).
+  // Pedido pago adiantado (antes da entrega) NÃO conta como a receber.
   const pendentesEntrega = todosOsPedidos.filter(p => p.status === 'pendente');
   const entreguesNaoPagos = todosOsPedidos.filter(p => p.status === 'entregue' && !foiPago(p));
-  const aReceberLista = [...pendentesEntrega, ...entreguesNaoPagos];
+  const aReceberLista = [...pendentesEntrega.filter(p => !foiPago(p)), ...entreguesNaoPagos];
   const aReceber = aReceberLista.reduce((s,p)=>s+(Number(p.valor)||0),0);
   document.getElementById('num-areceber').textContent = moeda(aReceber);
+  const pendentesNaoPagos = pendentesEntrega.filter(p => !foiPago(p));
   const detalheReceber = entreguesNaoPagos.length
-    ? `${pendentesEntrega.length} em aberto · ${entreguesNaoPagos.length} entregue(s) sem pagar`
-    : `${pendentesEntrega.length} pedido(s) em aberto`;
+    ? `${pendentesNaoPagos.length} em aberto · ${entreguesNaoPagos.length} entregue(s) sem pagar`
+    : `${pendentesNaoPagos.length} pedido(s) em aberto`;
   document.getElementById('info-areceber').textContent = detalheReceber;
 
   // Card 3: Atrasados
@@ -2381,7 +2398,9 @@ function renderizarClientes(lista, termoBusca = '') {
   }
   el.innerHTML = lista.map(c => {
     const pedidosCli = todosOsPedidos.filter(p => p.cliente_id===c.id);
-    const devendo = pedidosCli.filter(p => p.status!=='entregue').reduce((s,p)=>s+Number(p.valor),0);
+    // "Em aberto" = tudo que ainda não foi PAGO (inclui entregue sem pagar),
+    // mesma régua do Financeiro — antes usava só o status de entrega e divergia.
+    const devendo = pedidosCli.filter(p => !foiPago(p)).reduce((s,p)=>s+(Number(p.valor)||0),0);
     const badge = devendo>0
       ? `<span class="badge badge-devendo">${moeda(devendo)} em aberto</span>`
       : `<span class="badge badge-em-dia">Em dia</span>`;
@@ -2522,7 +2541,9 @@ function verFinanceiroCliente(id) {
   const c = todosOsClientes.find(x => x.id===id);
   if (!c) return;
   clienteSelecionado = c;
-  const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && p.status!=='entregue');
+  // Cobrança = tudo que ainda não foi PAGO (inclui entregue sem pagar —
+  // que é justamente quem mais precisa ser cobrado)
+  const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && !foiPago(p));
   const total = pedidos.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const wa = (c.whatsapp||'').replace(/\D/g,'');
 
@@ -2564,9 +2585,11 @@ function montarMensagemCobranca(cliente, pedidos, total) {
   if (pedidos.length === 1) {
     const p = pedidos[0];
     const atrasado = isAtrasado(p);
+    // NÃO usar esc() aqui: mensagem de WhatsApp é texto puro, não HTML —
+    // esc() faria "Ração & Cia" virar "Ração &amp; Cia" na conversa.
     corpo = atrasado
-      ? `Consta em nosso sistema um pagamento *em atraso* referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`
-      : `Passando para lembrar do pagamento referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
+      ? `Consta em nosso sistema um pagamento *em atraso* referente ao pedido de ${p.descricao}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`
+      : `Passando para lembrar do pagamento referente ao pedido de ${p.descricao}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
   } else {
     const linhas = pedidos.map(p => {
       const flag = isAtrasado(p) ? ' ⚠ (em atraso)' : '';
@@ -2598,8 +2621,9 @@ async function marcarPagoCliente() {
   salvando = true;
   try {
     const hojeStr = fmt(new Date());
+    // IMPORTANTE: baixa manual só mexe no PAGAMENTO. O status de ENTREGA não
+    // muda — pedido pago adiantado continua aparecendo para o entregador.
     const payload = {
-      status: 'entregue',
       status_pagamento: 'pago',
       forma_pagamento_real: 'dinheiro',  // padrão para baixa manual
       data_pagamento: hojeStr,
@@ -2942,9 +2966,10 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         toast('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
         return;
       }
-      // Insere itens novos
+      // Insere itens novos (preco_catalogo permite auditar ajustes de preço depois)
       const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
+        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
+        preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
       })));
       if (resItens.some(r => !r.ok)) {
         toast('Erro ao salvar itens atualizados. Verifique no banco.');
@@ -3001,9 +3026,10 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     }
     const pedido_id = resPed.dados[0].id;
     novoPedido.id = pedido_id;
-    // Salvar itens do pedido e VERIFICAR cada um
+    // Salvar itens do pedido e VERIFICAR cada um (preco_catalogo = auditoria de ajustes)
     const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
+      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
+      preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
     })));
     const falhouItens = resItens.some(r => !r.ok);
     if (falhouItens) {
@@ -3157,7 +3183,6 @@ async function salvarCliente() {
       if (idx >= 0) Object.assign(todosOsClientes[idx], payload);
 
       // Atualiza cliente_nome nos pedidos relacionados (para refletir mudança de nome)
-      todosOsClientes.forEach(c => {});
       todosOsPedidos.forEach(p => { if (p.cliente_id === id) p.cliente_nome = nome; });
 
       clienteSelecionado = null;
@@ -3986,6 +4011,9 @@ function fecharModal(id) {
 // Fecha modal aberto ao pressionar ESC
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    // Caixa de confirmação aberta? Ela tem prioridade e trata o ESC sozinha —
+    // não fecha o modal que está por trás junto.
+    if (document.getElementById('confirmar-overlay')?.classList.contains('aberto')) return;
     // Via de pedido aberta? Fecha ela primeiro
     const via = document.getElementById('via-overlay');
     if (via && via.style.display !== 'none') {

@@ -148,11 +148,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   transition:background .2s,transform .12s}
 .btn-obs:hover{background:rgba(200,150,12,.14)}.btn-obs:active{transform:scale(.95)}
 .btn-sm{background:var(--oo);color:var(--o1);border:1px solid var(--ob);border-radius:10px;
-  padding:8px 13px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;
+  padding:10px 13px;min-height:40px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;
   transition:background .2s,border-color .2s,transform .12s}
 .btn-sm:hover{background:rgba(200,150,12,.14);border-color:var(--o0)}.btn-sm:active{transform:scale(.96)}
 .btn-azul{background:var(--azb);color:var(--az);border:1px solid rgba(41,128,185,.3);border-radius:10px;
-  padding:8px 13px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;
+  padding:10px 13px;min-height:40px;font-size:12px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;
   transition:background .2s,transform .12s}
 .btn-azul:hover{background:rgba(41,128,185,.2)}.btn-azul:active{transform:scale(.96)}
 .erro-login{color:#e05a4e;font-size:13px;text-align:center;margin-top:10px;display:none}
@@ -172,15 +172,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   border:1.5px solid var(--o0);
   box-shadow:0 0 12px rgba(200,150,12,.35),inset 0 0 0 1px rgba(255,255,255,.08);flex-shrink:0}
 
-/* SCROLLBAR PREMIUM (desktop) — fina, dourada, discreta */
-@media (min-width:900px){
-  .conteudo::-webkit-scrollbar{width:10px}
-  .conteudo::-webkit-scrollbar-track{background:transparent}
-  .conteudo::-webkit-scrollbar-thumb{background:rgba(200,150,12,.25);border-radius:10px;
-    border:3px solid transparent;background-clip:content-box}
-  .conteudo::-webkit-scrollbar-thumb:hover{background:rgba(200,150,12,.45);background-clip:content-box}
-  .conteudo{scrollbar-width:thin;scrollbar-color:rgba(200,150,12,.3) transparent}
-}
+/* SCROLLBAR INVISÍVEL (estilo app nativo) — a rolagem continua funcionando
+   normalmente (dedo, roda do mouse, teclado), só some a barra visual */
+*::-webkit-scrollbar{width:0;height:0;display:none}
+*{scrollbar-width:none;-ms-overflow-style:none}
 .header-logo > div{min-width:0;flex:1;overflow:hidden}
 .header-logo-texto{font-family:'Cinzel',serif;font-size:14px;font-weight:600;letter-spacing:1px;
   background:var(--go);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
@@ -374,7 +369,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .resumo-entregador-lbl{font-size:9px;color:var(--c3);margin-top:3px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 .resumo-entregador-abas{display:flex;gap:6px;margin-bottom:8px}
 .aba-rota{flex:1;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:10px;
-  padding:9px 8px;font-size:11px;font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
+  padding:12px 8px;min-height:42px;font-size:11px;font-weight:700;color:var(--c2);cursor:pointer;font-family:'Nunito',sans-serif;
   letter-spacing:.5px;transition:all .15s}
 .aba-rota.ativa{background:var(--go);color:var(--v1);border-color:transparent}
 .bairro-grupo{margin-bottom:14px}
@@ -1067,7 +1062,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 /* ABAS */
 .abas{display:flex;background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:14px;
   padding:4px;margin-bottom:14px;gap:3px}
-.aba{flex:1;padding:9px 4px;text-align:center;font-size:11px;font-weight:700;border-radius:10px;
+.aba{flex:1;padding:12px 4px;min-height:42px;text-align:center;font-size:11px;font-weight:700;border-radius:10px;
   cursor:pointer;border:none;background:transparent;color:var(--c2);font-family:'Nunito',sans-serif;
   letter-spacing:.5px;text-transform:uppercase;transition:color .2s,background .2s,box-shadow .2s,transform .12s}
 .aba:active{transform:scale(.97)}
@@ -1417,7 +1412,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   animation:toastIn .28s cubic-bezier(.2,.9,.3,1) both}
 .toast.saindo{animation:toastOut .25s ease-in forwards}
 .toast .ico{flex:0 0 auto;font-size:16px;line-height:1.25}
-.toast .txt{flex:1;min-width:0}
+.toast .txt{flex:1;min-width:0;white-space:pre-line}
 .toast.ok{border-left-color:var(--gn)}
 .toast.erro{border-left-color:var(--rm)}
 .toast.info{border-left-color:var(--o1)}
@@ -1788,7 +1783,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
       <select id="pedido-cliente"><option value="">Selecionar cliente...</option></select></div>
 
     <div class="campo"><label>Data do pedido</label>
-      <input type="date" id="pedido-data-entrega"></div>
+      <input type="date" id="pedido-data-entrega" onchange="atualizarParcelas()"></div>
 
     <!-- FORMA DE PAGAMENTO -->
     <div class="campo">
@@ -2130,6 +2125,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>
