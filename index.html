@@ -1406,6 +1406,48 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   *:hover { transform: none !important; box-shadow: var(--sv) !important; }
 }
 
+/* ===== TOAST (avisos que substituem o alert nativo) ===== */
+#toast-wrap{position:fixed;left:0;right:0;bottom:calc(16px + var(--safe-bot));z-index:9999;
+  display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 14px}
+.toast{pointer-events:auto;max-width:440px;width:100%;
+  background:linear-gradient(145deg,rgba(30,64,48,.98) 0%,rgba(16,38,26,.99) 100%);
+  border:1px solid var(--ob);border-left:4px solid var(--o1);border-radius:14px;
+  padding:13px 15px;color:var(--creme);font-size:14px;line-height:1.35;font-weight:500;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);display:flex;gap:10px;align-items:flex-start;
+  animation:toastIn .28s cubic-bezier(.2,.9,.3,1) both}
+.toast.saindo{animation:toastOut .25s ease-in forwards}
+.toast .ico{flex:0 0 auto;font-size:16px;line-height:1.25}
+.toast .txt{flex:1;min-width:0}
+.toast.ok{border-left-color:var(--gn)}
+.toast.erro{border-left-color:var(--rm)}
+.toast.info{border-left-color:var(--o1)}
+@keyframes toastIn{from{opacity:0;transform:translateY(20px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(12px) scale(.97)}}
+
+/* ===== MODAL DE CONFIRMAÇÃO (substitui o confirm nativo) ===== */
+#confirmar-overlay{position:fixed;inset:0;z-index:10000;display:none;
+  align-items:center;justify-content:center;padding:24px;
+  background:rgba(5,14,9,.72);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#confirmar-overlay.aberto{display:flex;animation:cfFade .2s ease-out both}
+@keyframes cfFade{from{opacity:0}to{opacity:1}}
+.confirmar-box{width:100%;max-width:360px;
+  background:linear-gradient(145deg,rgba(30,64,48,.98) 0%,rgba(16,38,26,.99) 100%);
+  border:1px solid var(--ob);border-radius:var(--rxl);padding:24px 22px;
+  box-shadow:0 12px 48px rgba(0,0,0,.6),inset 0 1px 0 rgba(200,150,12,.12);
+  animation:cfUp .24s cubic-bezier(.2,.9,.3,1) both}
+@keyframes cfUp{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+.confirmar-box h3{font-family:'Cinzel',serif;font-size:15px;color:var(--o1);margin-bottom:12px;
+  letter-spacing:1px;text-align:center}
+.confirmar-box .msg{font-size:14px;color:var(--c1);line-height:1.5;text-align:center;
+  margin-bottom:20px;white-space:pre-line}
+.confirmar-box .acoes{display:flex;gap:10px}
+.confirmar-box button{flex:1;border:none;border-radius:12px;padding:12px;font-size:14px;
+  font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;transition:opacity .15s}
+.confirmar-box button:active{opacity:.75}
+.confirmar-box .bt-cancelar{background:rgba(250,246,236,.1);color:var(--c1);border:1px solid rgba(250,246,236,.18)}
+.confirmar-box .bt-ok{background:var(--go);color:#3a2a05}
+.confirmar-box .bt-ok.perigo{background:linear-gradient(135deg,#c0392b,#e05a4e);color:#fff}
+
 </style>
 </head>
 <body>
@@ -2088,6 +2130,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=42"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>

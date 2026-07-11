@@ -64,6 +64,86 @@ let todosOsClientes    = [];
 let todosOsProdutos    = [];
 
 // ============================================================
+// TOAST + CONFIRMAÇÃO (substituem os diálogos nativos do navegador,
+// que travam a tela e destoam do visual do app)
+// ============================================================
+
+// Aviso flutuante, não-bloqueante. tipo: 'ok' | 'erro' | 'info'
+// (se omitido, tenta adivinhar pelo conteúdo da mensagem)
+function toast(msg, tipo) {
+  const texto = (msg == null ? '' : String(msg));
+  if (!tipo) {
+    const t = texto.toLowerCase();
+    if (/^❌|erro|falh|inválid|invalid|incorret|não pode|nao pode|obrigatóri/.test(t)) tipo = 'erro';
+    else if (/^✅|^🎉|sucesso|salvo|atualizad|conclu[ií]|exclu[ií]d|removid/.test(t)) tipo = 'ok';
+    else tipo = 'info';
+  }
+  let wrap = document.getElementById('toast-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'toast-wrap';
+    document.body.appendChild(wrap);
+  }
+  const icones = { ok:'✅', erro:'⚠️', info:'ℹ️' };
+  const el = document.createElement('div');
+  el.className = `toast ${tipo}`;
+  el.innerHTML = `<span class="ico"></span><span class="txt"></span>`;
+  el.querySelector('.ico').textContent = icones[tipo] || 'ℹ️';
+  el.querySelector('.txt').textContent = texto;   // textContent = seguro contra HTML
+  wrap.appendChild(el);
+
+  const dur = Math.min(7000, 3200 + texto.length * 40);
+  const remover = () => { el.classList.add('saindo'); setTimeout(() => el.remove(), 260); };
+  const timer = setTimeout(remover, dur);
+  el.addEventListener('click', () => { clearTimeout(timer); remover(); }); // toque fecha
+}
+
+// Confirmação com visual do app. Retorna Promise<boolean>.
+// Uso: if (!await confirmar('Tem certeza?')) return;
+// opts: { titulo, okLabel, cancelLabel, perigo }
+function confirmar(mensagem, opts = {}) {
+  return new Promise(resolve => {
+    let overlay = document.getElementById('confirmar-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'confirmar-overlay';
+      document.body.appendChild(overlay);
+    }
+    const perigo = opts.perigo ? ' perigo' : '';
+    overlay.innerHTML = `
+      <div class="confirmar-box" role="dialog" aria-modal="true">
+        <h3></h3>
+        <div class="msg"></div>
+        <div class="acoes">
+          <button class="bt-cancelar" type="button"></button>
+          <button class="bt-ok${perigo}" type="button"></button>
+        </div>
+      </div>`;
+    overlay.querySelector('h3').textContent = opts.titulo || 'Confirmar';
+    overlay.querySelector('.msg').textContent = (mensagem == null ? '' : String(mensagem));
+    const btCancel = overlay.querySelector('.bt-cancelar');
+    const btOk = overlay.querySelector('.bt-ok');
+    btCancel.textContent = opts.cancelLabel || 'Cancelar';
+    btOk.textContent = opts.okLabel || 'Confirmar';
+
+    const fechar = (valor) => {
+      overlay.classList.remove('aberto');
+      document.removeEventListener('keydown', onKey);
+      resolve(valor);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') fechar(false);
+      else if (e.key === 'Enter')  fechar(true);
+    };
+    btCancel.addEventListener('click', () => fechar(false));
+    btOk.addEventListener('click', () => fechar(true));
+    document.addEventListener('keydown', onKey);
+    overlay.classList.add('aberto');
+    btOk.focus();
+  });
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 const fmt = d => d.toISOString().split('T')[0];
@@ -578,7 +658,7 @@ async function aplicarDadosReceita(dados) {
   // 1) Avisa se CNPJ inativo/suspenso/baixado ANTES de preencher
   const descSit = (dados.descricao_situacao_cadastral || '').toUpperCase();
   if (descSit && descSit !== 'ATIVA') {
-    const continuar = confirm(
+    const continuar = await confirmar(
       `⚠ Atenção! Este CNPJ está com situação cadastral "${descSit}" na Receita Federal.\n\n` +
       `Pode indicar que a empresa está inativa, suspensa ou baixada.\n\n` +
       `Deseja preencher os dados mesmo assim?`
@@ -594,7 +674,7 @@ async function aplicarDadosReceita(dados) {
   const nomeAtual = (inputNome?.value || '').trim();
   let usarNomeReceita = true;
   if (nomeAtual && nomeReceita && normalizar(nomeAtual) !== normalizar(nomeReceita)) {
-    usarNomeReceita = confirm(
+    usarNomeReceita = await confirmar(
       `⚠ O nome digitado não bate com o cadastrado na Receita Federal.\n\n` +
       `Digitado: ${nomeAtual}\n` +
       `Receita:  ${nomeReceita}\n\n` +
@@ -923,7 +1003,7 @@ async function garantirTokenValido() {
 
 // Sessão morreu de vez (refresh falhou) → volta pro login
 function forcarRelogin() {
-  alert('Sua sessão expirou. Faça login novamente.');
+  toast('Sua sessão expirou. Faça login novamente.');
   sair();
 }
 
@@ -1168,7 +1248,7 @@ async function carregarTudo() {
       supabase('produtos','GET',null,'?order=nome.asc'),
     ]);
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
-      alert('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
+      toast('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
     todosOsClientes = resCli.dados || [];
@@ -1620,7 +1700,7 @@ function renderizarPerformanceVendedores(idDiv, pedidosMes) {
 function cobrarTodosAtrasados() {
   const atras = todosOsPedidos.filter(p => isAtrasado(p));
   if (!atras.length) {
-    alert('🎉 Nenhum pagamento atrasado no momento!');
+    toast('🎉 Nenhum pagamento atrasado no momento!');
     return;
   }
   // Agrupa por cliente
@@ -1672,7 +1752,7 @@ function cobrarTodosAtrasados() {
 // ============================================================
 function abrirModalReset() {
   if (usuario?.perfil !== 'admin') {
-    alert('Apenas o admin pode executar essa ação.');
+    toast('Apenas o admin pode executar essa ação.');
     return;
   }
   // Mostra quantidade no modal
@@ -1685,25 +1765,25 @@ function abrirModalReset() {
 async function executarResetPedidos() {
   if (salvando) return;
   if (usuario?.perfil !== 'admin') {
-    alert('Apenas o admin pode executar essa ação.');
+    toast('Apenas o admin pode executar essa ação.');
     return;
   }
 
   // CONFIRMAÇÃO 1: precisa digitar LIMPAR
   const confirma = document.getElementById('confirma-reset').value.trim().toUpperCase();
   if (confirma !== 'LIMPAR') {
-    alert('Você precisa digitar exatamente a palavra "LIMPAR" para confirmar.');
+    toast('Você precisa digitar exatamente a palavra "LIMPAR" para confirmar.');
     return;
   }
 
   // CONFIRMAÇÃO 2: prompt nativo do navegador
   const qtd = todosOsPedidos.length;
   if (qtd === 0) {
-    alert('Não há pedidos para apagar.');
+    toast('Não há pedidos para apagar.');
     fecharModal('modal-reset');
     return;
   }
-  const ok = confirm(
+  const ok = await confirmar(
     `⚠️ ÚLTIMA CONFIRMAÇÃO\n\n` +
     `Você vai apagar ${qtd} pedido(s) PERMANENTEMENTE.\n\n` +
     `Esta ação não pode ser desfeita.\n\n` +
@@ -1720,13 +1800,13 @@ async function executarResetPedidos() {
       // 1º apaga TODOS os itens_pedido
       const resItens = await supabase('itens_pedido','DELETE',null,'?id=gt.0');
       if (!resItens.ok) {
-        alert('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
+        toast('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
         return;
       }
       // 2º apaga TODOS os pedidos
       const resPed = await supabase('pedidos','DELETE',null,'?id=gt.0');
       if (!resPed.ok) {
-        alert('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        toast('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
         return;
       }
     }
@@ -1741,10 +1821,10 @@ async function executarResetPedidos() {
     agendarRender('entregas');
     agendarRender('financeiro');
 
-    alert(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
+    toast(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
   } catch (e) {
     console.error('Erro ao resetar:', e);
-    alert('Erro inesperado ao resetar: ' + e.message);
+    toast('Erro inesperado ao resetar: ' + e.message);
   } finally {
     salvando = false;
     if (btn) { btn.disabled = false; btn.textContent = '🗑️ Sim, apagar tudo definitivamente'; }
@@ -2271,7 +2351,7 @@ function confirmarAjustePreco() {
   const novoStr = document.getElementById('ajustar-preco-input').value.replace(',', '.');
   const novo = parseFloat(novoStr);
   if (isNaN(novo) || novo < 0) {
-    alert('Informe um preço válido (maior ou igual a zero).');
+    toast('Informe um preço válido (maior ou igual a zero).');
     return;
   }
   c.preco_unit = novo;
@@ -2528,7 +2608,7 @@ async function marcarPagoCliente() {
       const res = await Promise.all(paraPagar.map(p =>
         supabase('pedidos','PATCH', payload, `?id=eq.${p.id}`)
       ));
-      if (res.some(r=>!r.ok)) { alert('Erro ao atualizar. Tente novamente.'); return; }
+      if (res.some(r=>!r.ok)) { toast('Erro ao atualizar. Tente novamente.'); return; }
     }
     paraPagar.forEach(p => { Object.assign(p, payload); });
     fecharModal('modal-fin-cliente');
@@ -2555,9 +2635,9 @@ function abrirModalNovoPedido(idEdit) {
   if (idEdit) {
     // Modo edição
     const p = todosOsPedidos.find(x => x.id === idEdit);
-    if (!p) { alert('Pedido não encontrado.'); return; }
-    if (p.status === 'entregue') { alert('Pedido já entregue não pode ser editado.'); return; }
-    if (!podeEditarPedido(p)) { alert('Você não tem permissão para editar este pedido.'); return; }
+    if (!p) { toast('Pedido não encontrado.'); return; }
+    if (p.status === 'entregue') { toast('Pedido já entregue não pode ser editado.'); return; }
+    if (!podeEditarPedido(p)) { toast('Você não tem permissão para editar este pedido.'); return; }
 
     pedidoEmEdicao = p;
     document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
@@ -2777,14 +2857,14 @@ async function salvarPedido() {
   const obs             = document.getElementById('pedido-obs').value.trim();
   const { forma, prazo, prazos } = obterFormaPagamento();
 
-  if (!cliente_id || !data_entrega) { alert('Selecione o cliente e a data do pedido.'); return; }
-  if (!carrinho.length) { alert('Adicione pelo menos um produto ao carrinho.'); return; }
+  if (!cliente_id || !data_entrega) { toast('Selecione o cliente e a data do pedido.'); return; }
+  if (!carrinho.length) { toast('Adicione pelo menos um produto ao carrinho.'); return; }
 
   // Data no passado em pedido NOVO: quase sempre é erro de digitação no
   // seletor de data — avisa mas não bloqueia (pedido retroativo é legítimo).
   // Na EDIÇÃO não avisa: pedidos antigos têm data passada por natureza.
   if (!pedidoEmEdicao && data_entrega < fmt(new Date())) {
-    const seguir = confirm(
+    const seguir = await confirmar(
       `⚠️ A data de entrega (${dataBR(data_entrega)}) já passou.\n\n` +
       `Salvar mesmo assim?`
     );
@@ -2794,7 +2874,7 @@ async function salvarPedido() {
   // Validação: se boleto, valida prazos
   if (forma === 'boleto') {
     const erro = validarPrazosBoleto(prazos);
-    if (erro) { alert(erro); return; }
+    if (erro) { toast(erro); return; }
   }
 
   // Calcula data de vencimento da PRIMEIRA parcela (compat)
@@ -2808,7 +2888,7 @@ async function salvarPedido() {
     await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma, prazo, prazos_boleto);
   } catch (e) {
     console.error('Erro inesperado ao salvar pedido:', e);
-    alert('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
+    toast('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
   } finally {
     salvando = false;
     botaoSalvando('salvarPedido', false, 'Salvar Pedido');
@@ -2833,11 +2913,11 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   // === EDIÇÃO ===
   if (pedidoEmEdicao) {
     if (pedidoEmEdicao.status === 'entregue') {
-      alert('Pedido já entregue não pode ser editado.');
+      toast('Pedido já entregue não pode ser editado.');
       return;
     }
     if (!podeEditarPedido(pedidoEmEdicao)) {
-      alert('Você não tem permissão para editar este pedido.');
+      toast('Você não tem permissão para editar este pedido.');
       return;
     }
     const pedido_id = pedidoEmEdicao.id;
@@ -2853,13 +2933,13 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         prazos_boleto: prazos_boleto || null,
       }, `?id=eq.${pedido_id}`);
       if (!resPed.ok) {
-        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        toast('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
         return;
       }
       // Apaga itens antigos
       const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
       if (!resDel.ok) {
-        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
+        toast('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
         return;
       }
       // Insere itens novos
@@ -2867,7 +2947,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
       })));
       if (resItens.some(r => !r.ok)) {
-        alert('Erro ao salvar itens atualizados. Verifique no banco.');
+        toast('Erro ao salvar itens atualizados. Verifique no banco.');
         return;
       }
     }
@@ -2916,7 +2996,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
       prazos_boleto: prazos_boleto || null,
     });
     if (!resPed.ok||!resPed.dados?.[0]) {
-      alert('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
+      toast('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
       return;
     }
     const pedido_id = resPed.dados[0].id;
@@ -2932,7 +3012,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
       if (!rollback.ok) {
         console.warn(`Rollback do pedido ${pedido_id} falhou. Verifique manualmente no banco.`);
       }
-      alert('Erro ao salvar itens do pedido. Tente novamente.');
+      toast('Erro ao salvar itens do pedido. Tente novamente.');
       return;
     }
   }
@@ -2954,7 +3034,7 @@ function abrirModalNovoCliente(idEdit) {
   if (idEdit) {
     // Modo edição
     const c = todosOsClientes.find(x => x.id === idEdit);
-    if (!c) { alert('Cliente não encontrado.'); return; }
+    if (!c) { toast('Cliente não encontrado.'); return; }
     clienteSelecionado = c;
     document.getElementById('cliente-modal-titulo').textContent = 'Editar Cliente';
     alternarTipoPessoa(c.tipo_pessoa || 'juridica');
@@ -3025,31 +3105,31 @@ async function salvarCliente() {
 
   // ==== VALIDAÇÕES OBRIGATÓRIAS ====
   if (!nome) {
-    alert(tipo_pessoa === 'fisica' ? 'Informe o nome completo.' : 'Informe o nome da loja.');
+    toast(tipo_pessoa === 'fisica' ? 'Informe o nome completo.' : 'Informe o nome da loja.');
     return;
   }
   if (!docRaw) {
-    alert(`Informe o ${tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}.`);
+    toast(`Informe o ${tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}.`);
     return;
   }
   if (tipo_pessoa === 'fisica' && !validarCPF(docRaw)) {
-    alert('CPF inválido. Verifique se digitou corretamente.');
+    toast('CPF inválido. Verifique se digitou corretamente.');
     return;
   }
   if (tipo_pessoa === 'juridica' && !validarCNPJ(docRaw)) {
-    alert('CNPJ inválido. Verifique se digitou corretamente.');
+    toast('CNPJ inválido. Verifique se digitou corretamente.');
     return;
   }
   if (!whatsappRaw) {
-    alert('Informe o WhatsApp do cliente.');
+    toast('Informe o WhatsApp do cliente.');
     return;
   }
   if (whatsappRaw.length < 10) {
-    alert('WhatsApp incompleto. Inclua o DDD + número.');
+    toast('WhatsApp incompleto. Inclua o DDD + número.');
     return;
   }
   if (email && !validarEmail(email)) {
-    alert('E-mail inválido. Verifique se digitou corretamente.');
+    toast('E-mail inválido. Verifique se digitou corretamente.');
     return;
   }
 
@@ -3071,7 +3151,7 @@ async function salvarCliente() {
       };
       if (!MODO_DEMO) {
         const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
-        if (!res.ok) { alert('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
+        if (!res.ok) { toast('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
       }
       const idx = todosOsClientes.findIndex(c => c.id === id);
       if (idx >= 0) Object.assign(todosOsClientes[idx], payload);
@@ -3105,7 +3185,7 @@ async function salvarCliente() {
     if (!MODO_DEMO) {
       const res = await supabase('clientes','POST', novo);
       if (!res.ok || !res.dados?.[0]) {
-        alert('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        toast('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
       }
       novo.id = res.dados[0].id;
@@ -3126,15 +3206,15 @@ async function excluirCliente(id) {
   if (salvando) return;
   const vinculados = todosOsPedidos.filter(p=>p.cliente_id===id);
   if (vinculados.length>0) {
-    alert(`Este cliente tem ${vinculados.length} pedido(s) registrado(s) e não pode ser excluído. Isso preserva o histórico.`);
+    toast(`Este cliente tem ${vinculados.length} pedido(s) registrado(s) e não pode ser excluído. Isso preserva o histórico.`);
     return;
   }
-  if (!confirm('Excluir este cliente? Esta ação não pode ser desfeita.')) return;
+  if (!await confirmar('Excluir este cliente? Esta ação não pode ser desfeita.')) return;
   salvando = true;
   try {
     if (!MODO_DEMO) {
       const res = await supabase('clientes','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
     }
     todosOsClientes = todosOsClientes.filter(c=>c.id!==id);
     fecharModal('modal-detalhe-cliente');
@@ -3207,7 +3287,7 @@ async function confirmarEntrega() {
   const pagtoEscolhido = modalSheet?.dataset.pagamentoEscolhido || '';
 
   if (precisaPagamento && !pagtoEscolhido) {
-    alert(
+    toast(
       '⚠ Você precisa informar como o cliente pagou.\n\n' +
       'Escolha uma das 4 opções:\n' +
       '• 💵 Pagou em dinheiro\n' +
@@ -3245,7 +3325,7 @@ async function confirmarEntrega() {
     const qtdMarcados = pedidoSelecionado.itens.filter(i => marcados.has(Number(i.produto_id))).length;
     if (qtdMarcados < total) {
       const faltam = total - qtdMarcados;
-      const ok = confirm(
+      const ok = await confirmar(
         `⚠ Atenção!\n\n` +
         `Faltam ${faltam} ${faltam === 1 ? 'item não conferido' : 'itens não conferidos'} ` +
         `na carga deste pedido.\n\n` +
@@ -3273,7 +3353,7 @@ async function confirmarEntrega() {
           pedidoId: id,
           payload,
         });
-        alert(
+        toast(
           '📡 Sem internet no momento.\n\n' +
           'O pedido foi marcado localmente como ENTREGUE e será sincronizado ' +
           'automaticamente quando a conexão voltar.\n\n' +
@@ -3289,12 +3369,12 @@ async function confirmarEntrega() {
               pedidoId: id,
               payload,
             });
-            alert(
+            toast(
               '⚠ Conexão lenta — pedido marcado localmente.\n\n' +
               'Vai sincronizar automaticamente quando a internet melhorar.'
             );
           } else {
-            alert('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+            toast('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
             return;
           }
         }
@@ -3324,15 +3404,15 @@ async function excluirPedido(id) {
   const p = todosOsPedidos.find(x => x.id === id);
   if (!p) return;
   if (p.status === 'entregue') {
-    alert('Pedido já entregue não pode ser excluído.');
+    toast('Pedido já entregue não pode ser excluído.');
     return;
   }
   if (!podeEditarPedido(p)) {
-    alert('Você não tem permissão para excluir este pedido.');
+    toast('Você não tem permissão para excluir este pedido.');
     return;
   }
 
-  const confirmacao = confirm(
+  const confirmacao = await confirmar(
     `Excluir o pedido de "${p.cliente_nome}" no valor de ${moeda(p.valor)}?\n\n` +
     `Esta ação não pode ser desfeita.`
   );
@@ -3349,7 +3429,7 @@ async function excluirPedido(id) {
       // Apaga o pedido
       const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
       if (!res.ok) {
-        alert('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        toast('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
       }
     }
@@ -3426,8 +3506,8 @@ async function salvarProduto() {
     : Math.max(0, parseFloat(custoStr));
   const idEdit    = document.getElementById('produto-id').value;
 
-  if (!nome) { alert('Informe o nome do produto.'); return; }
-  if (!preco) { alert('Informe o preço de venda.'); return; }
+  if (!nome) { toast('Informe o nome do produto.'); return; }
+  if (!preco) { toast('Informe o preço de venda.'); return; }
 
   salvando = true;
   botaoSalvando('salvarProduto', true, 'Salvar Produto');
@@ -3435,7 +3515,7 @@ async function salvarProduto() {
     if (idEdit) {
       // === EDITAR ===
       const id = Number(idEdit);
-      if (!id) { alert('ID inválido.'); return; }
+      if (!id) { toast('ID inválido.'); return; }
       const produtoAntigo = todosOsProdutos.find(p => p.id === id);
       const precoMudou = produtoAntigo && (Number(produtoAntigo.preco) !== preco);
       const custoMudou = produtoAntigo && (Number(produtoAntigo.preco_custo || 0) !== Number(preco_custo || 0));
@@ -3443,7 +3523,7 @@ async function salvarProduto() {
       if (!MODO_DEMO) {
         const res = await supabase('produtos','PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
         if (!res.ok) {
-          alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+          toast('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
           return;
         }
         // Registra histórico SÓ se algum preço mudou
@@ -3464,7 +3544,7 @@ async function salvarProduto() {
       if (!MODO_DEMO) {
         const res = await supabase('produtos','POST', { nome, categoria, preco, preco_custo });
         if (!res.ok || !res.dados?.[0]) {
-          alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
+          toast('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
           return;
         }
         novo.id = res.dados[0].id;
@@ -3511,12 +3591,12 @@ function alternarMostrarMargem() {
 
 async function excluirProduto(id) {
   if (salvando) return;
-  if (!confirm('Excluir este produto do catálogo?')) return;
+  if (!await confirmar('Excluir este produto do catálogo?')) return;
   salvando = true;
   try {
     if (!MODO_DEMO) {
       const res = await supabase('produtos','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
+      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
     }
     todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
     rerenderizarCatalogoMantendoBusca();
@@ -3769,7 +3849,7 @@ function enviarPedidoWhatsApp(id) {
   if (!p) return;
   const c = todosOsClientes.find(x => x.id === p.cliente_id);
   const waNum = (c?.whatsapp || '').replace(/\D/g, '');
-  if (!waNum) { alert('Este cliente não tem WhatsApp cadastrado.'); return; }
+  if (!waNum) { toast('Este cliente não tem WhatsApp cadastrado.'); return; }
 
   const itensTxt = (p.itens?.length)
     ? p.itens.map(i => `• ${i.qtd}x ${i.nome || i.produto_nome || ''} — ${moeda(i.preco_unit * i.qtd)}`).join('\n')
@@ -4056,7 +4136,7 @@ window.addEventListener('beforeinstallprompt', e => {
 async function instalarApp() {
   if (!_deferredPrompt) {
     // Em iOS o prompt automático não existe — instrui manualmente
-    alert(
+    toast(
       '📱 Para instalar o KG Entregas:\n\n' +
       '• iPhone (Safari): toque no ícone de compartilhar e escolha "Adicionar à Tela de Início"\n\n' +
       '• Android (Chrome): toque nos 3 pontos do menu e escolha "Instalar app" ou "Adicionar à tela inicial"'
