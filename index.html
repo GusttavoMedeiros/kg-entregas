@@ -201,9 +201,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   overflow:hidden}
 .nav-item.ativo::before{content:'';position:absolute;top:0;left:25%;right:25%;height:2px;
   background:var(--go);border-radius:0 0 2px 2px}
-.nav-icon{font-size:clamp(18px, 5vw, 22px);transition:transform .2s;line-height:1}
+.nav-icon{font-size:clamp(18px, 5vw, 22px);transition:transform .2s;line-height:1;color:var(--o1)}
+.nav-icon svg{width:clamp(21px,5.5vw,25px);height:clamp(21px,5.5vw,25px);display:block;stroke-width:1.9;fill:none;stroke:currentColor}
 .nav-item.ativo .nav-icon{transform:scale(1.12)}
-.nav-item:not(.ativo) .nav-icon{opacity:.3}
+.nav-item:not(.ativo) .nav-icon{opacity:.32}
 .nav-label{font-size:clamp(8px, 2.4vw, 10px);font-family:'Nunito',sans-serif;font-weight:700;letter-spacing:.4px;
   text-transform:uppercase;color:var(--c3);transition:color .2s;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center}
@@ -1443,6 +1444,20 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .confirmar-box .bt-ok{background:var(--go);color:#3a2a05}
 .confirmar-box .bt-ok.perigo{background:linear-gradient(135deg,#c0392b,#e05a4e);color:#fff}
 
+/* ===== BOTÕES DE PERFIL NO LOGIN (leigo toca em vez de digitar) ===== */
+.perfil-login-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.perfil-login-btn{display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 6px;border-radius:14px;cursor:pointer;
+  background:rgba(10,26,16,.5);border:1.5px solid rgba(200,150,12,.2);
+  color:var(--c2);font-family:'Nunito',sans-serif;transition:transform .12s,border-color .18s,background .18s}
+.perfil-login-btn:active{transform:scale(.96)}
+.perfil-login-ico{font-size:24px;line-height:1}
+.perfil-login-txt{font-size:11px;font-weight:700;letter-spacing:.5px}
+.perfil-login-btn.ativo{background:var(--ol);border-color:var(--o0);
+  box-shadow:0 0 0 3px rgba(200,150,12,.12)}
+.perfil-login-btn.ativo .perfil-login-txt{color:var(--o1)}
+.perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
+
 </style>
 </head>
 <body>
@@ -1488,12 +1503,24 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
   <div class="card-login">
     <h2>Acesso ao Sistema</h2>
-    <div class="campo"><label>Usuário</label>
-      <input type="text" id="input-usuario" placeholder="seu usuário" autocomplete="username"></div>
+    <div class="campo"><label>Quem é você?</label>
+      <div class="perfil-login-grid" id="perfil-login-grid">
+        <button type="button" class="perfil-login-btn" data-perfil="admin" onclick="selecionarPerfilLogin('admin')">
+          <span class="perfil-login-ico">👑</span><span class="perfil-login-txt">Admin</span>
+        </button>
+        <button type="button" class="perfil-login-btn" data-perfil="vendedor" onclick="selecionarPerfilLogin('vendedor')">
+          <span class="perfil-login-ico">🤝</span><span class="perfil-login-txt">Vendedor</span>
+        </button>
+        <button type="button" class="perfil-login-btn" data-perfil="entregador" onclick="selecionarPerfilLogin('entregador')">
+          <span class="perfil-login-ico">📦</span><span class="perfil-login-txt">Entregador</span>
+        </button>
+      </div>
+    </div>
+    <input type="hidden" id="input-usuario">
     <div class="campo"><label>Senha</label>
       <input type="password" id="input-senha" placeholder="••••••••" autocomplete="current-password"></div>
     <button class="btn-primario" onclick="fazerLogin()">Entrar</button>
-    <p class="erro-login" id="erro-login">Usuário ou senha incorretos</p>
+    <p class="erro-login" id="erro-login">Toque no seu perfil e digite a senha</p>
   </div>
 </div>
 
@@ -2125,6 +2152,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

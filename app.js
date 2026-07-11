@@ -1038,8 +1038,28 @@ async function restaurarSessao() {
 // ============================================================
 // LOGIN / SAIR
 // ============================================================
-function mostrarErroLogin() {
-  document.getElementById('erro-login').style.display = 'block';
+function mostrarErroLogin(msg) {
+  const el = document.getElementById('erro-login');
+  if (msg) el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// Leigo toca no perfil em vez de digitar o usuário.
+// Guarda a escolha no input escondido (que fazerLogin já lê) e foca a senha.
+function selecionarPerfilLogin(perfil) {
+  const hidden = document.getElementById('input-usuario');
+  if (hidden) hidden.value = perfil;
+  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.perfil === perfil);
+  });
+  document.getElementById('erro-login').style.display = 'none';
+  const s = document.getElementById('input-senha');
+  if (s) s.focus();
+}
+
+// Limpa a escolha de perfil (ao sair)
+function resetarPerfilLogin() {
+  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => b.classList.remove('ativo'));
 }
 
 async function fazerLogin() {
@@ -1047,7 +1067,9 @@ async function fazerLogin() {
   const s = document.getElementById('input-senha').value;   // senha é case-sensitive — NÃO alterar
   const email  = LOGIN_EMAILS[u];
   const perfil = PERFIS[u];
-  if (!email || !perfil) { mostrarErroLogin(); return; }
+  if (!u)             { mostrarErroLogin('Toque no seu perfil antes de entrar'); return; }
+  if (!email || !perfil) { mostrarErroLogin('Perfil inválido'); return; }
+  if (!s)             { mostrarErroLogin('Digite a senha'); return; }
 
   // Feedback: evita duplo-clique e mostra que está acontecendo algo
   const btn = document.querySelector('#tela-login .btn-primario');
@@ -1061,7 +1083,7 @@ async function fazerLogin() {
     if (r.rede) {
       toast('📡 Sem conexão com o servidor. Verifique sua internet e tente novamente.', 'erro');
     } else {
-      mostrarErroLogin();
+      mostrarErroLogin('Senha incorreta. Tente novamente.');
     }
     return;
   }
@@ -1156,6 +1178,7 @@ function sair() {
   document.getElementById('input-usuario').value='';
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';
+  resetarPerfilLogin();
   // Restaura telas que podem ter sido escondidas por outro perfil
   ['tela-dashboard','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
     .forEach(id => { document.getElementById(id).style.display=''; });
@@ -1166,22 +1189,33 @@ function sair() {
 // ============================================================
 // NAV BOTTOM
 // ============================================================
+// Ícones em SVG (traço, herdam a cor via currentColor) — visual mais
+// profissional e idêntico em qualquer aparelho, ao contrário dos emojis.
+const ICO = {
+  home:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.6V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.6"/><path d="M9.5 21v-6h5v6"/></svg>',
+  truck: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h11v9.5H3z"/><path d="M14 9.5h4l3 3.2V16h-7z"/><circle cx="7" cy="18.5" r="1.7"/><circle cx="17.5" cy="18.5" r="1.7"/></svg>',
+  store: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3.5 9.5 5 4h14l1.5 5.5a3 3 0 0 1-5.6 0 3 3 0 0 1-5.8 0 3 3 0 0 1-5.6 0Z"/><path d="M9.5 21v-5h5v5"/></svg>',
+  wallet:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/><circle cx="16.5" cy="14.5" r="1.15"/></svg>',
+  cart:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="17.5" cy="20" r="1.5"/><path d="M3 4h2.2l2.1 11a1 1 0 0 0 1 .8h8.4a1 1 0 0 0 1-.8L20 8H6"/></svg>',
+  list:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5v-.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg>',
+};
+
 const NAV = {
   admin: [
-    { id:'dashboard',  icone:'🏠', label:'Início',     tela:'tela-dashboard'   },
-    { id:'entregas',   icone:'🚚', label:'Entregas',   tela:'tela-entregas'    },
-    { id:'clientes',   icone:'🏪', label:'Clientes',   tela:'tela-clientes'    },
-    { id:'financeiro', icone:'💰', label:'Financeiro', tela:'tela-financeiro'  },
-    { id:'catalogo',   icone:'🛒', label:'Catálogo',   tela:'tela-catalogo'    },
+    { id:'dashboard',  icone:ICO.home,  label:'Início',     tela:'tela-dashboard'   },
+    { id:'entregas',   icone:ICO.truck, label:'Entregas',   tela:'tela-entregas'    },
+    { id:'clientes',   icone:ICO.store, label:'Clientes',   tela:'tela-clientes'    },
+    { id:'financeiro', icone:ICO.wallet,label:'Financeiro', tela:'tela-financeiro'  },
+    { id:'catalogo',   icone:ICO.cart,  label:'Catálogo',   tela:'tela-catalogo'    },
   ],
   vendedor: [
-    { id:'inicio-vendedor', icone:'🏠', label:'Início',       tela:'tela-inicio-vendedor' },
-    { id:'meus-pedidos',    icone:'📋', label:'Meus pedidos', tela:'tela-meus-pedidos'    },
-    { id:'catalogo',        icone:'🛒', label:'Catálogo',     tela:'tela-catalogo'        },
-    { id:'clientes',        icone:'🏪', label:'Clientes',     tela:'tela-clientes'        },
+    { id:'inicio-vendedor', icone:ICO.home, label:'Início',       tela:'tela-inicio-vendedor' },
+    { id:'meus-pedidos',    icone:ICO.list, label:'Meus pedidos', tela:'tela-meus-pedidos'    },
+    { id:'catalogo',        icone:ICO.cart, label:'Catálogo',     tela:'tela-catalogo'        },
+    { id:'clientes',        icone:ICO.store,label:'Clientes',     tela:'tela-clientes'        },
   ],
   entregador: [
-    { id:'entregas', icone:'🚚', label:'Entregas do dia', tela:'tela-entregas' },
+    { id:'entregas', icone:ICO.truck, label:'Entregas do dia', tela:'tela-entregas' },
   ],
 };
 
