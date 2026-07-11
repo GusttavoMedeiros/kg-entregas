@@ -7,17 +7,33 @@ const MODO_DEMO = (SUPABASE_URL === 'SUA_URL_AQUI');
 
 // ============================================================
 // USUÁRIOS
+// O login agora é REAL (Supabase Auth) — ver seção AUTENTICAÇÃO.
+// Aqui só ficam o mapa usuário-curto → e-mail e o perfil/nome de UI.
+// As SENHAS não vivem mais no código: ficam no Supabase.
 // ============================================================
-const USUARIOS = {
-  admin:      { senha: 'kg2024admin', perfil: 'admin',       nome: 'Kleber'     },
-  vendedor:   { senha: '1234',        perfil: 'vendedor',    nome: 'Vendedor'   },
-  entregador: { senha: '1234',        perfil: 'entregador',  nome: 'Entregador' },
+
+// Usuário curto digitado na tela → e-mail cadastrado no Supabase (Passo 1).
+// ⚠️ AJUSTE os e-mails para EXATAMENTE os que você criou no painel do Supabase.
+const LOGIN_EMAILS = {
+  admin:      'admin@kgagropet.local',
+  vendedor:   'vendedor@kgagropet.local',
+  entregador: 'entregador@kgagropet.local',
+};
+
+// Perfil e nome exibido de cada usuário. Isto é apenas UI — a RLS trata todo
+// usuário logado igual (acesso total). Se um dia quiser permissões reais no
+// banco, dá pra migrar para roles + policies por role.
+const PERFIS = {
+  admin:      { perfil: 'admin',      nome: 'Kleber'     },
+  vendedor:   { perfil: 'vendedor',   nome: 'Vendedor'   },
+  entregador: { perfil: 'entregador', nome: 'Entregador' },
 };
 
 // ============================================================
 // ESTADO GLOBAL
 // ============================================================
 let usuario            = null;
+let sessao             = null;   // sessão do Supabase Auth: {access_token, refresh_token, expires_at}
 let pedidoSelecionado  = null;
 let pedidoEmEdicao     = null;   // pedido sendo editado (null = novo pedido)
 let clienteSelecionado = null;
@@ -781,12 +797,18 @@ const DEMO_PEDIDOS = [
 // ============================================================
 // SUPABASE
 // ============================================================
-async function supabase(tabela, metodo='GET', dados=null, filtros='') {
+async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=true) {
   if (MODO_DEMO) return { ok:true, dados:null };
+  // Sem sessão logada, a RLS bloqueia tudo — nem tenta a chamada.
+  if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
+
+  // Renova o token proativamente se estiver perto de expirar
+  await garantirTokenValido();
+
   try {
     const headers = {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'apikey': SUPABASE_KEY,                          // anon key: só identifica o projeto
+      'Authorization': `Bearer ${sessao.access_token}`, // token do usuário: é o que a RLS valida
       'Content-Type': 'application/json',
     };
     if (metodo==='POST' || metodo==='PATCH') headers['Prefer'] = 'return=representation';
@@ -803,6 +825,14 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
       res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
     } finally {
       clearTimeout(timeoutId);
+    }
+
+    // Token expirou/ficou inválido no meio do uso: renova UMA vez e refaz.
+    if (res.status === 401 && _retry) {
+      const renovou = await authRefresh();
+      if (renovou) return supabase(tabela, metodo, dados, filtros, false);
+      forcarRelogin();
+      return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
     }
 
     if (!res.ok) {
@@ -823,18 +853,135 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='') {
 }
 
 // ============================================================
-// LOGIN / SAIR
+// AUTENTICAÇÃO (Supabase Auth / GoTrue)
+// Login REAL: troca usuário/senha por um token do Supabase. Esse token
+// é o que a RLS valida — sem ele, o banco bloqueia tudo (anon barrado).
 // ============================================================
-function fazerLogin() {
-  const u = document.getElementById('input-usuario').value.trim().toLowerCase();
-  const s = document.getElementById('input-senha').value.trim().toLowerCase();
-  const user = USUARIOS[u];
-  if (!user || user.senha.toLowerCase() !== s) {
-    document.getElementById('erro-login').style.display = 'block';
+const SESSAO_KEY = 'kg-sessao';
+
+// Monta o objeto de sessão a partir da resposta do GoTrue
+function montarSessao(d) {
+  return {
+    access_token:  d.access_token,
+    refresh_token: d.refresh_token,
+    expires_at:    Date.now() + ((d.expires_in || 3600) * 1000),
+  };
+}
+
+// Salva sessão + usuário no localStorage (reabrir o PWA sem relogar)
+function persistirSessao() {
+  try {
+    if (sessao && usuario) {
+      localStorage.setItem(SESSAO_KEY, JSON.stringify({ sessao, usuario }));
+    } else {
+      localStorage.removeItem(SESSAO_KEY);
+    }
+  } catch(e) { /* silencioso */ }
+}
+
+// Login real: e-mail + senha → tokens
+async function authLogin(email, senha) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method:'POST',
+      headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ email, password: senha }),
+    });
+    if (!res.ok) return { ok:false };
+    return { ok:true, sessao: montarSessao(await res.json()) };
+  } catch(e) {
+    return { ok:false, erro:e.message };
+  }
+}
+
+// Renova o access_token usando o refresh_token
+async function authRefresh() {
+  if (!sessao?.refresh_token) return false;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method:'POST',
+      headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ refresh_token: sessao.refresh_token }),
+    });
+    if (!res.ok) return false;
+    sessao = montarSessao(await res.json());
+    persistirSessao();
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+// Garante um token válido antes de uma chamada (renova 60s antes de expirar)
+async function garantirTokenValido() {
+  if (!sessao) return false;
+  if (Date.now() > sessao.expires_at - 60000) {
+    return await authRefresh();
+  }
+  return true;
+}
+
+// Sessão morreu de vez (refresh falhou) → volta pro login
+function forcarRelogin() {
+  alert('Sua sessão expirou. Faça login novamente.');
+  sair();
+}
+
+// Ao abrir o app, tenta restaurar a sessão salva (PWA reaberto)
+async function restaurarSessao() {
+  let salvo;
+  try { salvo = JSON.parse(localStorage.getItem(SESSAO_KEY) || 'null'); }
+  catch(e) { salvo = null; }
+  if (!salvo?.sessao?.refresh_token || !salvo?.usuario) return;
+
+  sessao  = salvo.sessao;
+  usuario = salvo.usuario;
+
+  // Começa com um token fresco. Se o refresh falhar E o access já expirou,
+  // descarta e cai na tela de login normalmente.
+  const renovou = await authRefresh();
+  if (!renovou && Date.now() >= sessao.expires_at) {
+    sessao = null; usuario = null; persistirSessao();
     return;
   }
-  usuario = { login:u, ...user };
+  entrarNoApp();
+}
+
+// ============================================================
+// LOGIN / SAIR
+// ============================================================
+function mostrarErroLogin() {
+  document.getElementById('erro-login').style.display = 'block';
+}
+
+async function fazerLogin() {
+  const u = document.getElementById('input-usuario').value.trim().toLowerCase();
+  const s = document.getElementById('input-senha').value;   // senha é case-sensitive — NÃO alterar
+  const email  = LOGIN_EMAILS[u];
+  const perfil = PERFIS[u];
+  if (!email || !perfil) { mostrarErroLogin(); return; }
+
+  // Feedback: evita duplo-clique e mostra que está acontecendo algo
+  const btn = document.querySelector('#tela-login .btn-primario');
+  if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
+
+  const r = await authLogin(email, s);
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+
+  if (!r.ok) { mostrarErroLogin(); return; }
+
+  sessao  = r.sessao;
+  usuario = { login:u, ...perfil };
+  persistirSessao();
   document.getElementById('erro-login').style.display = 'none';
+  entrarNoApp();
+}
+
+// Configura a UI e carrega os dados depois que já há sessão + usuario.
+// Usado tanto no login manual quanto na restauração de sessão.
+function entrarNoApp() {
+  const user = usuario;
   document.getElementById('tela-login').style.display = 'none';
   const appEl = document.getElementById('app');
   appEl.style.display = 'flex';
@@ -868,6 +1015,17 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
+
+  // Encerra a sessão no Supabase (best-effort) e apaga o token local
+  if (sessao) {
+    const tk = sessao.access_token;
+    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method:'POST',
+      headers:{ 'apikey':SUPABASE_KEY, 'Authorization':`Bearer ${tk}` },
+    }).catch(()=>{});
+  }
+  sessao = null;
+  try { localStorage.removeItem(SESSAO_KEY); } catch(e) { /* silencioso */ }
 
   // Limpa TODOS os checklists do localStorage (evita herança entre usuários)
   try {
@@ -4209,3 +4367,9 @@ function imprimirRelatorio() {
   document.getElementById('via-overlay').style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
+
+// ============================================================
+// INICIALIZAÇÃO — tenta restaurar sessão salva (PWA reaberto).
+// Se houver sessão válida, entra direto no app; senão, mostra o login.
+// ============================================================
+restaurarSessao();
