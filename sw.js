@@ -6,7 +6,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v12';
+const CACHE_VERSION = 'kg-v13';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
