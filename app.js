@@ -7,33 +7,17 @@ const MODO_DEMO = (SUPABASE_URL === 'SUA_URL_AQUI');
 
 // ============================================================
 // USUÁRIOS
-// O login agora é REAL (Supabase Auth) — ver seção AUTENTICAÇÃO.
-// Aqui só ficam o mapa usuário-curto → e-mail e o perfil/nome de UI.
-// As SENHAS não vivem mais no código: ficam no Supabase.
 // ============================================================
-
-// Usuário curto digitado na tela → e-mail cadastrado no Supabase (Passo 1).
-// ⚠️ AJUSTE os e-mails para EXATAMENTE os que você criou no painel do Supabase.
-const LOGIN_EMAILS = {
-  admin:      'admin@kgagropet.local',
-  vendedor:   'vendedor@kgagropet.local',
-  entregador: 'entregador@kgagropet.local',
-};
-
-// Perfil e nome exibido de cada usuário. Isto é apenas UI — a RLS trata todo
-// usuário logado igual (acesso total). Se um dia quiser permissões reais no
-// banco, dá pra migrar para roles + policies por role.
-const PERFIS = {
-  admin:      { perfil: 'admin',      nome: 'Kleber'     },
-  vendedor:   { perfil: 'vendedor',   nome: 'Vendedor'   },
-  entregador: { perfil: 'entregador', nome: 'Entregador' },
+const USUARIOS = {
+  admin:      { senha: 'kg2024admin', perfil: 'admin',       nome: 'Kleber'     },
+  vendedor:   { senha: '1234',        perfil: 'vendedor',    nome: 'Vendedor'   },
+  entregador: { senha: '1234',        perfil: 'entregador',  nome: 'Entregador' },
 };
 
 // ============================================================
 // ESTADO GLOBAL
 // ============================================================
 let usuario            = null;
-let sessao             = null;   // sessão do Supabase Auth: {access_token, refresh_token, expires_at}
 let pedidoSelecionado  = null;
 let pedidoEmEdicao     = null;   // pedido sendo editado (null = novo pedido)
 let clienteSelecionado = null;
@@ -49,6 +33,34 @@ let salvando           = false;   // trava anti double-submit em operações asy
 // Feedback visual nos botões de salvar: desabilita e mostra "Salvando…"
 // enquanto a operação roda. Em conexão lenta (3G), sem isso o usuário
 // não vê nada acontecer e clica de novo achando que falhou.
+// Mostra uma confirmação rápida na tela e some sozinha.
+// Serve para SUCESSO (o app antes salvava em silêncio); erros que exigem
+// atenção continuam usando alert(), que trava até o usuário ler.
+// tipo: 'ok' (padrão) | 'aviso' | 'erro'
+function toast(mensagem, tipo = 'ok', duracao = 2600) {
+  const area = document.getElementById('toast-area');
+  if (!area) return;
+
+  // Evita empilhar: no máximo 3 na tela
+  while (area.children.length >= 3) area.removeChild(area.firstChild);
+
+  const icones = { ok: '✅', aviso: '⚠️', erro: '❌' };
+  const el = document.createElement('div');
+  el.className = 'toast' + (tipo !== 'ok' ? ' ' + tipo : '');
+  el.innerHTML = `<span class="toast-icone">${icones[tipo] || icones.ok}</span>
+                  <span class="toast-texto"></span>`;
+  el.querySelector('.toast-texto').textContent = mensagem; // textContent = seguro
+  area.appendChild(el);
+
+  const sumir = () => {
+    el.classList.add('saindo');
+    setTimeout(() => el.remove(), 260);
+  };
+  const timer = setTimeout(sumir, duracao);
+  // Toque no toast dispensa ele na hora
+  el.addEventListener('click', () => { clearTimeout(timer); sumir(); });
+}
+
 function botaoSalvando(onclickNome, ativo, textoNormal) {
   const b = document.querySelector(`button[onclick="${onclickNome}()"]`);
   if (!b) return;
@@ -62,86 +74,6 @@ let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
-
-// ============================================================
-// TOAST + CONFIRMAÇÃO (substituem os diálogos nativos do navegador,
-// que travam a tela e destoam do visual do app)
-// ============================================================
-
-// Aviso flutuante, não-bloqueante. tipo: 'ok' | 'erro' | 'info'
-// (se omitido, tenta adivinhar pelo conteúdo da mensagem)
-function toast(msg, tipo) {
-  const texto = (msg == null ? '' : String(msg));
-  if (!tipo) {
-    const t = texto.toLowerCase();
-    if (/^❌|erro|falh|inválid|invalid|incorret|não pode|nao pode|obrigatóri/.test(t)) tipo = 'erro';
-    else if (/^✅|^🎉|sucesso|salvo|atualizad|conclu[ií]|exclu[ií]d|removid/.test(t)) tipo = 'ok';
-    else tipo = 'info';
-  }
-  let wrap = document.getElementById('toast-wrap');
-  if (!wrap) {
-    wrap = document.createElement('div');
-    wrap.id = 'toast-wrap';
-    document.body.appendChild(wrap);
-  }
-  const icones = { ok:'✅', erro:'⚠️', info:'ℹ️' };
-  const el = document.createElement('div');
-  el.className = `toast ${tipo}`;
-  el.innerHTML = `<span class="ico"></span><span class="txt"></span>`;
-  el.querySelector('.ico').textContent = icones[tipo] || 'ℹ️';
-  el.querySelector('.txt').textContent = texto;   // textContent = seguro contra HTML
-  wrap.appendChild(el);
-
-  const dur = Math.min(7000, 3200 + texto.length * 40);
-  const remover = () => { el.classList.add('saindo'); setTimeout(() => el.remove(), 260); };
-  const timer = setTimeout(remover, dur);
-  el.addEventListener('click', () => { clearTimeout(timer); remover(); }); // toque fecha
-}
-
-// Confirmação com visual do app. Retorna Promise<boolean>.
-// Uso: if (!await confirmar('Tem certeza?')) return;
-// opts: { titulo, okLabel, cancelLabel, perigo }
-function confirmar(mensagem, opts = {}) {
-  return new Promise(resolve => {
-    let overlay = document.getElementById('confirmar-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'confirmar-overlay';
-      document.body.appendChild(overlay);
-    }
-    const perigo = opts.perigo ? ' perigo' : '';
-    overlay.innerHTML = `
-      <div class="confirmar-box" role="dialog" aria-modal="true">
-        <h3></h3>
-        <div class="msg"></div>
-        <div class="acoes">
-          <button class="bt-cancelar" type="button"></button>
-          <button class="bt-ok${perigo}" type="button"></button>
-        </div>
-      </div>`;
-    overlay.querySelector('h3').textContent = opts.titulo || 'Confirmar';
-    overlay.querySelector('.msg').textContent = (mensagem == null ? '' : String(mensagem));
-    const btCancel = overlay.querySelector('.bt-cancelar');
-    const btOk = overlay.querySelector('.bt-ok');
-    btCancel.textContent = opts.cancelLabel || 'Cancelar';
-    btOk.textContent = opts.okLabel || 'Confirmar';
-
-    const fechar = (valor) => {
-      overlay.classList.remove('aberto');
-      document.removeEventListener('keydown', onKey);
-      resolve(valor);
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') fechar(false);
-      else if (e.key === 'Enter')  fechar(true);
-    };
-    btCancel.addEventListener('click', () => fechar(false));
-    btOk.addEventListener('click', () => fechar(true));
-    document.addEventListener('keydown', onKey);
-    overlay.classList.add('aberto');
-    btOk.focus();
-  });
-}
 
 // ============================================================
 // HELPERS
@@ -658,7 +590,7 @@ async function aplicarDadosReceita(dados) {
   // 1) Avisa se CNPJ inativo/suspenso/baixado ANTES de preencher
   const descSit = (dados.descricao_situacao_cadastral || '').toUpperCase();
   if (descSit && descSit !== 'ATIVA') {
-    const continuar = await confirmar(
+    const continuar = confirm(
       `⚠ Atenção! Este CNPJ está com situação cadastral "${descSit}" na Receita Federal.\n\n` +
       `Pode indicar que a empresa está inativa, suspensa ou baixada.\n\n` +
       `Deseja preencher os dados mesmo assim?`
@@ -674,7 +606,7 @@ async function aplicarDadosReceita(dados) {
   const nomeAtual = (inputNome?.value || '').trim();
   let usarNomeReceita = true;
   if (nomeAtual && nomeReceita && normalizar(nomeAtual) !== normalizar(nomeReceita)) {
-    usarNomeReceita = await confirmar(
+    usarNomeReceita = confirm(
       `⚠ O nome digitado não bate com o cadastrado na Receita Federal.\n\n` +
       `Digitado: ${nomeAtual}\n` +
       `Receita:  ${nomeReceita}\n\n` +
@@ -877,18 +809,12 @@ const DEMO_PEDIDOS = [
 // ============================================================
 // SUPABASE
 // ============================================================
-async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=true) {
+async function supabase(tabela, metodo='GET', dados=null, filtros='') {
   if (MODO_DEMO) return { ok:true, dados:null };
-  // Sem sessão logada, a RLS bloqueia tudo — nem tenta a chamada.
-  if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
-
-  // Renova o token proativamente se estiver perto de expirar
-  await garantirTokenValido();
-
   try {
     const headers = {
-      'apikey': SUPABASE_KEY,                          // anon key: só identifica o projeto
-      'Authorization': `Bearer ${sessao.access_token}`, // token do usuário: é o que a RLS valida
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
     };
     if (metodo==='POST' || metodo==='PATCH') headers['Prefer'] = 'return=representation';
@@ -905,14 +831,6 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
       res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
     } finally {
       clearTimeout(timeoutId);
-    }
-
-    // Token expirou/ficou inválido no meio do uso: renova UMA vez e refaz.
-    if (res.status === 401 && _retry) {
-      const renovou = await authRefresh();
-      if (renovou) return supabase(tabela, metodo, dados, filtros, false);
-      forcarRelogin();
-      return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
     }
 
     if (!res.ok) {
@@ -933,172 +851,18 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
 }
 
 // ============================================================
-// AUTENTICAÇÃO (Supabase Auth / GoTrue)
-// Login REAL: troca usuário/senha por um token do Supabase. Esse token
-// é o que a RLS valida — sem ele, o banco bloqueia tudo (anon barrado).
-// ============================================================
-const SESSAO_KEY = 'kg-sessao';
-
-// Monta o objeto de sessão a partir da resposta do GoTrue
-function montarSessao(d) {
-  return {
-    access_token:  d.access_token,
-    refresh_token: d.refresh_token,
-    expires_at:    Date.now() + ((d.expires_in || 3600) * 1000),
-  };
-}
-
-// Salva sessão + usuário no localStorage (reabrir o PWA sem relogar)
-function persistirSessao() {
-  try {
-    if (sessao && usuario) {
-      localStorage.setItem(SESSAO_KEY, JSON.stringify({ sessao, usuario }));
-    } else {
-      localStorage.removeItem(SESSAO_KEY);
-    }
-  } catch(e) { /* silencioso */ }
-}
-
-// Login real: e-mail + senha → tokens
-async function authLogin(email, senha) {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method:'POST',
-      headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ email, password: senha }),
-    });
-    if (!res.ok) return { ok:false };
-    return { ok:true, sessao: montarSessao(await res.json()) };
-  } catch(e) {
-    // Erro de rede ≠ senha errada — quem chama mostra mensagem apropriada
-    return { ok:false, rede:true, erro:e.message };
-  }
-}
-
-// Renova o access_token usando o refresh_token
-async function authRefresh() {
-  if (!sessao?.refresh_token) return false;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method:'POST',
-      headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ refresh_token: sessao.refresh_token }),
-    });
-    if (!res.ok) return false;
-    sessao = montarSessao(await res.json());
-    persistirSessao();
-    return true;
-  } catch(e) {
-    return false;
-  }
-}
-
-// Garante um token válido antes de uma chamada (renova 60s antes de expirar)
-async function garantirTokenValido() {
-  if (!sessao) return false;
-  if (Date.now() > sessao.expires_at - 60000) {
-    return await authRefresh();
-  }
-  return true;
-}
-
-// Sessão morreu de vez (refresh falhou) → volta pro login
-function forcarRelogin() {
-  toast('Sua sessão expirou. Faça login novamente.');
-  sair();
-}
-
-// Ao abrir o app, tenta restaurar a sessão salva (PWA reaberto)
-async function restaurarSessao() {
-  let salvo;
-  try { salvo = JSON.parse(localStorage.getItem(SESSAO_KEY) || 'null'); }
-  catch(e) { salvo = null; }
-  if (!salvo?.sessao?.refresh_token || !salvo?.usuario) return;
-
-  sessao  = salvo.sessao;
-  usuario = salvo.usuario;
-
-  // Começa com um token fresco. Se o refresh falhar E o access já expirou,
-  // descarta e cai na tela de login normalmente.
-  // EXCEÇÃO: sem internet o refresh sempre falha — nesse caso MANTÉM a sessão
-  // e entra mesmo assim (offline-first: os dados vêm do cache do Service Worker
-  // e a fila offline segura as ações até a conexão voltar).
-  const renovou = await authRefresh();
-  if (!renovou && !navigator.onLine) {
-    entrarNoApp();
-    return;
-  }
-  if (!renovou && Date.now() >= sessao.expires_at) {
-    sessao = null; usuario = null; persistirSessao();
-    return;
-  }
-  entrarNoApp();
-}
-
-// ============================================================
 // LOGIN / SAIR
 // ============================================================
-function mostrarErroLogin(msg) {
-  const el = document.getElementById('erro-login');
-  if (msg) el.textContent = msg;
-  el.style.display = 'block';
-}
-
-// Leigo toca no perfil em vez de digitar o usuário.
-// Guarda a escolha no input escondido (que fazerLogin já lê) e foca a senha.
-function selecionarPerfilLogin(perfil) {
-  const hidden = document.getElementById('input-usuario');
-  if (hidden) hidden.value = perfil;
-  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => {
-    b.classList.toggle('ativo', b.dataset.perfil === perfil);
-  });
-  document.getElementById('erro-login').style.display = 'none';
-  const s = document.getElementById('input-senha');
-  if (s) s.focus();
-}
-
-// Limpa a escolha de perfil (ao sair)
-function resetarPerfilLogin() {
-  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => b.classList.remove('ativo'));
-}
-
-async function fazerLogin() {
+function fazerLogin() {
   const u = document.getElementById('input-usuario').value.trim().toLowerCase();
-  const s = document.getElementById('input-senha').value;   // senha é case-sensitive — NÃO alterar
-  const email  = LOGIN_EMAILS[u];
-  const perfil = PERFIS[u];
-  if (!u)             { mostrarErroLogin('Toque no seu perfil antes de entrar'); return; }
-  if (!email || !perfil) { mostrarErroLogin('Perfil inválido'); return; }
-  if (!s)             { mostrarErroLogin('Digite a senha'); return; }
-
-  // Feedback: evita duplo-clique e mostra que está acontecendo algo
-  const btn = document.querySelector('#tela-login .btn-primario');
-  if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
-
-  const r = await authLogin(email, s);
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
-
-  if (!r.ok) {
-    if (r.rede) {
-      toast('📡 Sem conexão com o servidor. Verifique sua internet e tente novamente.', 'erro');
-    } else {
-      mostrarErroLogin('Senha incorreta. Tente novamente.');
-    }
+  const s = document.getElementById('input-senha').value.trim().toLowerCase();
+  const user = USUARIOS[u];
+  if (!user || user.senha.toLowerCase() !== s) {
+    document.getElementById('erro-login').style.display = 'block';
     return;
   }
-
-  sessao  = r.sessao;
-  usuario = { login:u, ...perfil };
-  persistirSessao();
+  usuario = { login:u, ...user };
   document.getElementById('erro-login').style.display = 'none';
-  entrarNoApp();
-}
-
-// Configura a UI e carrega os dados depois que já há sessão + usuario.
-// Usado tanto no login manual quanto na restauração de sessão.
-function entrarNoApp() {
-  const user = usuario;
   document.getElementById('tela-login').style.display = 'none';
   const appEl = document.getElementById('app');
   appEl.style.display = 'flex';
@@ -1132,17 +896,6 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
-
-  // Encerra a sessão no Supabase (best-effort) e apaga o token local
-  if (sessao) {
-    const tk = sessao.access_token;
-    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-      method:'POST',
-      headers:{ 'apikey':SUPABASE_KEY, 'Authorization':`Bearer ${tk}` },
-    }).catch(()=>{});
-  }
-  sessao = null;
-  try { localStorage.removeItem(SESSAO_KEY); } catch(e) { /* silencioso */ }
 
   // Limpa TODOS os checklists do localStorage (evita herança entre usuários)
   try {
@@ -1178,7 +931,6 @@ function sair() {
   document.getElementById('input-usuario').value='';
   document.getElementById('input-senha').value='';
   document.getElementById('erro-login').style.display='none';
-  resetarPerfilLogin();
   // Restaura telas que podem ter sido escondidas por outro perfil
   ['tela-dashboard','tela-clientes','tela-financeiro','tela-catalogo','tela-meus-pedidos','tela-entregas','tela-inicio-vendedor']
     .forEach(id => { document.getElementById(id).style.display=''; });
@@ -1189,33 +941,22 @@ function sair() {
 // ============================================================
 // NAV BOTTOM
 // ============================================================
-// Ícones em SVG (traço, herdam a cor via currentColor) — visual mais
-// profissional e idêntico em qualquer aparelho, ao contrário dos emojis.
-const ICO = {
-  home:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.6V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.6"/><path d="M9.5 21v-6h5v6"/></svg>',
-  truck: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h11v9.5H3z"/><path d="M14 9.5h4l3 3.2V16h-7z"/><circle cx="7" cy="18.5" r="1.7"/><circle cx="17.5" cy="18.5" r="1.7"/></svg>',
-  store: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3.5 9.5 5 4h14l1.5 5.5a3 3 0 0 1-5.6 0 3 3 0 0 1-5.8 0 3 3 0 0 1-5.6 0Z"/><path d="M9.5 21v-5h5v5"/></svg>',
-  wallet:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/><circle cx="16.5" cy="14.5" r="1.15"/></svg>',
-  cart:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="17.5" cy="20" r="1.5"/><path d="M3 4h2.2l2.1 11a1 1 0 0 0 1 .8h8.4a1 1 0 0 0 1-.8L20 8H6"/></svg>',
-  list:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5v-.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg>',
-};
-
 const NAV = {
   admin: [
-    { id:'dashboard',  icone:ICO.home,  label:'Início',     tela:'tela-dashboard'   },
-    { id:'entregas',   icone:ICO.truck, label:'Entregas',   tela:'tela-entregas'    },
-    { id:'clientes',   icone:ICO.store, label:'Clientes',   tela:'tela-clientes'    },
-    { id:'financeiro', icone:ICO.wallet,label:'Financeiro', tela:'tela-financeiro'  },
-    { id:'catalogo',   icone:ICO.cart,  label:'Catálogo',   tela:'tela-catalogo'    },
+    { id:'dashboard',  icone:'🏠', label:'Início',     tela:'tela-dashboard'   },
+    { id:'entregas',   icone:'🚚', label:'Entregas',   tela:'tela-entregas'    },
+    { id:'clientes',   icone:'🏪', label:'Clientes',   tela:'tela-clientes'    },
+    { id:'financeiro', icone:'💰', label:'Financeiro', tela:'tela-financeiro'  },
+    { id:'catalogo',   icone:'🛒', label:'Catálogo',   tela:'tela-catalogo'    },
   ],
   vendedor: [
-    { id:'inicio-vendedor', icone:ICO.home, label:'Início',       tela:'tela-inicio-vendedor' },
-    { id:'meus-pedidos',    icone:ICO.list, label:'Meus pedidos', tela:'tela-meus-pedidos'    },
-    { id:'catalogo',        icone:ICO.cart, label:'Catálogo',     tela:'tela-catalogo'        },
-    { id:'clientes',        icone:ICO.store,label:'Clientes',     tela:'tela-clientes'        },
+    { id:'inicio-vendedor', icone:'🏠', label:'Início',       tela:'tela-inicio-vendedor' },
+    { id:'meus-pedidos',    icone:'📋', label:'Meus pedidos', tela:'tela-meus-pedidos'    },
+    { id:'catalogo',        icone:'🛒', label:'Catálogo',     tela:'tela-catalogo'        },
+    { id:'clientes',        icone:'🏪', label:'Clientes',     tela:'tela-clientes'        },
   ],
   entregador: [
-    { id:'entregas', icone:ICO.truck, label:'Entregas do dia', tela:'tela-entregas' },
+    { id:'entregas', icone:'🚚', label:'Entregas do dia', tela:'tela-entregas' },
   ],
 };
 
@@ -1297,7 +1038,7 @@ async function carregarTudo() {
       supabase('produtos','GET',null,'?order=nome.asc'),
     ]);
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
-      toast('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
+      alert('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
     todosOsClientes = resCli.dados || [];
@@ -1354,7 +1095,7 @@ async function sincronizarDados() {
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
       const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
-      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
+      return `${p.id}|${p.status}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
     // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
     // (Antes comparava por length — preço editado pelo admin não aparecia
@@ -1459,17 +1200,15 @@ function renderizarDashboard() {
     tend.textContent = faturamento > 0 ? 'Primeiro mês com vendas' : 'Sem vendas ainda';
   }
 
-  // Card 2: A receber = dinheiro que ainda não entrou (qualquer pedido não-pago).
-  // Pedido pago adiantado (antes da entrega) NÃO conta como a receber.
+  // Card 2: A receber (pedidos pendentes + entregues mas NÃO pagos)
   const pendentesEntrega = todosOsPedidos.filter(p => p.status === 'pendente');
   const entreguesNaoPagos = todosOsPedidos.filter(p => p.status === 'entregue' && !foiPago(p));
-  const aReceberLista = [...pendentesEntrega.filter(p => !foiPago(p)), ...entreguesNaoPagos];
+  const aReceberLista = [...pendentesEntrega, ...entreguesNaoPagos];
   const aReceber = aReceberLista.reduce((s,p)=>s+(Number(p.valor)||0),0);
   document.getElementById('num-areceber').textContent = moeda(aReceber);
-  const pendentesNaoPagos = pendentesEntrega.filter(p => !foiPago(p));
   const detalheReceber = entreguesNaoPagos.length
-    ? `${pendentesNaoPagos.length} em aberto · ${entreguesNaoPagos.length} entregue(s) sem pagar`
-    : `${pendentesNaoPagos.length} pedido(s) em aberto`;
+    ? `${pendentesEntrega.length} em aberto · ${entreguesNaoPagos.length} entregue(s) sem pagar`
+    : `${pendentesEntrega.length} pedido(s) em aberto`;
   document.getElementById('info-areceber').textContent = detalheReceber;
 
   // Card 3: Atrasados
@@ -1751,7 +1490,7 @@ function renderizarPerformanceVendedores(idDiv, pedidosMes) {
 function cobrarTodosAtrasados() {
   const atras = todosOsPedidos.filter(p => isAtrasado(p));
   if (!atras.length) {
-    toast('🎉 Nenhum pagamento atrasado no momento!');
+    alert('🎉 Nenhum pagamento atrasado no momento!');
     return;
   }
   // Agrupa por cliente
@@ -1803,7 +1542,7 @@ function cobrarTodosAtrasados() {
 // ============================================================
 function abrirModalReset() {
   if (usuario?.perfil !== 'admin') {
-    toast('Apenas o admin pode executar essa ação.');
+    alert('Apenas o admin pode executar essa ação.');
     return;
   }
   // Mostra quantidade no modal
@@ -1816,25 +1555,25 @@ function abrirModalReset() {
 async function executarResetPedidos() {
   if (salvando) return;
   if (usuario?.perfil !== 'admin') {
-    toast('Apenas o admin pode executar essa ação.');
+    alert('Apenas o admin pode executar essa ação.');
     return;
   }
 
   // CONFIRMAÇÃO 1: precisa digitar LIMPAR
   const confirma = document.getElementById('confirma-reset').value.trim().toUpperCase();
   if (confirma !== 'LIMPAR') {
-    toast('Você precisa digitar exatamente a palavra "LIMPAR" para confirmar.');
+    alert('Você precisa digitar exatamente a palavra "LIMPAR" para confirmar.');
     return;
   }
 
   // CONFIRMAÇÃO 2: prompt nativo do navegador
   const qtd = todosOsPedidos.length;
   if (qtd === 0) {
-    toast('Não há pedidos para apagar.');
+    alert('Não há pedidos para apagar.');
     fecharModal('modal-reset');
     return;
   }
-  const ok = await confirmar(
+  const ok = confirm(
     `⚠️ ÚLTIMA CONFIRMAÇÃO\n\n` +
     `Você vai apagar ${qtd} pedido(s) PERMANENTEMENTE.\n\n` +
     `Esta ação não pode ser desfeita.\n\n` +
@@ -1851,13 +1590,13 @@ async function executarResetPedidos() {
       // 1º apaga TODOS os itens_pedido
       const resItens = await supabase('itens_pedido','DELETE',null,'?id=gt.0');
       if (!resItens.ok) {
-        toast('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
+        alert('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
         return;
       }
       // 2º apaga TODOS os pedidos
       const resPed = await supabase('pedidos','DELETE',null,'?id=gt.0');
       if (!resPed.ok) {
-        toast('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        alert('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
         return;
       }
     }
@@ -1872,10 +1611,10 @@ async function executarResetPedidos() {
     agendarRender('entregas');
     agendarRender('financeiro');
 
-    toast(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
+    alert(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
   } catch (e) {
     console.error('Erro ao resetar:', e);
-    toast('Erro inesperado ao resetar: ' + e.message);
+    alert('Erro inesperado ao resetar: ' + e.message);
   } finally {
     salvando = false;
     if (btn) { btn.disabled = false; btn.textContent = '🗑️ Sim, apagar tudo definitivamente'; }
@@ -2402,7 +2141,7 @@ function confirmarAjustePreco() {
   const novoStr = document.getElementById('ajustar-preco-input').value.replace(',', '.');
   const novo = parseFloat(novoStr);
   if (isNaN(novo) || novo < 0) {
-    toast('Informe um preço válido (maior ou igual a zero).');
+    alert('Informe um preço válido (maior ou igual a zero).');
     return;
   }
   c.preco_unit = novo;
@@ -2432,9 +2171,7 @@ function renderizarClientes(lista, termoBusca = '') {
   }
   el.innerHTML = lista.map(c => {
     const pedidosCli = todosOsPedidos.filter(p => p.cliente_id===c.id);
-    // "Em aberto" = tudo que ainda não foi PAGO (inclui entregue sem pagar),
-    // mesma régua do Financeiro — antes usava só o status de entrega e divergia.
-    const devendo = pedidosCli.filter(p => !foiPago(p)).reduce((s,p)=>s+(Number(p.valor)||0),0);
+    const devendo = pedidosCli.filter(p => p.status!=='entregue').reduce((s,p)=>s+Number(p.valor),0);
     const badge = devendo>0
       ? `<span class="badge badge-devendo">${moeda(devendo)} em aberto</span>`
       : `<span class="badge badge-em-dia">Em dia</span>`;
@@ -2575,9 +2312,7 @@ function verFinanceiroCliente(id) {
   const c = todosOsClientes.find(x => x.id===id);
   if (!c) return;
   clienteSelecionado = c;
-  // Cobrança = tudo que ainda não foi PAGO (inclui entregue sem pagar —
-  // que é justamente quem mais precisa ser cobrado)
-  const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && !foiPago(p));
+  const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && p.status!=='entregue');
   const total = pedidos.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const wa = (c.whatsapp||'').replace(/\D/g,'');
 
@@ -2619,11 +2354,9 @@ function montarMensagemCobranca(cliente, pedidos, total) {
   if (pedidos.length === 1) {
     const p = pedidos[0];
     const atrasado = isAtrasado(p);
-    // NÃO usar esc() aqui: mensagem de WhatsApp é texto puro, não HTML —
-    // esc() faria "Ração & Cia" virar "Ração &amp; Cia" na conversa.
     corpo = atrasado
-      ? `Consta em nosso sistema um pagamento *em atraso* referente ao pedido de ${p.descricao}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`
-      : `Passando para lembrar do pagamento referente ao pedido de ${p.descricao}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
+      ? `Consta em nosso sistema um pagamento *em atraso* referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`
+      : `Passando para lembrar do pagamento referente ao pedido de ${esc(p.descricao)}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
   } else {
     const linhas = pedidos.map(p => {
       const flag = isAtrasado(p) ? ' ⚠ (em atraso)' : '';
@@ -2655,9 +2388,8 @@ async function marcarPagoCliente() {
   salvando = true;
   try {
     const hojeStr = fmt(new Date());
-    // IMPORTANTE: baixa manual só mexe no PAGAMENTO. O status de ENTREGA não
-    // muda — pedido pago adiantado continua aparecendo para o entregador.
     const payload = {
+      status: 'entregue',
       status_pagamento: 'pago',
       forma_pagamento_real: 'dinheiro',  // padrão para baixa manual
       data_pagamento: hojeStr,
@@ -2666,10 +2398,11 @@ async function marcarPagoCliente() {
       const res = await Promise.all(paraPagar.map(p =>
         supabase('pedidos','PATCH', payload, `?id=eq.${p.id}`)
       ));
-      if (res.some(r=>!r.ok)) { toast('Erro ao atualizar. Tente novamente.'); return; }
+      if (res.some(r=>!r.ok)) { alert('Erro ao atualizar. Tente novamente.'); return; }
     }
     paraPagar.forEach(p => { Object.assign(p, payload); });
     fecharModal('modal-fin-cliente');
+    toast(`${paraPagar.length} pedido(s) marcado(s) como pago!`);
     agendarRender('financeiro');
     agendarRender('dashboard');
     agendarRender('entregas');
@@ -2693,9 +2426,9 @@ function abrirModalNovoPedido(idEdit) {
   if (idEdit) {
     // Modo edição
     const p = todosOsPedidos.find(x => x.id === idEdit);
-    if (!p) { toast('Pedido não encontrado.'); return; }
-    if (p.status === 'entregue') { toast('Pedido já entregue não pode ser editado.'); return; }
-    if (!podeEditarPedido(p)) { toast('Você não tem permissão para editar este pedido.'); return; }
+    if (!p) { alert('Pedido não encontrado.'); return; }
+    if (p.status === 'entregue') { alert('Pedido já entregue não pode ser editado.'); return; }
+    if (!podeEditarPedido(p)) { alert('Você não tem permissão para editar este pedido.'); return; }
 
     pedidoEmEdicao = p;
     document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
@@ -2915,14 +2648,14 @@ async function salvarPedido() {
   const obs             = document.getElementById('pedido-obs').value.trim();
   const { forma, prazo, prazos } = obterFormaPagamento();
 
-  if (!cliente_id || !data_entrega) { toast('Selecione o cliente e a data do pedido.'); return; }
-  if (!carrinho.length) { toast('Adicione pelo menos um produto ao carrinho.'); return; }
+  if (!cliente_id || !data_entrega) { alert('Selecione o cliente e a data do pedido.'); return; }
+  if (!carrinho.length) { alert('Adicione pelo menos um produto ao carrinho.'); return; }
 
   // Data no passado em pedido NOVO: quase sempre é erro de digitação no
   // seletor de data — avisa mas não bloqueia (pedido retroativo é legítimo).
   // Na EDIÇÃO não avisa: pedidos antigos têm data passada por natureza.
   if (!pedidoEmEdicao && data_entrega < fmt(new Date())) {
-    const seguir = await confirmar(
+    const seguir = confirm(
       `⚠️ A data de entrega (${dataBR(data_entrega)}) já passou.\n\n` +
       `Salvar mesmo assim?`
     );
@@ -2932,7 +2665,7 @@ async function salvarPedido() {
   // Validação: se boleto, valida prazos
   if (forma === 'boleto') {
     const erro = validarPrazosBoleto(prazos);
-    if (erro) { toast(erro); return; }
+    if (erro) { alert(erro); return; }
   }
 
   // Calcula data de vencimento da PRIMEIRA parcela (compat)
@@ -2946,7 +2679,7 @@ async function salvarPedido() {
     await _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma, prazo, prazos_boleto);
   } catch (e) {
     console.error('Erro inesperado ao salvar pedido:', e);
-    toast('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
+    alert('Ocorreu um erro inesperado ao salvar o pedido.\n\nDetalhes: ' + (e.message || 'desconhecido') + '\n\nVerifique sua conexão e tente novamente.');
   } finally {
     salvando = false;
     botaoSalvando('salvarPedido', false, 'Salvar Pedido');
@@ -2971,11 +2704,11 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   // === EDIÇÃO ===
   if (pedidoEmEdicao) {
     if (pedidoEmEdicao.status === 'entregue') {
-      toast('Pedido já entregue não pode ser editado.');
+      alert('Pedido já entregue não pode ser editado.');
       return;
     }
     if (!podeEditarPedido(pedidoEmEdicao)) {
-      toast('Você não tem permissão para editar este pedido.');
+      alert('Você não tem permissão para editar este pedido.');
       return;
     }
     const pedido_id = pedidoEmEdicao.id;
@@ -2991,22 +2724,21 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
         prazos_boleto: prazos_boleto || null,
       }, `?id=eq.${pedido_id}`);
       if (!resPed.ok) {
-        toast('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        alert('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
         return;
       }
       // Apaga itens antigos
       const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
       if (!resDel.ok) {
-        toast('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
+        alert('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
         return;
       }
-      // Insere itens novos (preco_catalogo permite auditar ajustes de preço depois)
+      // Insere itens novos
       const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
-        preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
+        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
       })));
       if (resItens.some(r => !r.ok)) {
-        toast('Erro ao salvar itens atualizados. Verifique no banco.');
+        alert('Erro ao salvar itens atualizados. Verifique no banco.');
         return;
       }
     }
@@ -3029,6 +2761,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
 
     pedidoEmEdicao = null;
     fecharModal('modal-pedido');
+    toast('Pedido atualizado com sucesso!');
     agendarRender('dashboard');
     agendarRender('entregas');
     if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
@@ -3055,15 +2788,14 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
       prazos_boleto: prazos_boleto || null,
     });
     if (!resPed.ok||!resPed.dados?.[0]) {
-      toast('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
+      alert('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
       return;
     }
     const pedido_id = resPed.dados[0].id;
     novoPedido.id = pedido_id;
-    // Salvar itens do pedido e VERIFICAR cada um (preco_catalogo = auditoria de ajustes)
+    // Salvar itens do pedido e VERIFICAR cada um
     const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
-      preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
+      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd, preco_unit:it.preco_unit
     })));
     const falhouItens = resItens.some(r => !r.ok);
     if (falhouItens) {
@@ -3072,13 +2804,14 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
       if (!rollback.ok) {
         console.warn(`Rollback do pedido ${pedido_id} falhou. Verifique manualmente no banco.`);
       }
-      toast('Erro ao salvar itens do pedido. Tente novamente.');
+      alert('Erro ao salvar itens do pedido. Tente novamente.');
       return;
     }
   }
 
   todosOsPedidos.push(novoPedido);
   fecharModal('modal-pedido');
+  toast('Pedido criado com sucesso!');
   agendarRender('dashboard');
   agendarRender('entregas');
   if (usuario.perfil==='vendedor') agendarRender('meus-pedidos');
@@ -3094,7 +2827,7 @@ function abrirModalNovoCliente(idEdit) {
   if (idEdit) {
     // Modo edição
     const c = todosOsClientes.find(x => x.id === idEdit);
-    if (!c) { toast('Cliente não encontrado.'); return; }
+    if (!c) { alert('Cliente não encontrado.'); return; }
     clienteSelecionado = c;
     document.getElementById('cliente-modal-titulo').textContent = 'Editar Cliente';
     alternarTipoPessoa(c.tipo_pessoa || 'juridica');
@@ -3165,31 +2898,31 @@ async function salvarCliente() {
 
   // ==== VALIDAÇÕES OBRIGATÓRIAS ====
   if (!nome) {
-    toast(tipo_pessoa === 'fisica' ? 'Informe o nome completo.' : 'Informe o nome da loja.');
+    alert(tipo_pessoa === 'fisica' ? 'Informe o nome completo.' : 'Informe o nome da loja.');
     return;
   }
   if (!docRaw) {
-    toast(`Informe o ${tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}.`);
+    alert(`Informe o ${tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}.`);
     return;
   }
   if (tipo_pessoa === 'fisica' && !validarCPF(docRaw)) {
-    toast('CPF inválido. Verifique se digitou corretamente.');
+    alert('CPF inválido. Verifique se digitou corretamente.');
     return;
   }
   if (tipo_pessoa === 'juridica' && !validarCNPJ(docRaw)) {
-    toast('CNPJ inválido. Verifique se digitou corretamente.');
+    alert('CNPJ inválido. Verifique se digitou corretamente.');
     return;
   }
   if (!whatsappRaw) {
-    toast('Informe o WhatsApp do cliente.');
+    alert('Informe o WhatsApp do cliente.');
     return;
   }
   if (whatsappRaw.length < 10) {
-    toast('WhatsApp incompleto. Inclua o DDD + número.');
+    alert('WhatsApp incompleto. Inclua o DDD + número.');
     return;
   }
   if (email && !validarEmail(email)) {
-    toast('E-mail inválido. Verifique se digitou corretamente.');
+    alert('E-mail inválido. Verifique se digitou corretamente.');
     return;
   }
 
@@ -3211,16 +2944,18 @@ async function salvarCliente() {
       };
       if (!MODO_DEMO) {
         const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
-        if (!res.ok) { toast('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
+        if (!res.ok) { alert('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
       }
       const idx = todosOsClientes.findIndex(c => c.id === id);
       if (idx >= 0) Object.assign(todosOsClientes[idx], payload);
 
       // Atualiza cliente_nome nos pedidos relacionados (para refletir mudança de nome)
+      todosOsClientes.forEach(c => {});
       todosOsPedidos.forEach(p => { if (p.cliente_id === id) p.cliente_nome = nome; });
 
       clienteSelecionado = null;
       fecharModal('modal-cliente');
+      toast('Cliente atualizado!');
       fecharModal('modal-detalhe-cliente');
       agendarRender('clientes');
       agendarRender('entregas');
@@ -3244,13 +2979,14 @@ async function salvarCliente() {
     if (!MODO_DEMO) {
       const res = await supabase('clientes','POST', novo);
       if (!res.ok || !res.dados?.[0]) {
-        toast('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        alert('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
       }
       novo.id = res.dados[0].id;
     }
     todosOsClientes.push(novo);
     fecharModal('modal-cliente');
+    toast('Cliente cadastrado!');
     agendarRender('clientes');
     popularSelectClientes();
     const numCli = document.getElementById('num-clientes');
@@ -3265,18 +3001,19 @@ async function excluirCliente(id) {
   if (salvando) return;
   const vinculados = todosOsPedidos.filter(p=>p.cliente_id===id);
   if (vinculados.length>0) {
-    toast(`Este cliente tem ${vinculados.length} pedido(s) registrado(s) e não pode ser excluído. Isso preserva o histórico.`);
+    alert(`Este cliente tem ${vinculados.length} pedido(s) registrado(s) e não pode ser excluído. Isso preserva o histórico.`);
     return;
   }
-  if (!await confirmar('Excluir este cliente? Esta ação não pode ser desfeita.')) return;
+  if (!confirm('Excluir este cliente? Esta ação não pode ser desfeita.')) return;
   salvando = true;
   try {
     if (!MODO_DEMO) {
       const res = await supabase('clientes','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
+      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
     }
     todosOsClientes = todosOsClientes.filter(c=>c.id!==id);
     fecharModal('modal-detalhe-cliente');
+    toast('Cliente excluído.', 'aviso');
     renderizarClientes(todosOsClientes);
     popularSelectClientes();
     const numCli = document.getElementById('num-clientes');
@@ -3346,7 +3083,7 @@ async function confirmarEntrega() {
   const pagtoEscolhido = modalSheet?.dataset.pagamentoEscolhido || '';
 
   if (precisaPagamento && !pagtoEscolhido) {
-    toast(
+    alert(
       '⚠ Você precisa informar como o cliente pagou.\n\n' +
       'Escolha uma das 4 opções:\n' +
       '• 💵 Pagou em dinheiro\n' +
@@ -3384,7 +3121,7 @@ async function confirmarEntrega() {
     const qtdMarcados = pedidoSelecionado.itens.filter(i => marcados.has(Number(i.produto_id))).length;
     if (qtdMarcados < total) {
       const faltam = total - qtdMarcados;
-      const ok = await confirmar(
+      const ok = confirm(
         `⚠ Atenção!\n\n` +
         `Faltam ${faltam} ${faltam === 1 ? 'item não conferido' : 'itens não conferidos'} ` +
         `na carga deste pedido.\n\n` +
@@ -3412,7 +3149,7 @@ async function confirmarEntrega() {
           pedidoId: id,
           payload,
         });
-        toast(
+        alert(
           '📡 Sem internet no momento.\n\n' +
           'O pedido foi marcado localmente como ENTREGUE e será sincronizado ' +
           'automaticamente quando a conexão voltar.\n\n' +
@@ -3428,12 +3165,12 @@ async function confirmarEntrega() {
               pedidoId: id,
               payload,
             });
-            toast(
+            alert(
               '⚠ Conexão lenta — pedido marcado localmente.\n\n' +
               'Vai sincronizar automaticamente quando a internet melhorar.'
             );
           } else {
-            toast('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+            alert('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
             return;
           }
         }
@@ -3447,6 +3184,7 @@ async function confirmarEntrega() {
     // Pedido entregue: limpa o checklist (não precisa mais)
     limparChecklist(id);
     fecharModal('modal-entrega');
+    toast('Entrega confirmada!');
     agendarRender('dashboard');
     agendarRender('entregas');
     if (usuario.perfil==='admin') agendarRender('financeiro');
@@ -3463,15 +3201,15 @@ async function excluirPedido(id) {
   const p = todosOsPedidos.find(x => x.id === id);
   if (!p) return;
   if (p.status === 'entregue') {
-    toast('Pedido já entregue não pode ser excluído.');
+    alert('Pedido já entregue não pode ser excluído.');
     return;
   }
   if (!podeEditarPedido(p)) {
-    toast('Você não tem permissão para excluir este pedido.');
+    alert('Você não tem permissão para excluir este pedido.');
     return;
   }
 
-  const confirmacao = await confirmar(
+  const confirmacao = confirm(
     `Excluir o pedido de "${p.cliente_nome}" no valor de ${moeda(p.valor)}?\n\n` +
     `Esta ação não pode ser desfeita.`
   );
@@ -3488,13 +3226,14 @@ async function excluirPedido(id) {
       // Apaga o pedido
       const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
       if (!res.ok) {
-        toast('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        alert('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
       }
     }
 
     todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
     limparChecklist(id);
+    toast('Pedido excluído.', 'aviso');
 
     agendarRender('dashboard');
     agendarRender('entregas');
@@ -3565,8 +3304,8 @@ async function salvarProduto() {
     : Math.max(0, parseFloat(custoStr));
   const idEdit    = document.getElementById('produto-id').value;
 
-  if (!nome) { toast('Informe o nome do produto.'); return; }
-  if (!preco) { toast('Informe o preço de venda.'); return; }
+  if (!nome) { alert('Informe o nome do produto.'); return; }
+  if (!preco) { alert('Informe o preço de venda.'); return; }
 
   salvando = true;
   botaoSalvando('salvarProduto', true, 'Salvar Produto');
@@ -3574,7 +3313,7 @@ async function salvarProduto() {
     if (idEdit) {
       // === EDITAR ===
       const id = Number(idEdit);
-      if (!id) { toast('ID inválido.'); return; }
+      if (!id) { alert('ID inválido.'); return; }
       const produtoAntigo = todosOsProdutos.find(p => p.id === id);
       const precoMudou = produtoAntigo && (Number(produtoAntigo.preco) !== preco);
       const custoMudou = produtoAntigo && (Number(produtoAntigo.preco_custo || 0) !== Number(preco_custo || 0));
@@ -3582,7 +3321,7 @@ async function salvarProduto() {
       if (!MODO_DEMO) {
         const res = await supabase('produtos','PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
         if (!res.ok) {
-          toast('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+          alert('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
           return;
         }
         // Registra histórico SÓ se algum preço mudou
@@ -3603,7 +3342,7 @@ async function salvarProduto() {
       if (!MODO_DEMO) {
         const res = await supabase('produtos','POST', { nome, categoria, preco, preco_custo });
         if (!res.ok || !res.dados?.[0]) {
-          toast('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
+          alert('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
           return;
         }
         novo.id = res.dados[0].id;
@@ -3618,6 +3357,7 @@ async function salvarProduto() {
       todosOsProdutos.push(novo);
     }
     fecharModal('modal-produto');
+    toast('Produto salvo!');
     rerenderizarCatalogoMantendoBusca();
   } finally {
     salvando = false;
@@ -3650,14 +3390,15 @@ function alternarMostrarMargem() {
 
 async function excluirProduto(id) {
   if (salvando) return;
-  if (!await confirmar('Excluir este produto do catálogo?')) return;
+  if (!confirm('Excluir este produto do catálogo?')) return;
   salvando = true;
   try {
     if (!MODO_DEMO) {
       const res = await supabase('produtos','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
+      if (!res.ok) { alert('Erro ao excluir. Tente novamente.'); return; }
     }
     todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
+    toast('Produto excluído.', 'aviso');
     rerenderizarCatalogoMantendoBusca();
   } finally {
     salvando = false;
@@ -3908,7 +3649,7 @@ function enviarPedidoWhatsApp(id) {
   if (!p) return;
   const c = todosOsClientes.find(x => x.id === p.cliente_id);
   const waNum = (c?.whatsapp || '').replace(/\D/g, '');
-  if (!waNum) { toast('Este cliente não tem WhatsApp cadastrado.'); return; }
+  if (!waNum) { alert('Este cliente não tem WhatsApp cadastrado.'); return; }
 
   const itensTxt = (p.itens?.length)
     ? p.itens.map(i => `• ${i.qtd}x ${i.nome || i.produto_nome || ''} — ${moeda(i.preco_unit * i.qtd)}`).join('\n')
@@ -4045,9 +3786,6 @@ function fecharModal(id) {
 // Fecha modal aberto ao pressionar ESC
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    // Caixa de confirmação aberta? Ela tem prioridade e trata o ESC sozinha —
-    // não fecha o modal que está por trás junto.
-    if (document.getElementById('confirmar-overlay')?.classList.contains('aberto')) return;
     // Via de pedido aberta? Fecha ela primeiro
     const via = document.getElementById('via-overlay');
     if (via && via.style.display !== 'none') {
@@ -4166,6 +3904,8 @@ async function processarFilaOffline() {
   _processandoFila = false;
 
   if (sucesso.length) {
+    // Avisa que o que foi feito offline já subiu pro servidor
+    toast(`${sucesso.length} ação(ões) sincronizada(s) com o servidor.`);
     // Re-renderiza telas afetadas após sincronizar
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
@@ -4198,7 +3938,7 @@ window.addEventListener('beforeinstallprompt', e => {
 async function instalarApp() {
   if (!_deferredPrompt) {
     // Em iOS o prompt automático não existe — instrui manualmente
-    toast(
+    alert(
       '📱 Para instalar o KG Entregas:\n\n' +
       '• iPhone (Safari): toque no ícone de compartilhar e escolha "Adicionar à Tela de Início"\n\n' +
       '• Android (Chrome): toque nos 3 pontos do menu e escolha "Instalar app" ou "Adicionar à tela inicial"'
@@ -4509,9 +4249,3 @@ function imprimirRelatorio() {
   document.getElementById('via-overlay').style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
-
-// ============================================================
-// INICIALIZAÇÃO — tenta restaurar sessão salva (PWA reaberto).
-// Se houver sessão válida, entra direto no app; senão, mostra o login.
-// ============================================================
-restaurarSessao();
