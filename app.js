@@ -2120,8 +2120,26 @@ function filtrarMeusPedidos(filtro, btn) {
 // ============================================================
 // CATÁLOGO DE PRODUTOS
 // ============================================================
+// Quantos produtos aparecem por vez no catálogo (lista completa).
+// 24 = ~6 telas de rolagem no celular: dá pra escanear rápido sem
+// virar maratona de cliques. A busca NÃO usa paginação (já filtra).
+const CATALOGO_LOTE = 24;
+let catalogoVisiveis = CATALOGO_LOTE;
+
 function renderizarCatalogo(filtro) {
   filtroCatalogo = filtro;
+  catalogoVisiveis = CATALOGO_LOTE; // toda troca de aba recomeça do início
+  _pintarCatalogo();
+}
+
+// Mostra mais um lote (botão "Ver mais")
+function verMaisCatalogo() {
+  catalogoVisiveis += CATALOGO_LOTE;
+  _pintarCatalogo(true);
+}
+
+function _pintarCatalogo(manterScroll) {
+  const filtro = filtroCatalogo;
   let lista = filtro==='todos' ? todosOsProdutos.slice() : todosOsProdutos.filter(p => p.categoria===filtro);
   lista.sort((a,b) => a.nome.localeCompare(b.nome));
   const el = document.getElementById('lista-catalogo');
@@ -2135,7 +2153,22 @@ function renderizarCatalogo(filtro) {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">📦</div><p>Nenhum produto aqui</p></div>`;
     return;
   }
-  el.innerHTML = lista.map(p => montarCardProduto(p, isAdmin)).join('');
+
+  const y = manterScroll ? window.scrollY : null;
+  const mostrar  = lista.slice(0, catalogoVisiveis);
+  const restantes = lista.length - mostrar.length;
+
+  el.innerHTML = mostrar.map(p => montarCardProduto(p, isAdmin)).join('')
+    + (restantes > 0
+      ? `<button class="btn-ver-mais" onclick="verMaisCatalogo()">
+           Ver mais ${Math.min(restantes, CATALOGO_LOTE)}
+           <span class="ver-mais-cont">${restantes} restantes</span>
+         </button>`
+      : (lista.length > CATALOGO_LOTE
+          ? `<div class="fim-lista">Todos os ${lista.length} produtos exibidos</div>` : ''));
+
+  // Ao carregar mais, mantém a posição de leitura (não pula pro topo)
+  if (y !== null) window.scrollTo({ top: y, behavior: 'instant' });
 }
 
 // Helper para montar card de produto (usado em renderizar e buscar)
@@ -3634,7 +3667,9 @@ function rerenderizarCatalogoMantendoBusca() {
   if (termo) {
     _buscarProdutoImpl(termo);
   } else {
-    renderizarCatalogo(filtroCatalogo);
+    // Mantém quantos produtos já estavam à mostra: se o usuário carregou
+    // 3 lotes e editou um item, a lista não volta pro início.
+    _pintarCatalogo(true);
   }
 }
 
