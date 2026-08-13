@@ -20,9 +20,8 @@ const LOGIN_EMAILS = {
   entregador: 'entregador@kgagropet.local',
 };
 
-// Perfil e nome exibido de cada usuário. Isto é apenas UI — a RLS trata todo
-// usuário logado igual (acesso total). Se um dia quiser permissões reais no
-// banco, dá pra migrar para roles + policies por role.
+// Fallback usado apenas no modo demo. Em produção, perfil e nome sempre vêm
+// do app_metadata assinado no token do Supabase.
 const PERFIS = {
   admin:      { perfil: 'admin',      nome: 'Kleber'     },
   vendedor:   { perfil: 'vendedor',   nome: 'Vendedor'   },
@@ -948,6 +947,26 @@ function montarSessao(d) {
   };
 }
 
+// O perfil confiável vem do JWT assinado pelo Supabase, nunca do localStorage
+// nem do botão escolhido na tela de login.
+function usuarioDoToken(token) {
+  try {
+    const parte = token.split('.')[1];
+    const base64 = parte.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(parte.length / 4) * 4, '=');
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const meta = JSON.parse(new TextDecoder().decode(bytes)).app_metadata || {};
+    if (!['admin', 'vendedor', 'entregador'].includes(meta.app_role)) return null;
+    if (!LOGIN_EMAILS[meta.app_login]) return null;
+    return {
+      login: meta.app_login,
+      perfil: meta.app_role,
+      nome: meta.app_name || PERFIS[meta.app_login]?.nome || meta.app_login,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 // Salva sessão + usuário no localStorage (reabrir o PWA sem relogar)
 function persistirSessao() {
   try {
@@ -985,7 +1004,11 @@ async function authRefresh() {
       body: JSON.stringify({ refresh_token: sessao.refresh_token }),
     });
     if (!res.ok) return false;
-    sessao = montarSessao(await res.json());
+    const novaSessao = montarSessao(await res.json());
+    const identidade = usuarioDoToken(novaSessao.access_token);
+    if (!identidade) return false;
+    sessao = novaSessao;
+    usuario = identidade;
     persistirSessao();
     return true;
   } catch(e) {
@@ -1066,7 +1089,7 @@ async function fazerLogin() {
   const u = document.getElementById('input-usuario').value.trim().toLowerCase();
   const s = document.getElementById('input-senha').value;   // senha é case-sensitive — NÃO alterar
   const email  = LOGIN_EMAILS[u];
-  const perfil = PERFIS[u];
+  const perfil = PERFIS[u]; // apenas valida se o botão escolhido existe
   if (!u)             { mostrarErroLogin('Toque no seu perfil antes de entrar'); return; }
   if (!email || !perfil) { mostrarErroLogin('Perfil inválido'); return; }
   if (!s)             { mostrarErroLogin('Digite a senha'); return; }
@@ -1088,8 +1111,14 @@ async function fazerLogin() {
     return;
   }
 
+  const identidade = usuarioDoToken(r.sessao.access_token);
+  if (!identidade || identidade.login !== u) {
+    mostrarErroLogin('Este acesso não corresponde ao perfil escolhido.');
+    return;
+  }
+
   sessao  = r.sessao;
-  usuario = { login:u, ...perfil };
+  usuario = identidade;
   persistirSessao();
   document.getElementById('erro-login').style.display = 'none';
   entrarNoApp();
@@ -1143,6 +1172,14 @@ function sair() {
   }
   sessao = null;
   try { localStorage.removeItem(SESSAO_KEY); } catch(e) { /* silencioso */ }
+  try { localStorage.removeItem(FILA_OFFLINE_KEY); } catch(e) { /* silencioso */ }
+
+  // Respostas da API podem conter dados de outro perfil neste aparelho.
+  if ('caches' in window) {
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k.endsWith('-data')).map(k => caches.delete(k))
+    )).catch(() => {});
+  }
 
   // Limpa TODOS os checklists do localStorage (evita herança entre usuários)
   try {
