@@ -4064,7 +4064,8 @@ function verDetalhePedido(id) {
       <span style="font-size:14px;font-weight:700;color:var(--creme)">Total</span>
       <span style="font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1)">${moeda(p.valor)}</span>
     </div>
-    ${p.observacao?`<div style="font-size:12px;color:var(--c3);margin-top:4px">📝 ${esc(p.observacao)}</div>`:''}`;
+    ${p.observacao?`<div style="font-size:12px;color:var(--c3);margin-top:4px">📝 ${esc(p.observacao)}</div>`:''}
+    <div id="historico-pedido" data-pedido-id="${p.id}"></div>`;
 
   // Botão de via do pedido: admin e vendedor (entregador não emite documento)
   const acoesVia = document.getElementById('detalhe-pedido-acoes-via');
@@ -4074,6 +4075,44 @@ function verDetalhePedido(id) {
       : '';
   }
   abrirModal('modal-detalhe-pedido');
+  carregarHistoricoPedido(p.id);
+}
+
+async function carregarHistoricoPedido(pedidoId) {
+  const el = document.getElementById('historico-pedido');
+  if (!el || MODO_DEMO || usuario.perfil === 'entregador') return;
+
+  el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div><div class="loading"><div class="spinner"></div> Carregando histórico...</div>';
+  const res = await supabase('historico_pedidos', 'GET', null,
+    `?pedido_id=eq.${pedidoId}&select=acao,alterado_por,campos,criado_em&order=criado_em.desc&limit=20`);
+
+  if (!el.isConnected || el.dataset.pedidoId !== String(pedidoId)) return;
+  if (!res.ok) {
+    el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div><div class="historico-vazio">Não foi possível carregar o histórico.</div>';
+    return;
+  }
+
+  const historico = res.dados || [];
+  const acoes = { criado:'Pedido criado', editado:'Pedido editado', entregue:'Entrega concluída', pagamento:'Pagamento atualizado' };
+  const nomesCampos = {
+    cliente_id:'cliente', descricao:'itens', valor:'valor', status:'status',
+    data_entrega:'data de entrega', data_vencimento:'vencimento', observacao:'observação',
+    forma_pagamento:'forma de pagamento', prazo_dias:'prazo', prazos_boleto:'parcelas',
+    status_pagamento:'status do pagamento', forma_pagamento_real:'pagamento recebido',
+    data_pagamento:'data do pagamento', vendedor:'vendedor'
+  };
+
+  el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div>' +
+    (historico.length ? `<div class="historico-lista">${historico.map(h => {
+      const data = new Date(h.criado_em);
+      const quando = data.toLocaleDateString('pt-BR') + ' às ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      const campos = (h.campos || []).map(c => nomesCampos[c]).filter(Boolean);
+      return `<div class="historico-item">
+        <div style="font-size:13px;font-weight:700;color:var(--creme)">${esc(acoes[h.acao] || h.acao)}</div>
+        ${campos.length ? `<div style="font-size:11px;color:var(--c2);margin-top:3px">Alterou: ${esc(campos.join(', '))}</div>` : ''}
+        <div class="historico-item-data" style="margin-top:5px">📅 ${esc(quando)} · por ${esc(h.alterado_por)}</div>
+      </div>`;
+    }).join('')}</div>` : '<div class="historico-vazio">Nenhuma alteração registrada.</div>');
 }
 
 // ============================================================
