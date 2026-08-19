@@ -627,7 +627,7 @@ body.offline #app{padding-top:54px}
 .via-btn-fechar{background:rgba(192,57,43,.12);color:#e05a4e;border:1px solid rgba(192,57,43,.3)}
 
 /* O "papel" branco da via — documento limpo, preto no branco */
-.via-papel{background:#fff;color:#1a1a1a;max-width:640px;margin:0 auto;
+.via-papel{box-sizing:border-box;background:#fff;color:#1a1a1a;max-width:640px;margin:0 auto;
   border-radius:6px;padding:28px 26px;font-family:'Nunito',Arial,sans-serif;
   box-shadow:0 8px 40px rgba(0,0,0,.6)}
 .via-cab{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #0d2218;
@@ -658,13 +658,18 @@ body.offline #app{padding-top:54px}
 
 /* IMPRESSÃO: esconde TODO o app e mostra só o papel da via, em A4 limpo */
 @media print {
+  @page { size: A4 portrait; margin: 12mm; }
   /* Reseta o fundo escuro do app em TODOS os níveis (iOS Safari imprime
      o background de html/body se não forem zerados explicitamente) */
   html, body {
+    width: 186mm !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
     background: #fff !important;
     background-color: #fff !important;
     background-image: none !important;
   }
+  body::before, body::after { content: none !important; display: none !important; }
   /* Esconde tudo que é filho direto do body, menos a via */
   body > *:not(#via-overlay) { display: none !important; }
   /* A via ocupa o fluxo normal, fundo branco, sem cortes */
@@ -677,20 +682,27 @@ body.offline #app{padding-top:54px}
     margin: 0 !important;
     overflow: visible !important;
     inset: auto !important;
+    width: 186mm !important;
   }
   .via-acoes { display: none !important; }
   .via-papel {
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border-radius: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    max-width: 186mm !important;
+    width: 186mm !important;
     padding: 0 !important;
     margin: 0 !important;
     background: #fff !important;
   }
+  .via-cab, .via-total, .via-rodape { break-inside: avoid; page-break-inside: avoid; }
+  .via-bloco-titulo { break-after: avoid; page-break-after: avoid; }
+  .via-tabela { width: 100% !important; }
+  .via-tabela thead { display: table-header-group; }
+  .via-tabela tr { break-inside: avoid; page-break-inside: avoid; }
+  .via-tabela td { overflow-wrap: anywhere; }
   /* Garante que textos do papel saiam em cor escura mesmo se herdaram tema */
   .via-papel, .via-papel * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { margin: 12mm; }
 }
 
 /* ========== HIGHLIGHT DE BUSCA INTELIGENTE ========== */
