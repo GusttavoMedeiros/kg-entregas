@@ -630,31 +630,45 @@ body.offline #app{padding-top:54px}
 .via-papel{box-sizing:border-box;background:#fff;color:#1a1a1a;max-width:640px;margin:0 auto;
   border-radius:6px;padding:28px 26px;font-family:'Nunito',Arial,sans-serif;
   box-shadow:0 8px 40px rgba(0,0,0,.6)}
-.via-cab{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #0d2218;
-  padding-bottom:14px;margin-bottom:16px}
-.via-cab img{width:52px;height:52px;border-radius:50%;border:2px solid #c8960c}
-.via-cab-nome{font-family:'Cinzel',Georgia,serif;font-size:21px;font-weight:700;
-  color:#0d2218;letter-spacing:1.5px;line-height:1.1}
-.via-cab-sub{font-size:10.5px;color:#666;letter-spacing:.5px;margin-top:2px}
+.via-cab{display:flex;align-items:center;gap:10px;border-bottom:1.5px solid #222;
+  padding-bottom:12px;margin-bottom:18px}
+.via-cab img{width:44px;height:44px;border-radius:50%;filter:grayscale(1);opacity:.9}
+.via-cab-nome{font-family:'Cinzel',Georgia,serif;font-size:19px;font-weight:700;
+  color:#111;letter-spacing:1.2px;line-height:1.1}
+.via-cab-sub{font-size:10px;color:#666;letter-spacing:.4px;margin-top:2px}
 .via-doc-titulo{text-align:right;margin-left:auto}
-.via-doc-titulo b{display:block;font-size:13px;color:#0d2218;letter-spacing:1px;text-transform:uppercase}
-.via-doc-titulo span{font-size:10.5px;color:#888}
-.via-bloco{margin-bottom:14px}
-.via-bloco-titulo{font-size:10px;font-weight:800;color:#8a6508;letter-spacing:1.4px;
-  text-transform:uppercase;border-bottom:1px solid #e8e0d0;padding-bottom:3px;margin-bottom:7px}
+.via-doc-titulo b{display:block;font-size:13px;color:#111;letter-spacing:.8px;text-transform:uppercase}
+.via-doc-titulo span{font-size:10.5px;color:#666}
+.via-bloco{margin-bottom:18px}
+.via-bloco-titulo{font-size:10px;font-weight:800;color:#333;letter-spacing:1px;
+  text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:9px}
 .via-linha{font-size:12.5px;color:#333;margin-bottom:3px;line-height:1.45}
+.via-cliente-nome{font-size:15px;font-weight:800;color:#111;margin-bottom:8px}
+.via-dados{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 22px}
+.via-dado{font-size:12.5px;color:#222;line-height:1.35}
+.via-dado span{display:block;font-size:9px;font-weight:800;color:#777;letter-spacing:.7px;text-transform:uppercase;margin-bottom:1px}
+.via-dado b{font-weight:700}
+.via-dado-largo{grid-column:1/-1}
+.via-contexto{margin-bottom:18px}
+.via-resumo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #d8d8d8;border-left:1px solid #d8d8d8}
+.via-indicador{padding:9px 10px;border-right:1px solid #d8d8d8;border-bottom:1px solid #d8d8d8}
+.via-indicador span{display:block;font-size:9px;font-weight:800;color:#777;letter-spacing:.7px;text-transform:uppercase;margin-bottom:2px}
+.via-indicador b{font-family:'Cinzel',Georgia,serif;font-size:15px;color:#111}
 .via-tabela{width:100%;border-collapse:collapse;font-size:12.5px}
-.via-tabela th{text-align:left;font-size:10px;font-weight:800;color:#8a6508;
-  letter-spacing:1px;text-transform:uppercase;padding:5px 6px;border-bottom:1.5px solid #0d2218}
+.via-tabela th{text-align:left;font-size:9.5px;font-weight:800;color:#444;
+  letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555}
 .via-tabela th:nth-child(3),.via-tabela th:nth-child(4),
 .via-tabela td:nth-child(3),.via-tabela td:nth-child(4){text-align:right;white-space:nowrap}
-.via-tabela td{padding:7px 6px;border-bottom:1px solid #eee8da;color:#333;vertical-align:top}
+.via-tabela td{padding:6px;border-bottom:1px solid #e3e3e3;color:#222;vertical-align:top}
+.via-tabela-itens th:first-child,.via-tabela-itens td:first-child{width:42px;text-align:center}
+.via-tabela-ranking th:nth-child(2),.via-tabela-ranking td:nth-child(2){width:72px;text-align:right}
+.via-tabela-ranking th:last-child,.via-tabela-ranking td:last-child{width:110px;text-align:right;white-space:nowrap}
 .via-total{display:flex;justify-content:flex-end;gap:18px;align-items:baseline;
-  margin-top:10px;padding-top:9px;border-top:2px solid #0d2218}
-.via-total-label{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#555}
-.via-total-valor{font-family:'Cinzel',Georgia,serif;font-size:21px;font-weight:700;color:#0d2218}
-.via-rodape{margin-top:20px;padding-top:10px;border-top:1px solid #e8e0d0;
-  font-size:10px;color:#999;text-align:center;letter-spacing:.4px}
+  margin-top:10px;padding-top:8px;border-top:1.5px solid #222}
+.via-total-label{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#555}
+.via-total-valor{font-family:'Cinzel',Georgia,serif;font-size:20px;font-weight:700;color:#111}
+.via-aviso-fiscal{margin-top:20px;padding-left:8px;border-left:2px solid #777;
+  font-size:9.5px;color:#666;line-height:1.4}
 
 /* IMPRESSÃO: esconde TODO o app e mostra só o papel da via, em A4 limpo */
 @media print {
@@ -695,7 +709,7 @@ body.offline #app{padding-top:54px}
     margin: 0 !important;
     background: #fff !important;
   }
-  .via-cab, .via-total, .via-rodape { break-inside: avoid; page-break-inside: avoid; }
+  .via-cab, .via-total, .via-aviso-fiscal { break-inside: avoid; page-break-inside: avoid; }
   .via-bloco-titulo { break-after: avoid; page-break-after: avoid; }
   .via-tabela { width: 100% !important; }
   .via-tabela thead { display: table-header-group; }
