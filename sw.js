@@ -1,12 +1,13 @@
 // ============================================================
 // KG ENTREGAS — Service Worker
 // Estratégia:
-//   - Assets (HTML/JS/CSS/imagens): cache-first (carrega instantâneo)
+//   - App principal (HTML/JS/CSS): network-first (sempre atualizado)
+//   - Imagens: stale-while-revalidate (carrega instantâneo)
 //   - Supabase API: network-first com fallback de cache
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v18';
+const CACHE_VERSION = 'kg-v19';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -82,9 +83,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) Assets da própria origem: stale-while-revalidate
-  //    (serve do cache instantâneo E atualiza em background)
-  event.respondWith(estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
+  // 5) O app principal busca a versão atual antes de recorrer ao cache.
+  const ehAppPrincipal = event.request.mode === 'navigate' || ['script', 'style'].includes(event.request.destination);
+  event.respondWith(ehAppPrincipal
+    ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000)
+    : estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
 });
 
 // ============================================================
@@ -114,12 +117,12 @@ async function estrategiaStaleWhileRevalidate(request, cacheName) {
 // ESTRATÉGIA: network-first (dados)
 // Tenta rede com timeout. Se falhar, devolve cache.
 // ============================================================
-async function estrategiaNetworkPrimeiro(request, cacheName) {
+async function estrategiaNetworkPrimeiro(request, cacheName, timeoutMs = 8000) {
   const cache = await caches.open(cacheName);
   try {
-    // Timeout de 8s para network-first em dados (evita travamento)
+    // Timeout curto no app e maior nas APIs, evitando travamento sem perder o fallback offline.
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), 8000);
+    const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
 
     const fresh = await fetch(request, { signal: ctrl.signal });
     clearTimeout(timeoutId);
