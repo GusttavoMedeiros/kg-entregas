@@ -4178,7 +4178,10 @@ document.addEventListener('keydown', e => {
 // Registra o Service Worker (silencioso em caso de erro)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(reg => {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      // Assume também uma atualização que já terminou de instalar.
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+
       // Quando uma nova versão do SW estiver instalada, ativa imediatamente
       reg.addEventListener('updatefound', () => {
         const novo = reg.installing;
@@ -4190,6 +4193,9 @@ if ('serviceWorker' in navigator) {
           }
         });
       });
+
+      // Verifica a versão em toda abertura, sem esperar o intervalo do navegador.
+      reg.update().catch(() => {});
     }).catch(err => console.warn('SW falhou ao registrar:', err));
 
     // Recarrega quando o SW novo assumir controle (atualização suave)
