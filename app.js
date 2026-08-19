@@ -3896,19 +3896,16 @@ function gerarViaPedido(id) {
 
   // Dados do cliente (só o que existe)
   const cliLinhas = [];
-  if (c?.responsavel) cliLinhas.push(`<div class="via-linha">Responsável: ${esc(c.responsavel)}</div>`);
-  if (c?.whatsapp)    cliLinhas.push(`<div class="via-linha">WhatsApp: ${esc(mascaraTelefone(c.whatsapp))}</div>`);
-  if (c?.endereco)    cliLinhas.push(`<div class="via-linha">Endereço: ${esc(c.endereco)}</div>`);
+  if (c?.responsavel) cliLinhas.push(`<div class="via-dado"><span>Responsável</span><b>${esc(c.responsavel)}</b></div>`);
+  if (c?.whatsapp)    cliLinhas.push(`<div class="via-dado"><span>WhatsApp</span><b>${esc(mascaraTelefone(c.whatsapp))}</b></div>`);
+  if (c?.endereco)    cliLinhas.push(`<div class="via-dado via-dado-largo"><span>Endereço</span><b>${esc(c.endereco)}</b></div>`);
   if (c?.cnpj_cpf) {
     const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
-    cliLinhas.push(`<div class="via-linha">${c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}: ${docFmt}</div>`);
+    cliLinhas.push(`<div class="via-dado"><span>${c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}</span><b>${docFmt}</b></div>`);
   }
 
   // Forma de pagamento sem emoji (documento impresso fica mais sóbrio)
   const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
-
-  const agora = new Date();
-  const emissao = `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()} às ${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
 
   document.getElementById('via-papel').innerHTML = `
     <div class="via-cab">
@@ -3925,13 +3922,13 @@ function gerarViaPedido(id) {
 
     <div class="via-bloco">
       <div class="via-bloco-titulo">Cliente</div>
-      <div class="via-linha" style="font-weight:700;font-size:14px">${esc(p.cliente_nome || c?.nome || '')}</div>
-      ${cliLinhas.join('')}
+      <div class="via-cliente-nome">${esc(p.cliente_nome || c?.nome || '')}</div>
+      <div class="via-dados">${cliLinhas.join('')}</div>
     </div>
 
     <div class="via-bloco">
       <div class="via-bloco-titulo">Itens do pedido</div>
-      <table class="via-tabela">
+      <table class="via-tabela via-tabela-itens">
         <thead><tr><th>Qtd</th><th>Produto</th><th>Unit.</th><th>Subtotal</th></tr></thead>
         <tbody>${itensRows}</tbody>
       </table>
@@ -3943,9 +3940,11 @@ function gerarViaPedido(id) {
 
     <div class="via-bloco">
       <div class="via-bloco-titulo">Pagamento e prazos</div>
-      <div class="via-linha">Forma de pagamento: <b>${esc(pagto)}</b></div>
-      <div class="via-linha">Data de entrega: ${dataBR(p.data_entrega)}</div>
-      ${p.data_vencimento ? `<div class="via-linha">Vencimento: ${dataBR(p.data_vencimento)}</div>` : ''}
+      <div class="via-dados">
+        <div class="via-dado"><span>Forma de pagamento</span><b>${esc(pagto)}</b></div>
+        <div class="via-dado"><span>Data de entrega</span><b>${dataBR(p.data_entrega)}</b></div>
+        ${p.data_vencimento ? `<div class="via-dado"><span>Vencimento</span><b>${dataBR(p.data_vencimento)}</b></div>` : ''}
+      </div>
     </div>
 
     ${p.observacao ? `
@@ -3954,7 +3953,7 @@ function gerarViaPedido(id) {
       <div class="via-linha">${esc(p.observacao)}</div>
     </div>` : ''}
 
-    <div class="via-rodape">Documento emitido em ${emissao} · KG Agropet · Este documento não substitui nota fiscal</div>`;
+    <div class="via-aviso-fiscal">Este documento não substitui documento fiscal.</div>`;
 
   // Botão de WhatsApp: só aparece se o cliente tem número
   const btnZap = document.getElementById('via-btn-whatsapp');
@@ -4064,7 +4063,8 @@ function verDetalhePedido(id) {
       <span style="font-size:14px;font-weight:700;color:var(--creme)">Total</span>
       <span style="font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1)">${moeda(p.valor)}</span>
     </div>
-    ${p.observacao?`<div style="font-size:12px;color:var(--c3);margin-top:4px">📝 ${esc(p.observacao)}</div>`:''}`;
+    ${p.observacao?`<div style="font-size:12px;color:var(--c3);margin-top:4px">📝 ${esc(p.observacao)}</div>`:''}
+    <div id="historico-pedido" data-pedido-id="${p.id}"></div>`;
 
   // Botão de via do pedido: admin e vendedor (entregador não emite documento)
   const acoesVia = document.getElementById('detalhe-pedido-acoes-via');
@@ -4074,6 +4074,44 @@ function verDetalhePedido(id) {
       : '';
   }
   abrirModal('modal-detalhe-pedido');
+  carregarHistoricoPedido(p.id);
+}
+
+async function carregarHistoricoPedido(pedidoId) {
+  const el = document.getElementById('historico-pedido');
+  if (!el || MODO_DEMO || usuario.perfil === 'entregador') return;
+
+  el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div><div class="loading"><div class="spinner"></div> Carregando histórico...</div>';
+  const res = await supabase('historico_pedidos', 'GET', null,
+    `?pedido_id=eq.${pedidoId}&select=acao,alterado_por,campos,criado_em&order=criado_em.desc&limit=20`);
+
+  if (!el.isConnected || el.dataset.pedidoId !== String(pedidoId)) return;
+  if (!res.ok) {
+    el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div><div class="historico-vazio">Não foi possível carregar o histórico.</div>';
+    return;
+  }
+
+  const historico = res.dados || [];
+  const acoes = { criado:'Pedido criado', editado:'Pedido editado', entregue:'Entrega concluída', pagamento:'Pagamento atualizado' };
+  const nomesCampos = {
+    cliente_id:'cliente', descricao:'itens', valor:'valor', status:'status',
+    data_entrega:'data de entrega', data_vencimento:'vencimento', observacao:'observação',
+    forma_pagamento:'forma de pagamento', prazo_dias:'prazo', prazos_boleto:'parcelas',
+    status_pagamento:'status do pagamento', forma_pagamento_real:'pagamento recebido',
+    data_pagamento:'data do pagamento', vendedor:'vendedor'
+  };
+
+  el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div>' +
+    (historico.length ? `<div class="historico-lista">${historico.map(h => {
+      const data = new Date(h.criado_em);
+      const quando = data.toLocaleDateString('pt-BR') + ' às ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      const campos = (h.campos || []).map(c => nomesCampos[c]).filter(Boolean);
+      return `<div class="historico-item">
+        <div style="font-size:13px;font-weight:700;color:var(--creme)">${esc(acoes[h.acao] || h.acao)}</div>
+        ${campos.length ? `<div style="font-size:11px;color:var(--c2);margin-top:3px">Alterou: ${esc(campos.join(', '))}</div>` : ''}
+        <div class="historico-item-data" style="margin-top:5px">📅 ${esc(quando)} · por ${esc(h.alterado_por)}</div>
+      </div>`;
+    }).join('')}</div>` : '<div class="historico-vazio">Nenhuma alteração registrada.</div>');
 }
 
 // ============================================================
@@ -4520,8 +4558,6 @@ function imprimirRelatorio() {
   const pedidos = pedidosDoRelatorio(ini, fim);
   const d = calcularDadosRelatorio(pedidos);
 
-  const agora = new Date();
-  const emissao = `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()} às ${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
   const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login}` : 'Todos os pedidos';
 
   document.getElementById('via-papel').innerHTML = `
@@ -4537,22 +4573,25 @@ function imprimirRelatorio() {
       </div>
     </div>
 
+    <div class="via-dados via-contexto">
+      <div class="via-dado"><span>Período</span><b>${esc(label)}</b></div>
+      <div class="via-dado"><span>Escopo</span><b>${esc(escopo)}</b></div>
+    </div>
+
     <div class="via-bloco">
       <div class="via-bloco-titulo">Resumo do período</div>
-      <table class="via-tabela">
-        <tbody>
-          <tr><td>Total vendido</td><td style="text-align:right;font-weight:700">${moeda(d.total)}</td></tr>
-          <tr><td>Pedidos no período</td><td style="text-align:right;font-weight:700">${d.nPedidos}</td></tr>
-          <tr><td>Recebido</td><td style="text-align:right;font-weight:700">${moeda(d.recebido)}</td></tr>
-          <tr><td>A receber</td><td style="text-align:right;font-weight:700">${moeda(d.aReceber)}</td></tr>
-        </tbody>
-      </table>
+      <div class="via-resumo">
+        <div class="via-indicador"><span>Total vendido</span><b>${moeda(d.total)}</b></div>
+        <div class="via-indicador"><span>Pedidos no período</span><b>${d.nPedidos}</b></div>
+        <div class="via-indicador"><span>Recebido</span><b>${moeda(d.recebido)}</b></div>
+        <div class="via-indicador"><span>A receber</span><b>${moeda(d.aReceber)}</b></div>
+      </div>
     </div>
 
     ${d.topProdutos.length ? `
     <div class="via-bloco">
       <div class="via-bloco-titulo">Top produtos</div>
-      <table class="via-tabela">
+      <table class="via-tabela via-tabela-ranking">
         <thead><tr><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead>
         <tbody>${d.topProdutos.map(t => `
           <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.qtd}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
@@ -4563,7 +4602,7 @@ function imprimirRelatorio() {
     ${d.topClientes.length ? `
     <div class="via-bloco">
       <div class="via-bloco-titulo">Top clientes</div>
-      <table class="via-tabela">
+      <table class="via-tabela via-tabela-ranking">
         <thead><tr><th>Cliente</th><th>Pedidos</th><th>Valor</th></tr></thead>
         <tbody>${d.topClientes.map(t => `
           <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.pedidos}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
@@ -4571,7 +4610,7 @@ function imprimirRelatorio() {
       </table>
     </div>` : ''}
 
-    <div class="via-rodape">${esc(escopo)} · Emitido em ${emissao} · KG Agropet</div>`;
+    <div class="via-aviso-fiscal">Este documento não substitui documento fiscal.</div>`;
 
   // Esconde o botão de WhatsApp (só faz sentido na via de pedido)
   const btnZap = document.getElementById('via-btn-whatsapp');
