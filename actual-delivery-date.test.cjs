@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const app = fs.readFileSync('app.js', 'utf8');
+const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const migration = fs.readFileSync(
   'supabase/migrations/20260828165707_add_actual_delivery_date.sql',
   'utf8',

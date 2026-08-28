@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const app = fs.readFileSync('app.js', 'utf8');
+const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const inicioHelper = app.indexOf('function dataRealEntrega');
 const fimHelper = app.indexOf('\n}\n', inicioHelper) + 2;
 const inicio = app.indexOf('function pedidosDoRelatorio');
