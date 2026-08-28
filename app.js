@@ -4499,9 +4499,10 @@ function calcularJanelaRelatorio(tipo, offset) {
   return { ini: fmt(ini), fim: fmt(fim), label: `${nomesMeses[ini.getMonth()]} de ${ini.getFullYear()}` };
 }
 
-// Filtra pedidos do período (e do vendedor, se for o perfil dele)
+// Filtra somente pedidos entregues do período (e do vendedor, se for o perfil dele)
 function pedidosDoRelatorio(ini, fim) {
   return todosOsPedidos.filter(p => {
+    if (p.status !== 'entregue') return false;
     if (!p.data_entrega) return false;
     if (p.data_entrega < ini || p.data_entrega > fim) return false;
     if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
@@ -4555,7 +4556,7 @@ function renderizarRelatorio() {
   const el = document.getElementById('relatorio-conteudo');
 
   if (!pedidos.length) {
-    el.innerHTML = `<div class="rel-vazio">Nenhum pedido com entrega neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
+    el.innerHTML = `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
     return;
   }
 
@@ -4563,11 +4564,11 @@ function renderizarRelatorio() {
     <div class="rel-cards">
       <div class="rel-card">
         <div class="rel-card-valor">${moeda(d.total)}</div>
-        <div class="rel-card-label">Total vendido</div>
+        <div class="rel-card-label">Total entregue</div>
       </div>
       <div class="rel-card">
         <div class="rel-card-valor">${d.nPedidos}</div>
-        <div class="rel-card-label">Pedidos</div>
+        <div class="rel-card-label">Pedidos entregues</div>
       </div>
       <div class="rel-card rel-verde">
         <div class="rel-card-valor">${moeda(d.recebido)}</div>
@@ -4602,7 +4603,7 @@ function imprimirRelatorio() {
   const pedidos = pedidosDoRelatorio(ini, fim);
   const d = calcularDadosRelatorio(pedidos);
 
-  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login}` : 'Todos os pedidos';
+  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login} · Apenas entregues` : 'Pedidos entregues';
 
   document.getElementById('via-papel').innerHTML = `
     <div class="via-cab">
@@ -4625,8 +4626,8 @@ function imprimirRelatorio() {
     <div class="via-bloco">
       <div class="via-bloco-titulo">Resumo do período</div>
       <div class="via-resumo">
-        <div class="via-indicador"><span>Total vendido</span><b>${moeda(d.total)}</b></div>
-        <div class="via-indicador"><span>Pedidos no período</span><b>${d.nPedidos}</b></div>
+        <div class="via-indicador"><span>Total entregue</span><b>${moeda(d.total)}</b></div>
+        <div class="via-indicador"><span>Pedidos entregues</span><b>${d.nPedidos}</b></div>
         <div class="via-indicador"><span>Recebido</span><b>${moeda(d.recebido)}</b></div>
         <div class="via-indicador"><span>A receber</span><b>${moeda(d.aReceber)}</b></div>
       </div>
