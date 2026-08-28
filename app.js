@@ -3874,6 +3874,29 @@ function formatarPagamento(p) {
   return 'Não informado';
 }
 
+// Usa sempre o preço efetivamente cobrado e reconhece pesos como 20kg, 20 KG e 10,1 kg.
+function formatarPrecoItemPedido(item) {
+  const nome = String(item?.nome || item?.produto_nome || '').trim();
+  const quantidadeInformada = Number(item?.qtd);
+  const precoInformado = Number(item?.preco_unit);
+  const quantidade = Number.isFinite(quantidadeInformada) ? quantidadeInformada : 0;
+  const precoUnitario = Number.isFinite(precoInformado) ? precoInformado : 0;
+  const pesoEncontrado = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+  const pesoExtraido = pesoEncontrado ? Number(pesoEncontrado[1].replace(',', '.')) : 0;
+  const pesoKg = Number.isFinite(pesoExtraido) && pesoExtraido > 0 ? pesoExtraido : null;
+  const valorPorKgCalculado = pesoKg && Number.isFinite(precoInformado) ? precoUnitario / pesoKg : null;
+  const valorPorKg = Number.isFinite(valorPorKgCalculado) ? valorPorKgCalculado : null;
+  const subtotalCalculado = precoUnitario * quantidade;
+  const subtotal = Number.isFinite(subtotalCalculado) ? subtotalCalculado : 0;
+
+  return {
+    nome, quantidade, precoUnitario, subtotal, pesoKg, valorPorKg,
+    textoUnidade: valorPorKg == null ? `Unid.: ${moeda(precoUnitario)}` : `Unid./kg: ${moeda(valorPorKg)}`,
+    textoEmbalagem: valorPorKg == null ? '' : `Saco: ${moeda(precoUnitario)}`,
+    textoSubtotal: `Subtotal: ${moeda(subtotal)}`,
+  };
+}
+
 // ============================================================
 // VIA DE PEDIDO — imprimir / salvar PDF / enviar no WhatsApp
 // Disponível para admin e vendedor.
@@ -3885,13 +3908,19 @@ function gerarViaPedido(id) {
 
   // Linhas de itens (usa preco_unit real, que considera ajustes de preço)
   const itensRows = (p.itens?.length)
-    ? p.itens.map(i => `
+    ? p.itens.map(i => {
+      const d = formatarPrecoItemPedido(i);
+      return `
         <tr>
-          <td>${i.qtd}</td>
-          <td>${esc(i.nome || i.produto_nome || '')}</td>
-          <td>${moeda(i.preco_unit)}</td>
-          <td>${moeda(i.preco_unit * i.qtd)}</td>
-        </tr>`).join('')
+          <td>${d.quantidade}</td>
+          <td>${esc(d.nome)}</td>
+          <td class="via-preco-item">
+            <b>${esc(d.textoUnidade)}</b>
+            ${d.textoEmbalagem ? `<small>${esc(d.textoEmbalagem)}</small>` : ''}
+          </td>
+          <td>${moeda(d.subtotal)}</td>
+        </tr>`;
+    }).join('')
     : `<tr><td colspan="4">${esc(p.descricao || '')}</td></tr>`;
 
   // Dados do cliente (só o que existe)
@@ -3929,7 +3958,7 @@ function gerarViaPedido(id) {
     <div class="via-bloco">
       <div class="via-bloco-titulo">Itens do pedido</div>
       <table class="via-tabela via-tabela-itens">
-        <thead><tr><th>Qtd</th><th>Produto</th><th>Unit.</th><th>Subtotal</th></tr></thead>
+        <thead><tr><th>Qtd</th><th>Produto</th><th>Unid./Saco</th><th>Subtotal</th></tr></thead>
         <tbody>${itensRows}</tbody>
       </table>
       <div class="via-total">
@@ -3982,16 +4011,25 @@ function enviarPedidoWhatsApp(id) {
   if (!waNum) { toast('Este cliente não tem WhatsApp cadastrado.'); return; }
 
   const itensTxt = (p.itens?.length)
-    ? p.itens.map(i => `• ${i.qtd}x ${i.nome || i.produto_nome || ''} — ${moeda(i.preco_unit * i.qtd)}`).join('\n')
+    ? p.itens.map(i => {
+      const d = formatarPrecoItemPedido(i);
+      return `• ${d.quantidade}x ${d.nome}\n${[d.textoUnidade, d.textoEmbalagem, d.textoSubtotal].filter(Boolean).join(' | ')}`;
+    }).join('\n\n')
     : `• ${p.descricao || ''}`;
-  const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
+  const observacao = String(p.observacao || '').trim();
+  const detalhes = [
+    `*Pedido nº ${p.id}*`,
+    `*Total do pedido: ${moeda(p.valor)}*`,
+    p.forma_pagamento ? `Pagamento: ${formatarPagamento(p).replace(/^[^\w]*\s*/, '')}` : '',
+    p.data_entrega ? `Entrega: ${dataBR(p.data_entrega)}` : '',
+    p.data_vencimento ? `Vencimento: ${dataBR(p.data_vencimento)}` : '',
+    observacao ? `Observação: ${observacao}` : '',
+  ].filter(Boolean).join('\n');
+  const nomeCliente = c?.responsavel || c?.nome || '';
 
-  const msg = `${obterSaudacao()}, ${c?.responsavel || c?.nome || ''}! 🌿\n\n` +
+  const msg = `${obterSaudacao()}${nomeCliente ? `, ${nomeCliente}` : ''}! 🌿\n\n` +
     `Segue o resumo do seu pedido na *KG Agropet*:\n\n${itensTxt}\n\n` +
-    `*Total: ${moeda(p.valor)}*\n` +
-    `Pagamento: ${pagto}\n` +
-    `Entrega: ${dataBR(p.data_entrega)}` +
-    (p.data_vencimento ? `\nVencimento: ${dataBR(p.data_vencimento)}` : '') +
+    `${detalhes}` +
     `\n\nQualquer dúvida estou à disposição. Obrigado pela preferência! 🙏`;
 
   window.open(`https://wa.me/55${waNum}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
