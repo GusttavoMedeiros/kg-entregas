@@ -19,7 +19,8 @@ global.caches = {
   delete: async () => true,
 };
 
-vm.runInThisContext(fs.readFileSync('sw.js', 'utf8'));
+const sw = fs.readFileSync('sw.js', 'utf8');
+vm.runInThisContext(sw);
 
 async function requestApp() {
   let response;
@@ -38,6 +39,9 @@ async function requestApp() {
   assert.equal(await (await requestApp()).text(), 'versao-nova');
 
   const app = fs.readFileSync('app.js', 'utf8');
+  const index = fs.readFileSync('index.html', 'utf8');
+  assert.match(sw, /CACHE_VERSION = 'kg-v20'/);
+  assert.match(index, /app\.js\?v=47/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');
