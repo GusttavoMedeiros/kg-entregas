@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const app = fs.readFileSync('app.js', 'utf8');
+const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const inicio = app.indexOf('function formatarPrecoItemPedido');
 const fim = app.indexOf('\n}\n\n// ============================================================', inicio) + 2;
 assert.ok(inicio >= 0 && fim > inicio, 'helper de preço não encontrado');
