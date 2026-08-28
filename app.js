@@ -147,6 +147,28 @@ function confirmar(mensagem, opts = {}) {
 // ============================================================
 const fmt = d => d.toISOString().split('T')[0];
 
+// Data civil no fuso da operação. Não usa UTC para evitar registrar o dia
+// seguinte perto da meia-noite no Brasil.
+function dataHojeBrasil(agora = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(agora);
+  const valor = tipo => partes.find(p => p.type === tipo)?.value;
+  return `${valor('year')}-${valor('month')}-${valor('day')}`;
+}
+
+// Pedidos antigos não têm data_entregue_em; nesses casos, a previsão antiga
+// continua sendo o fallback de compatibilidade nos relatórios e consolidações.
+function dataRealEntrega(p) {
+  return p?.data_entregue_em || p?.data_entrega || null;
+}
+
+// Usado pelo fluxo online e pela fila offline para capturar a data no momento
+// em que o entregador conclui o pedido, e não apenas quando houver sincronização.
+function dadosEntregaConcluida(agora = new Date()) {
+  return { status: 'entregue', data_entregue_em: dataHojeBrasil(agora) };
+}
+
 function dataBR(d) {
   if (!d) return '–';
   const dt = new Date(d + 'T12:00:00');
@@ -1391,7 +1413,7 @@ async function sincronizarDados() {
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
       const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
-      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
+      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_entregue_em||''}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
     };
     // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
     // (Antes comparava por length — preço editado pelo admin não aparecia
@@ -1465,19 +1487,17 @@ function renderizarDashboard() {
   const fimMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
 
   // Pedidos do mês (FATURAMENTO REAL = entregues E PAGOS)
-  const pedidosMes = todosOsPedidos.filter(p =>
-    p.status === 'entregue' &&
-    foiPago(p) &&
-    p.data_entrega &&
-    new Date(p.data_entrega+'T12:00:00') >= inicioMes
-  );
-  const pedidosMesPassado = todosOsPedidos.filter(p =>
-    p.status === 'entregue' &&
-    foiPago(p) &&
-    p.data_entrega &&
-    new Date(p.data_entrega+'T12:00:00') >= inicioMesPassado &&
-    new Date(p.data_entrega+'T12:00:00') <= fimMesPassado
-  );
+  const pedidosMes = todosOsPedidos.filter(p => {
+    const data = dataRealEntrega(p);
+    return p.status === 'entregue' && foiPago(p) && data &&
+      new Date(data+'T12:00:00') >= inicioMes;
+  });
+  const pedidosMesPassado = todosOsPedidos.filter(p => {
+    const data = dataRealEntrega(p);
+    return p.status === 'entregue' && foiPago(p) && data &&
+      new Date(data+'T12:00:00') >= inicioMesPassado &&
+      new Date(data+'T12:00:00') <= fimMesPassado;
+  });
 
   const faturamento = pedidosMes.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const faturamentoAnterior = pedidosMesPassado.reduce((s,p)=>s+(Number(p.valor)||0),0);
@@ -1556,15 +1576,17 @@ function renderizarInicioVendedor() {
   const fimMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
 
   const meusPedidos = todosOsPedidos.filter(p => p.vendedor === usuario.login);
-  const meusPedidosMes = meusPedidos.filter(p =>
-    p.status === 'entregue' && foiPago(p) && p.data_entrega &&
-    new Date(p.data_entrega+'T12:00:00') >= inicioMes
-  );
-  const meusPedidosMesAnt = meusPedidos.filter(p =>
-    p.status === 'entregue' && foiPago(p) && p.data_entrega &&
-    new Date(p.data_entrega+'T12:00:00') >= inicioMesPassado &&
-    new Date(p.data_entrega+'T12:00:00') <= fimMesPassado
-  );
+  const meusPedidosMes = meusPedidos.filter(p => {
+    const data = dataRealEntrega(p);
+    return p.status === 'entregue' && foiPago(p) && data &&
+      new Date(data+'T12:00:00') >= inicioMes;
+  });
+  const meusPedidosMesAnt = meusPedidos.filter(p => {
+    const data = dataRealEntrega(p);
+    return p.status === 'entregue' && foiPago(p) && data &&
+      new Date(data+'T12:00:00') >= inicioMesPassado &&
+      new Date(data+'T12:00:00') <= fimMesPassado;
+  });
   const minhasVendas = meusPedidosMes.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const vendasAnt = meusPedidosMesAnt.reduce((s,p)=>s+(Number(p.valor)||0),0);
 
@@ -1664,11 +1686,12 @@ function renderizarGraficoVendas(idDiv, idTotal, vendedorLogin) {
   }
   let total = 0;
   todosOsPedidos.forEach(p => {
-    if (p.status !== 'entregue' || !foiPago(p) || !p.data_entrega) return;
+    const data = dataRealEntrega(p);
+    if (p.status !== 'entregue' || !foiPago(p) || !data) return;
     if (vendedorLogin && p.vendedor !== vendedorLogin) return;
-    if (mapa[p.data_entrega] !== undefined) {
+    if (mapa[data] !== undefined) {
       const v = Number(p.valor) || 0;
-      mapa[p.data_entrega] += v;
+      mapa[data] += v;
       total += v;
     }
   });
@@ -3388,7 +3411,7 @@ function abrirModalEntrega(id) {
     <strong style="color:var(--o1)">${esc(p.cliente_nome)}</strong>
     <div style="margin-top:5px;color:var(--c2)">${esc(p.descricao)}</div>
     <div style="margin-top:5px;color:var(--o1);font-weight:700">${moeda(p.valor)}</div>
-    <div style="margin-top:3px;font-size:12px;color:var(--c3)">Data: ${dataBR(p.data_entrega)}</div>
+    <div style="margin-top:3px;font-size:12px;color:var(--c3)">Entrega prevista: ${dataBR(p.data_entrega)}</div>
     ${pagtoInfo}`;
   document.getElementById('entrega-obs').value = p.observacao||'';
   abrirModal('modal-entrega');
@@ -3407,6 +3430,10 @@ function selecionarPagamentoRecebido(valor) {
 async function confirmarEntrega() {
   if (salvando) return;
   if (!pedidoSelecionado) return;
+  if (pedidoSelecionado.status === 'entregue') {
+    toast('Este pedido já foi entregue. A data original foi preservada.');
+    return;
+  }
   const obs = document.getElementById('entrega-obs').value.trim();
   const id  = pedidoSelecionado.id;
 
@@ -3467,7 +3494,7 @@ async function confirmarEntrega() {
   salvando = true;
   try {
     const payload = {
-      status: 'entregue',
+      ...dadosEntregaConcluida(),
       observacao: obs,
       status_pagamento,
       forma_pagamento_real,
@@ -3971,7 +3998,8 @@ function gerarViaPedido(id) {
       <div class="via-bloco-titulo">Pagamento e prazos</div>
       <div class="via-dados">
         <div class="via-dado"><span>Forma de pagamento</span><b>${esc(pagto)}</b></div>
-        <div class="via-dado"><span>Data de entrega</span><b>${dataBR(p.data_entrega)}</b></div>
+        <div class="via-dado"><span>Entrega prevista</span><b>${dataBR(p.data_entrega)}</b></div>
+        ${p.status === 'entregue' && p.data_entregue_em ? `<div class="via-dado"><span>Entregue em</span><b>${dataBR(p.data_entregue_em)}</b></div>` : ''}
         ${p.data_vencimento ? `<div class="via-dado"><span>Vencimento</span><b>${dataBR(p.data_vencimento)}</b></div>` : ''}
       </div>
     </div>
@@ -4021,7 +4049,8 @@ function enviarPedidoWhatsApp(id) {
     `*Pedido nº ${p.id}*`,
     `*Total do pedido: ${moeda(p.valor)}*`,
     p.forma_pagamento ? `Pagamento: ${formatarPagamento(p).replace(/^[^\w]*\s*/, '')}` : '',
-    p.data_entrega ? `Entrega: ${dataBR(p.data_entrega)}` : '',
+    p.data_entrega ? `Entrega prevista: ${dataBR(p.data_entrega)}` : '',
+    p.status === 'entregue' && p.data_entregue_em ? `Entregue em: ${dataBR(p.data_entregue_em)}` : '',
     p.data_vencimento ? `Vencimento: ${dataBR(p.data_vencimento)}` : '',
     observacao ? `Observação: ${observacao}` : '',
   ].filter(Boolean).join('\n');
@@ -4048,6 +4077,9 @@ function verDetalhePedido(id) {
     : `<div style="font-size:13px;color:var(--c2);padding:8px 0">${esc(p.descricao)}</div>`;
 
   const pagtoTxt = formatarPagamento(p);
+  const entregueEmLinha = p.status === 'entregue' && p.data_entregue_em
+    ? `<div style="font-size:12px;color:var(--c3);margin-bottom:4px">✅ Entregue em: ${dataBR(p.data_entregue_em)}</div>`
+    : '';
 
   // Status de pagamento (se entregue)
   let statusPagtoLinha = '';
@@ -4089,7 +4121,8 @@ function verDetalhePedido(id) {
 
   document.getElementById('detalhe-pedido-conteudo').innerHTML = `
     <div style="background:rgba(10,26,16,.6);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px">
-      <div style="font-size:12px;color:var(--c3);margin-bottom:4px">📅 Entrega: ${dataBR(p.data_entrega)} · Venc.: ${dataBR(p.data_vencimento)}</div>
+      <div style="font-size:12px;color:var(--c3);margin-bottom:4px">📅 Entrega prevista: ${dataBR(p.data_entrega)}${p.data_vencimento ? ` · Venc.: ${dataBR(p.data_vencimento)}` : ''}</div>
+      ${entregueEmLinha}
       <div style="font-size:12px;color:var(--c3);margin-bottom:4px">💰 Forma: ${esc(pagtoTxt)}</div>
       ${statusPagtoLinha}
       <div style="font-size:12px;color:var(--c3)">📋 Pedido por: ${esc(p.vendedor||'–')}</div>
@@ -4133,7 +4166,7 @@ async function carregarHistoricoPedido(pedidoId) {
   const acoes = { criado:'Pedido criado', editado:'Pedido editado', entregue:'Entrega concluída', pagamento:'Pagamento atualizado' };
   const nomesCampos = {
     cliente_id:'cliente', descricao:'itens', valor:'valor', status:'status',
-    data_entrega:'data de entrega', data_vencimento:'vencimento', observacao:'observação',
+    data_entrega:'entrega prevista', data_entregue_em:'entregue em', data_vencimento:'vencimento', observacao:'observação',
     forma_pagamento:'forma de pagamento', prazo_dias:'prazo', prazos_boleto:'parcelas',
     status_pagamento:'status do pagamento', forma_pagamento_real:'pagamento recebido',
     data_pagamento:'data do pagamento', vendedor:'vendedor'
@@ -4431,7 +4464,7 @@ window.addEventListener('appinstalled', () => {
 // ============================================================
 // RELATÓRIOS — semanal, quinzenal e mensal (admin e vendedor)
 // Admin vê todos os pedidos; vendedor vê apenas os dele.
-// Base do período: data_entrega do pedido.
+// Base do período: data real da entrega, com fallback para pedidos antigos.
 // ============================================================
 let relTipo = 'semanal';   // 'semanal' | 'quinzenal' | 'mensal'
 let relOffset = 0;         // 0 = período atual, -1 = anterior...
@@ -4503,8 +4536,9 @@ function calcularJanelaRelatorio(tipo, offset) {
 function pedidosDoRelatorio(ini, fim) {
   return todosOsPedidos.filter(p => {
     if (p.status !== 'entregue') return false;
-    if (!p.data_entrega) return false;
-    if (p.data_entrega < ini || p.data_entrega > fim) return false;
+    const data = dataRealEntrega(p);
+    if (!data) return false;
+    if (data < ini || data > fim) return false;
     if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
     return true;
   });
