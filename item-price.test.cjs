@@ -56,9 +56,11 @@ contexto.todosOsPedidos = [{
     { nome: 'Produto Y', qtd: 2, preco_unit: 28 },
   ],
   valor: 176,
+  status: 'entregue',
   forma_pagamento: 'boleto',
   prazo_dias: 30,
   data_entrega: '2026-08-28',
+  data_entregue_em: '2026-08-30',
   data_vencimento: '2026-09-27',
   observacao: 'Entregar pela manhã',
 }];
@@ -70,12 +72,12 @@ const mensagem = decodeURIComponent(contexto.urlAberta.split('text=')[1]);
 assert.match(mensagem, /2x Ração 20kg\nUnid\.\/kg: R\$ 3,00 \| Saco: R\$ 60,00 \| Subtotal: R\$ 120,00/);
 assert.match(mensagem, /2x Produto Y\nUnid\.: R\$ 28,00 \| Subtotal: R\$ 56,00/);
 assert.match(mensagem, /\*Pedido nº 42\*[\s\S]*\*Total do pedido: R\$ 176,00\*/);
-assert.match(mensagem, /Pagamento: Boleto 30 dias[\s\S]*Entrega: 28\/08\/2026[\s\S]*Vencimento: 27\/09\/2026[\s\S]*Observação: Entregar pela manhã/);
+assert.match(mensagem, /Pagamento: Boleto 30 dias[\s\S]*Entrega prevista: 28\/08\/2026[\s\S]*Entregue em: 30\/08\/2026[\s\S]*Vencimento: 27\/09\/2026[\s\S]*Observação: Entregar pela manhã/);
 
 contexto.todosOsPedidos = [{ id: 7, cliente_id: 1, descricao: 'Pedido antigo', valor: 50 }];
 contexto.enviarPedidoWhatsApp(7);
 const mensagemLegada = decodeURIComponent(contexto.urlAberta.split('text=')[1]);
 assert.match(mensagemLegada, /• Pedido antigo/);
-assert.doesNotMatch(mensagemLegada, /Pagamento:|Entrega:|Vencimento:|Observação:/);
+assert.doesNotMatch(mensagemLegada, /Pagamento:|Entrega prevista:|Entregue em:|Vencimento:|Observação:/);
 
 console.log('Preço por kg, item comum, preço ajustado e pedidos antigos validados.');
