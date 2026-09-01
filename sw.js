@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v20';
+const CACHE_VERSION = 'kg-v21';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const DATA_CACHE   = `${CACHE_VERSION}-data`;
 
@@ -79,7 +79,9 @@ self.addEventListener('fetch', event => {
 
   // 4) Supabase: SEMPRE tenta rede primeiro. Cache só como último recurso (offline)
   if (ehSupabase) {
-    event.respondWith(estrategiaNetworkPrimeiro(event.request, DATA_CACHE));
+    event.respondWith(estrategiaNetworkPrimeiro(
+      event.request, DATA_CACHE, 8000, chaveCacheSupabase(event.request)
+    ));
     return;
   }
 
@@ -109,7 +111,26 @@ async function estrategiaStaleWhileRevalidate(request, cacheName) {
   }).catch(() => null);
 
   // Se tem no cache, devolve já (instantâneo). Senão, espera a rede.
-  return cached || buscaRede || new Response('', { status: 503, statusText: 'Offline' });
+  if (cached) return cached;
+  return (await buscaRede) || new Response('', { status: 503, statusText: 'Offline' });
+}
+
+// O Cache API normalmente compara só URL/método, não o Authorization. Cria uma
+// chave local por usuário (sub do JWT), sem persistir o token no Cache Storage.
+function chaveCacheSupabase(request) {
+  let usuarioId = 'sem-usuario';
+  try {
+    const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    const parte = token.split('.')[1];
+    if (parte) {
+      const base64 = parte.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(parte.length / 4) * 4, '=');
+      const claims = JSON.parse(atob(base64));
+      usuarioId = claims.sub || claims.app_metadata?.app_login || usuarioId;
+    }
+  } catch (e) { /* token inválido: usa chave isolada sem usuário */ }
+  const url = new URL(request.url);
+  url.searchParams.set('__kg_cache_user', usuarioId);
+  return new Request(url.toString(), { method: 'GET' });
 }
 
 
@@ -117,24 +138,28 @@ async function estrategiaStaleWhileRevalidate(request, cacheName) {
 // ESTRATÉGIA: network-first (dados)
 // Tenta rede com timeout. Se falhar, devolve cache.
 // ============================================================
-async function estrategiaNetworkPrimeiro(request, cacheName, timeoutMs = 8000) {
+async function estrategiaNetworkPrimeiro(request, cacheName, timeoutMs = 8000, cacheRequest = request) {
   const cache = await caches.open(cacheName);
   try {
     // Timeout curto no app e maior nas APIs, evitando travamento sem perder o fallback offline.
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
 
-    const fresh = await fetch(request, { signal: ctrl.signal });
-    clearTimeout(timeoutId);
+    let fresh;
+    try {
+      fresh = await fetch(request, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Só guarda no cache se a resposta deu certo
     if (fresh && fresh.status === 200) {
-      cache.put(request, fresh.clone()).catch(() => {/* ignora erro de quota */});
+      cache.put(cacheRequest, fresh.clone()).catch(() => {/* ignora erro de quota */});
     }
     return fresh;
   } catch (e) {
     // Rede falhou → tenta cache
-    const cached = await cache.match(request);
+    const cached = await cache.match(cacheRequest);
     if (cached) {
       // Marca a resposta para o app saber que veio do cache (offline)
       return new Response(cached.body, {

@@ -145,7 +145,7 @@ function confirmar(mensagem, opts = {}) {
 // ============================================================
 // HELPERS
 // ============================================================
-const fmt = d => d.toISOString().split('T')[0];
+const fmt = d => dataHojeBrasil(d);
 
 // Data civil no fuso da operação. Não usa UTC para evitar registrar o dia
 // seguinte perto da meia-noite no Brasil.
@@ -912,7 +912,8 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
       'Authorization': `Bearer ${sessao.access_token}`, // token do usuário: é o que a RLS valida
       'Content-Type': 'application/json',
     };
-    if (metodo==='POST' || metodo==='PATCH') headers['Prefer'] = 'return=representation';
+    if (metodo === 'POST') headers['Prefer'] = 'return=representation';
+    if (metodo === 'PATCH') headers['Prefer'] = 'return=minimal';
     const opts = { method:metodo, headers };
     if (dados) opts.body = JSON.stringify(dados);
 
@@ -941,7 +942,7 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
-    if (metodo==='DELETE') return { ok:true, dados:true };
+    if (metodo === 'DELETE' || res.status === 204) return { ok:true, dados:true };
     return { ok:true, dados: await res.json() };
   } catch(e) {
     if (e.name === 'AbortError') {
@@ -1017,25 +1018,36 @@ async function authLogin(email, senha) {
 }
 
 // Renova o access_token usando o refresh_token
-async function authRefresh() {
+let _refreshEmAndamento = null;
+function authRefresh() {
+  if (_refreshEmAndamento) return _refreshEmAndamento;
   if (!sessao?.refresh_token) return false;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method:'POST',
-      headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ refresh_token: sessao.refresh_token }),
-    });
-    if (!res.ok) return false;
-    const novaSessao = montarSessao(await res.json());
-    const identidade = usuarioDoToken(novaSessao.access_token);
-    if (!identidade) return false;
-    sessao = novaSessao;
-    usuario = identidade;
-    persistirSessao();
-    return true;
-  } catch(e) {
-    return false;
-  }
+  _refreshEmAndamento = (async () => {
+    try {
+      const refreshToken = sessao.refresh_token;
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method:'POST',
+        headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) return false;
+      const novaSessao = montarSessao(await res.json());
+      const identidade = usuarioDoToken(novaSessao.access_token);
+      if (!identidade) return false;
+      // O usuário pode ter saído enquanto a renovação estava em andamento.
+      // Nesse caso, não restaura silenciosamente a sessão encerrada.
+      if (!sessao || sessao.refresh_token !== refreshToken) return false;
+      sessao = novaSessao;
+      usuario = identidade;
+      persistirSessao();
+      return true;
+    } catch(e) {
+      return false;
+    } finally {
+      _refreshEmAndamento = null;
+    }
+  })();
+  return _refreshEmAndamento;
 }
 
 // Garante um token válido antes de uma chamada (renova 60s antes de expirar)
@@ -1183,6 +1195,7 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
+  const acoesOfflinePendentes = lerFilaOffline().length;
 
   // Encerra a sessão no Supabase (best-effort) e apaga o token local
   if (sessao) {
@@ -1194,7 +1207,6 @@ function sair() {
   }
   sessao = null;
   try { localStorage.removeItem(SESSAO_KEY); } catch(e) { /* silencioso */ }
-  try { localStorage.removeItem(FILA_OFFLINE_KEY); } catch(e) { /* silencioso */ }
 
   // Respostas da API podem conter dados de outro perfil neste aparelho.
   if ('caches' in window) {
@@ -1243,6 +1255,9 @@ function sair() {
     .forEach(id => { document.getElementById(id).style.display=''; });
   const abasEl = document.getElementById('abas-entregas');
   if (abasEl) abasEl.style.display='';
+  if (acoesOfflinePendentes) {
+    toast(`${acoesOfflinePendentes} entrega(s) offline foram preservadas e serão sincronizadas no próximo acesso do entregador.`);
+  }
 }
 
 // ============================================================
@@ -1349,6 +1364,7 @@ function navegarPara(id) {
 // CARREGAR DADOS
 // ============================================================
 async function carregarTudo() {
+  const loginInicial = usuario?.login;
   if (!MODO_DEMO) {
     const [resPed, resCli, resProd] = await Promise.all([
       supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
@@ -1359,6 +1375,7 @@ async function carregarTudo() {
       toast('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
     }
+    if (!usuario || usuario.login !== loginInicial) return;
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
     todosOsPedidos = (resPed.dados || []).map(p => ({
@@ -1380,6 +1397,10 @@ async function carregarTudo() {
   // Limpa checklists antigos (>30 dias) e órfãos (pedidos deletados)
   if (usuario.perfil === 'entregador') limpezaChecklistAntigos();
 
+  // Uma entrega feita offline pode ter sobrevivido a um logout ou sessão
+  // expirada. Tenta sincronizar imediatamente após o próximo login correto.
+  if (navigator.onLine) processarFilaOffline();
+
   // Inicia sincronização automática a cada 30 segundos
   iniciarAutoRefresh();
 }
@@ -1392,6 +1413,7 @@ async function sincronizarDados() {
   // Não sincroniza em modo demo ou com modais abertos (não quebrar a UX)
   if (MODO_DEMO || !usuario) return;
   if (document.querySelector('.modal-overlay.aberto')) return;
+  const loginInicial = usuario.login;
 
   try {
     const [resPed, resCli, resProd] = await Promise.all([
@@ -1401,6 +1423,7 @@ async function sincronizarDados() {
     ]);
 
     if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
+    if (!usuario || usuario.login !== loginInicial) return;
 
     // Detecta se algo mudou (comparando hash completo dos pedidos)
     const novosPedidos = (resPed.dados || []).map(p => ({
@@ -1412,14 +1435,16 @@ async function sincronizarDados() {
 
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
-      const itensHash = (p.itens || []).map(i => `${i.produto_id}:${i.qtd}:${i.preco_unit||0}`).sort().join(',');
-      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_entregue_em||''}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazos_boleto||''}|${itensHash}`;
+      const itensHash = (p.itens || []).map(i =>
+        `${i.produto_id}:${i.nome||''}:${i.qtd}:${i.preco_unit ?? ''}:${i.preco_catalogo ?? ''}`
+      ).sort().join(',');
+      return `${p.id}|${p.status}|${p.status_pagamento||''}|${p.forma_pagamento_real||''}|${p.data_pagamento||''}|${p.valor}|${p.cliente_id}|${p.data_entrega}|${p.data_entregue_em||''}|${p.data_vencimento}|${p.observacao||''}|${p.forma_pagamento||''}|${p.prazo_dias ?? ''}|${p.prazos_boleto||''}|${p.vendedor||''}|${itensHash}`;
     };
     // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
     // (Antes comparava por length — preço editado pelo admin não aparecia
     //  na tela do vendedor até a quantidade de itens mudar.)
     const hashProduto = (p) => `${p.id}|${p.nome}|${p.preco}|${p.preco_custo||''}|${p.categoria||''}`;
-    const hashCliente = (c) => `${c.id}|${c.nome}|${c.whatsapp||''}|${c.endereco||''}|${c.email||''}|${c.observacao||''}`;
+    const hashCliente = (c) => `${c.id}|${c.nome}|${c.responsavel||''}|${c.whatsapp||''}|${c.endereco||''}|${c.email||''}|${c.cnpj_cpf||''}|${c.tipo_pessoa||''}|${c.inscricao_estadual||''}|${c.observacao||''}`;
     const mudou =
       novosPedidos.map(hashPedido).join('\n') !== todosOsPedidos.map(hashPedido).join('\n') ||
       (resCli.dados || []).map(hashCliente).join('\n') !== todosOsClientes.map(hashCliente).join('\n') ||
@@ -1908,13 +1933,8 @@ async function executarResetPedidos() {
 
   try {
     if (!MODO_DEMO) {
-      // 1º apaga TODOS os itens_pedido
-      const resItens = await supabase('itens_pedido','DELETE',null,'?id=gt.0');
-      if (!resItens.ok) {
-        toast('Erro ao apagar itens dos pedidos.\n\nDetalhes: ' + (resItens.erro || 'desconhecido'));
-        return;
-      }
-      // 2º apaga TODOS os pedidos
+      // A FK remove os itens em cascata. Apagar primeiro os itens poderia
+      // deixar pedidos vazios se a segunda chamada falhasse.
       const resPed = await supabase('pedidos','DELETE',null,'?id=gt.0');
       if (!resPed.ok) {
         toast('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
@@ -2756,10 +2776,10 @@ async function marcarPagoCliente() {
       data_pagamento: hojeStr,
     };
     if (!MODO_DEMO) {
-      const res = await Promise.all(paraPagar.map(p =>
-        supabase('pedidos','PATCH', payload, `?id=eq.${p.id}`)
-      ));
-      if (res.some(r=>!r.ok)) { toast('Erro ao atualizar. Tente novamente.'); return; }
+      // Uma única instrução evita baixa parcial se a conexão cair entre pedidos.
+      const ids = paraPagar.map(p => Number(p.id)).filter(Number.isFinite);
+      const res = await supabase('pedidos','PATCH', payload, `?id=in.(${ids.join(',')})`);
+      if (!res.ok) { toast('Erro ao atualizar. Tente novamente.'); return; }
     }
     paraPagar.forEach(p => { Object.assign(p, payload); });
     fecharModal('modal-fin-cliente');
@@ -3577,12 +3597,7 @@ async function excluirPedido(id) {
   salvando = true;
   try {
     if (!MODO_DEMO) {
-      // Apaga os itens primeiro (com on delete cascade já apagaria, mas garantimos)
-      const resItens = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${id}`);
-      if (!resItens.ok) {
-        console.warn(`Falha ao deletar itens do pedido ${id} antes de deletar o pedido.`);
-      }
-      // Apaga o pedido
+      // A FK remove os itens em cascata; assim uma falha não deixa o pedido vazio.
       const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
       if (!res.ok) {
         toast('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
@@ -4316,8 +4331,21 @@ function gravarFilaOffline(fila) {
 
 function adicionarNaFilaOffline(acao) {
   const fila = lerFilaOffline();
-  fila.push({ ...acao, ts: Date.now() });
+  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now() };
+  const repetida = fila.findIndex(a =>
+    a.tipo === nova.tipo && a.pedidoId === nova.pedidoId &&
+    (a.usuarioLogin || null) === nova.usuarioLogin
+  );
+  if (repetida >= 0) fila[repetida] = nova;
+  else fila.push(nova);
   gravarFilaOffline(fila);
+}
+
+function acaoOfflinePertenceAoUsuario(acao) {
+  if (!usuario) return false;
+  if (acao.usuarioLogin) return acao.usuarioLogin === usuario.login;
+  // Compatibilidade com ações criadas antes de a fila ser identificada.
+  return usuario.perfil === 'entregador';
 }
 
 let _processandoFila = false;
@@ -4327,10 +4355,15 @@ async function processarFilaOffline() {
   if (!navigator.onLine) return;
   const fila = lerFilaOffline();
   if (!fila.length) return;
+  const loginInicial = usuario?.login;
 
   _processandoFila = true;
   const sucesso = [], falha = [];
   for (const acao of fila) {
+    if (!acaoOfflinePertenceAoUsuario(acao)) {
+      falha.push(acao);
+      continue;
+    }
     try {
       if (acao.tipo === 'marcar-entregue') {
         const res = await supabase('pedidos', 'PATCH', acao.payload, `?id=eq.${acao.pedidoId}`);
@@ -4352,7 +4385,7 @@ async function processarFilaOffline() {
   gravarFilaOffline(falha);
   _processandoFila = false;
 
-  if (sucesso.length) {
+  if (sucesso.length && usuario?.login === loginInicial) {
     // Re-renderiza telas afetadas após sincronizar
     if (typeof agendarRender === 'function') {
       agendarRender('dashboard');
