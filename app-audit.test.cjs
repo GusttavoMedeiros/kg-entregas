@@ -103,6 +103,7 @@ vm.runInNewContext(
   assert.match(app, /c\.inscricao_estadual\|\|''/);
   assert.match(app, /if \(!usuario \|\| usuario\.login !== loginInicial\) return/);
   assert.match(html, /<label>Entrega prevista<\/label>/);
+  assert.match(html, /<link rel="icon" href="app-icon-192\.png" type="image\/png">/);
 
   console.log('Auditoria: datas, refresh, fila offline, exclusões, baixa e sincronização validados.');
 })().catch(error => {
