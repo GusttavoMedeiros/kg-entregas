@@ -35,8 +35,9 @@ Implementadas na branch `codex/robustez-kg-entregas`, a partir de
 
 ## Validação realizada
 
-Ambiente isolado, dados fictícios, Chrome e PostgreSQL 17 via PGlite, reconstruído
-a partir do esquema observado em produção. Nenhum pedido real foi criado,
+Ambiente isolado, dados fictícios, Chrome e PostgreSQL 18.3 via PGlite 0.5.8,
+com o esquema reconstruído a partir da produção, que usa PostgreSQL 17.
+Nenhum pedido real foi criado,
 alterado ou excluído para testar.
 
 | Verificação | Resultado |
@@ -56,7 +57,7 @@ paginação e limites mensais.
 Os testes de navegador e PWA, resultados e capturas estão na pasta local irmã
 `kg-entregas-verificacao-20260908`. Os testes permanentes do código e banco
 estão neste repositório. Android/iOS físicos e concorrência entre servidores
-reais não foram ensaiados; os resultados não equivalem a garantia de ausência
+reais e a migração no PostgreSQL 17 do servidor não foram ensaiados; os resultados não equivalem a garantia de ausência
 de todos os defeitos possíveis.
 
 ## Como repetir os testes permanentes
