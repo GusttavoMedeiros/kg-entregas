@@ -1,7 +1,9 @@
 # Correções verificadas em 08/09/2026
 
 Implementadas na branch `codex/robustez-kg-entregas`, a partir de
-`f7cc43dbd68d9f5f1add2829825dbf6dbcbea119`. Publicação em produção pendente.
+`f7cc43dbd68d9f5f1add2829825dbf6dbcbea119`. Publicadas em produção em
+08/09/2026, às 13h01 (Brasil), pelo PR #11, merge
+`22ebaacbb3e1c73109b1282eee99126bacabbb85`.
 
 ## Comportamento resultante
 
@@ -57,8 +59,10 @@ paginação e limites mensais.
 Os testes de navegador e PWA, resultados e capturas estão na pasta local irmã
 `kg-entregas-verificacao-20260908`. Os testes permanentes do código e banco
 estão neste repositório. Android/iOS físicos e concorrência entre servidores
-reais e a migração no PostgreSQL 17 do servidor não foram ensaiados; os resultados não equivalem a garantia de ausência
-de todos os defeitos possíveis.
+reais não foram ensaiados. A migração foi aplicada ao PostgreSQL 17 em produção,
+com verificação de leitura sob os três perfis e comparação integral dos dados.
+As escritas de teste permaneceram no ambiente isolado; os resultados não
+equivalem a garantia de ausência de todos os defeitos possíveis.
 
 ## Como repetir os testes permanentes
 
@@ -81,18 +85,28 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/robustez.sql
 Esses scripts SQL usam transações com `rollback`; não devem ser executados
 contra o banco operacional.
 
-## Publicação coordenada
+## Publicação realizada e conferida
 
 A nova interface exige a migração
 `supabase/migrations/20260908154035_atomic_orders_and_restricted_costs.sql`.
 Ela copia os custos para a tabela protegida antes de remover a coluna antiga.
 
-1. Confirmar backup do banco e uma janela curta de atualização.
-2. Aplicar a migração pelo Supabase em uma transação. Se usar `psql`, acrescentar
-   `--single-transaction -v ON_ERROR_STOP=1`.
-3. Publicar esta versão do site imediatamente depois e recarregar os aplicativos
-   conectados, verificando o cache `kg-v22` e o script `v=49`.
-4. Conferir leitura dos três perfis e a sincronização das filas pendentes.
+1. Backup dos seis conjuntos de dados e metadados do esquema salvo localmente,
+   fora do GitHub. O ensaio da migração sobre essa cópia preservou todos os dados.
+2. Migração aplicada pelo Supabase e registrada como
+   `20260908160059_atomic_orders_and_restricted_costs`.
+3. PR #11 integrado à `main`; Vercel confirmou publicação em produção. Os
+   arquivos públicos `index.html`, `app.js` e `sw.js` correspondem aos arquivos
+   aprovados, com script `v=49` e cache `kg-v22`.
+4. Comparação antes/depois: 12 pedidos, 46 itens, 12 clientes, 58 produtos e
+   35 registros em cada histórico, sem alterações, inclusões ou exclusões.
+   Os 58 custos foram preservados na nova tabela.
+5. Leitura em produção: administrador acessa os custos; vendedor e entregador
+   não acessam custos. A tela de acesso pública foi conferida no navegador.
+
+Backup, comparação e evidências da publicação ficaram guardados neste PC.
+Quem já estiver com o aplicativo aberto deve reabri-lo conectado à internet
+para receber a versão nova. Nenhuma venda de teste foi criada em produção.
 
 Versões antigas gravam pedidos em várias chamadas e não são compatíveis com
 a nova validação do total. Por isso banco e site precisam ser publicados juntos;
