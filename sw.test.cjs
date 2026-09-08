@@ -90,8 +90,8 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v21'/);
-  assert.match(index, /app\.js\?v=48/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v22'/);
+  assert.match(index, /app\.js\?v=49/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');

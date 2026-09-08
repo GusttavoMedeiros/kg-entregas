@@ -2,10 +2,13 @@
 begin;
 
 insert into public.clientes (id, nome) values (-900001, 'Cliente de teste');
+insert into public.produtos (id,nome,preco) values (-900001,'Produto de teste',10);
 insert into public.pedidos (id, cliente_id, descricao, valor, status, vendedor)
 values
   (-900001, -900001, 'Pedido admin', 10, 'pendente', 'admin'),
   (-900002, -900001, 'Pedido vendedor', 10, 'pendente', 'vendedor');
+insert into public.itens_pedido(pedido_id,produto_id,nome,qtd,preco_unit)
+values (-900001,-900001,'Produto de teste',1,10),(-900002,-900001,'Produto de teste',1,10);
 
 set local role authenticated;
 select set_config(
@@ -53,4 +56,5 @@ with alterados as (
 )
 select 1 / case when count(*) = 1 then 1 else 0 end from alterados;
 
+set constraints all immediate;
 rollback;
