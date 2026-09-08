@@ -47,6 +47,9 @@ const filaContexto = {
   },
   console,
   Date,
+  crypto: require('node:crypto').webcrypto,
+  navigator: {},
+  document: { getElementById: () => null },
 };
 const inicioFila = app.indexOf("const FILA_OFFLINE_KEY = 'kg-fila-offline'");
 const fimFila = app.indexOf('let _processandoFila', inicioFila);
@@ -75,8 +78,8 @@ vm.runInNewContext(
   assert.equal(auth.sessao, null);
   assert.equal(auth.usuario, null);
 
-  filaContexto.adicionarTeste({ tipo: 'marcar-entregue', pedidoId: 10, payload: { observacao: 'primeira' } });
-  filaContexto.adicionarTeste({ tipo: 'marcar-entregue', pedidoId: 10, payload: { observacao: 'final' } });
+  await filaContexto.adicionarTeste({ tipo: 'marcar-entregue', pedidoId: 10, payload: { observacao: 'primeira' } });
+  await filaContexto.adicionarTeste({ tipo: 'marcar-entregue', pedidoId: 10, payload: { observacao: 'final' } });
   assert.equal(filaContexto.lerTeste().length, 1);
   assert.equal(filaContexto.lerTeste()[0].usuarioLogin, 'entregador');
   assert.equal(filaContexto.lerTeste()[0].payload.observacao, 'final');

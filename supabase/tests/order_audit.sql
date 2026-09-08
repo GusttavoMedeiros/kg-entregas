@@ -2,6 +2,7 @@ begin;
 
 insert into public.clientes (id, nome)
 values (-910001, 'Cliente teste auditoria');
+insert into public.produtos(id,nome,preco) values(-910001,'Produto teste auditoria',12);
 
 set local role authenticated;
 select set_config(
@@ -16,6 +17,9 @@ values (-910001, -910001, 'Pedido inicial', 10, 'pendente', 'vendedor');
 update public.pedidos
 set descricao = 'Pedido editado', valor = 12
 where id = -910001;
+
+insert into public.itens_pedido(pedido_id,produto_id,nome,qtd,preco_unit)
+values(-910001,-910001,'Produto teste auditoria',1,12);
 
 do $$
 begin
@@ -73,4 +77,5 @@ begin
 end
 $$;
 
+set constraints all immediate;
 rollback;

@@ -169,6 +169,12 @@ function dadosEntregaConcluida(agora = new Date()) {
   return { status: 'entregue', data_entregue_em: dataHojeBrasil(agora) };
 }
 
+function periodoMesBrasil(agora = new Date()) {
+  const [ano, mes] = dataHojeBrasil(agora).split('-').map(Number);
+  const inicio = deslocamento => new Date(Date.UTC(ano, mes - 1 + deslocamento, 1)).toISOString().slice(0,10);
+  return { inicioMes:inicio(0), inicioMesPassado:inicio(-1), inicioProximoMes:inicio(1) };
+}
+
 function dataBR(d) {
   if (!d) return '–';
   const dt = new Date(d + 'T12:00:00');
@@ -904,7 +910,8 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
   if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
 
   // Renova o token proativamente se estiver perto de expirar
-  await garantirTokenValido();
+  if (navigator.onLine) await garantirTokenValido();
+  if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
 
   try {
     const headers = {
@@ -947,10 +954,10 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
-      return { ok:false, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
+      return { ok:false, rede:true, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
     }
     console.error(`[Supabase ${metodo} ${tabela}] Erro de rede:`, e);
-    return { ok:false, erro: e.message };
+    return { ok:false, rede:true, erro: e.message };
   }
 }
 
@@ -1195,7 +1202,9 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
-  const acoesOfflinePendentes = lerFilaOffline().length;
+  let acoesOfflinePendentes = 0;
+  try { acoesOfflinePendentes = lerFilaOffline().length; }
+  catch (e) { toast('A fila offline não pôde ser lida. Seus dados serão preservados ao sair.'); }
 
   // Encerra a sessão no Supabase (best-effort) e apaga o token local
   if (sessao) {
@@ -1363,14 +1372,42 @@ function navegarPara(id) {
 // ============================================================
 // CARREGAR DADOS
 // ============================================================
+async function listarTodos(tabela, select='*') {
+  const dados = [];
+  let ultimo = 0;
+  while (true) {
+    const res = await supabase(tabela,'GET',null,
+      `?select=${select}&order=id.asc&limit=500&id=gt.${ultimo}`);
+    if (!res.ok) return res;
+    if (!Array.isArray(res.dados)) return { ok:false, erro:'Resposta de dados inválida.' };
+    if (!res.dados.length) return { ok:true, dados };
+    const proximo = Number(res.dados.at(-1).id);
+    if (!Number.isSafeInteger(proximo) || proximo <= ultimo) return { ok:false, erro:'Paginação inválida.' };
+    dados.push(...res.dados);
+    ultimo = proximo;
+  }
+}
+
+async function carregarListas() {
+  const resultados = await Promise.all([
+    listarTodos('pedidos','*,clientes(nome),itens_pedido(*)'),
+    listarTodos('clientes'),
+    usuario?.perfil === 'entregador' ? { ok:true, dados:[] } : listarTodos('produtos','*,produto_custos(preco_custo)'),
+  ]);
+  for (const res of resultados.slice(1)) {
+    if (res.ok) res.dados.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
+  }
+  const produtos = resultados[2];
+  if (produtos.ok) produtos.dados = produtos.dados.map(p => ({ ...p,
+    preco_custo: p.produto_custos?.preco_custo ?? null,
+  }));
+  return resultados;
+}
+
 async function carregarTudo() {
   const loginInicial = usuario?.login;
   if (!MODO_DEMO) {
-    const [resPed, resCli, resProd] = await Promise.all([
-      supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
-      supabase('clientes','GET',null,'?order=nome.asc'),
-      supabase('produtos','GET',null,'?order=nome.asc'),
-    ]);
+    const [resPed, resCli, resProd] = await carregarListas();
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
       toast('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
       return;
@@ -1384,6 +1421,7 @@ async function carregarTudo() {
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
+    aplicarFilaOffline(todosOsPedidos);
   }
   renderizarDashboard();
   renderizarEntregas(filtroEntregas);
@@ -1409,18 +1447,16 @@ async function carregarTudo() {
 // SINCRONIZAÇÃO AUTOMÁTICA (a cada 30s)
 // Pega pedidos/clientes/produtos novos sem o usuário precisar recarregar
 // ============================================================
+let sincronizandoDados = false;
 async function sincronizarDados() {
   // Não sincroniza em modo demo ou com modais abertos (não quebrar a UX)
-  if (MODO_DEMO || !usuario) return;
+  if (MODO_DEMO || !usuario || sincronizandoDados || !navigator.onLine || document.hidden) return;
   if (document.querySelector('.modal-overlay.aberto')) return;
   const loginInicial = usuario.login;
+  sincronizandoDados = true;
 
   try {
-    const [resPed, resCli, resProd] = await Promise.all([
-      supabase('pedidos','GET',null,'?order=data_entrega.asc&select=*,clientes(nome),itens_pedido(*)'),
-      supabase('clientes','GET',null,'?order=nome.asc'),
-      supabase('produtos','GET',null,'?order=nome.asc'),
-    ]);
+    const [resPed, resCli, resProd] = await carregarListas();
 
     if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
     if (!usuario || usuario.login !== loginInicial) return;
@@ -1432,6 +1468,8 @@ async function sincronizarDados() {
       itens: p.itens_pedido || [],
       descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
     }));
+
+    aplicarFilaOffline(novosPedidos);
 
     // Hash incluindo TODOS os campos que importam para a UI
     const hashPedido = (p) => {
@@ -1475,6 +1513,8 @@ async function sincronizarDados() {
     }
   } catch (e) {
     console.warn('Sincronização falhou:', e);
+  } finally {
+    sincronizandoDados = false;
   }
 }
 
@@ -1506,22 +1546,18 @@ function handleVisibility() {
 // ============================================================
 function renderizarDashboard() {
   if (usuario?.perfil !== 'admin') return;
-  const hoje = new Date();
-  const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const inicioMesPassado = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
-  const fimMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  const { inicioMes, inicioMesPassado, inicioProximoMes } = periodoMesBrasil();
 
   // Pedidos do mês (FATURAMENTO REAL = entregues E PAGOS)
   const pedidosMes = todosOsPedidos.filter(p => {
     const data = dataRealEntrega(p);
     return p.status === 'entregue' && foiPago(p) && data &&
-      new Date(data+'T12:00:00') >= inicioMes;
+      data >= inicioMes && data < inicioProximoMes;
   });
   const pedidosMesPassado = todosOsPedidos.filter(p => {
     const data = dataRealEntrega(p);
     return p.status === 'entregue' && foiPago(p) && data &&
-      new Date(data+'T12:00:00') >= inicioMesPassado &&
-      new Date(data+'T12:00:00') <= fimMesPassado;
+      data >= inicioMesPassado && data < inicioMes;
   });
 
   const faturamento = pedidosMes.reduce((s,p)=>s+(Number(p.valor)||0),0);
@@ -1595,22 +1631,18 @@ function renderizarDashboard() {
 // ============================================================
 function renderizarInicioVendedor() {
   if (usuario?.perfil !== 'vendedor') return;
-  const hoje = new Date();
-  const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const inicioMesPassado = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
-  const fimMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  const { inicioMes, inicioMesPassado, inicioProximoMes } = periodoMesBrasil();
 
   const meusPedidos = todosOsPedidos.filter(p => p.vendedor === usuario.login);
   const meusPedidosMes = meusPedidos.filter(p => {
     const data = dataRealEntrega(p);
     return p.status === 'entregue' && foiPago(p) && data &&
-      new Date(data+'T12:00:00') >= inicioMes;
+      data >= inicioMes && data < inicioProximoMes;
   });
   const meusPedidosMesAnt = meusPedidos.filter(p => {
     const data = dataRealEntrega(p);
     return p.status === 'entregue' && foiPago(p) && data &&
-      new Date(data+'T12:00:00') >= inicioMesPassado &&
-      new Date(data+'T12:00:00') <= fimMesPassado;
+      data >= inicioMesPassado && data < inicioMes;
   });
   const minhasVendas = meusPedidosMes.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const vendasAnt = meusPedidosMesAnt.reduce((s,p)=>s+(Number(p.valor)||0),0);
@@ -2008,11 +2040,12 @@ function renderizarEntregas(filtro) {
   }
 }
 
-// Extrai bairro do endereço (último item após vírgula ou hífen)
+// Endereço salvo: logradouro, número, bairro, município/UF, CEP.
 function extrairBairro(endereco) {
   if (!endereco) return 'Sem endereço';
-  const partes = endereco.split(/[,\-]/).map(s => s.trim()).filter(Boolean);
-  return partes[partes.length - 1] || 'Sem endereço';
+  const partes = endereco.split(',').map(s => s.trim()).filter(Boolean);
+  const bairro = partes.length >= 3 ? partes[2].split(/\s+-\s+/)[0] : '';
+  return bairro && !/^(CEP\b|\d{5}[- ]?\d{3}$)/i.test(bairro) ? bairro : 'Bairro não informado';
 }
 
 // Renderiza entregas agrupadas por bairro
@@ -2627,7 +2660,7 @@ function renderizarFinanceiro(filtro) {
   todosOsPedidos.forEach(p => { if (porCliente[p.cliente_id]) porCliente[p.cliente_id].pedidos.push(p); });
 
   let totalDev=0, totalRec=0;
-  const mes = new Date().toISOString().slice(0,7);
+  const mes = fmt(new Date()).slice(0,7);
   Object.values(porCliente).forEach(({pedidos}) => {
     pedidos.forEach(p => {
       // DEVE: ainda não foi pago de verdade (pendente OU entregue sem pagar)
@@ -2794,7 +2827,9 @@ async function marcarPagoCliente() {
 // ============================================================
 // MODAL NOVO PEDIDO
 // ============================================================
+let chaveNovoPedido = null;
 function abrirModalNovoPedido(idEdit) {
+  if (!idEdit) chaveNovoPedido = crypto.randomUUID();
   const hoje = fmt(new Date());
   document.getElementById('busca-produto-modal').value = '';
   document.getElementById('lista-produto-modal').innerHTML = '';
@@ -2839,7 +2874,7 @@ function abrirModalNovoPedido(idEdit) {
       const produto = prod || { id: it.produto_id, nome: it.nome, preco: it.preco_unit };
       const existente = carrinho.find(c => c.produto.id === produto.id);
       // Compat: itens antigos não têm preco_catalogo — usa o do catálogo atual ou o próprio preco_unit
-      const precoUnit = Number(it.preco_unit) || Number(produto.preco) || 0;
+      const precoUnit = Number(it.preco_unit ?? produto.preco ?? 0);
       const precoCat  = (it.preco_catalogo != null)
         ? Number(it.preco_catalogo)
         : (prod ? Number(prod.preco) : precoUnit);
@@ -3081,120 +3116,35 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
     preco_catalogo: precoCatDe(c),
   }));
 
-  // === EDIÇÃO ===
-  if (pedidoEmEdicao) {
-    if (pedidoEmEdicao.status === 'entregue') {
-      toast('Pedido já entregue não pode ser editado.');
-      return;
-    }
-    if (!podeEditarPedido(pedidoEmEdicao)) {
-      toast('Você não tem permissão para editar este pedido.');
-      return;
-    }
-    const pedido_id = pedidoEmEdicao.id;
-
-    if (!MODO_DEMO) {
-      // Atualiza o pedido
-      const resPed = await supabase('pedidos','PATCH',{
-        cliente_id, descricao, valor,
-        data_entrega, data_vencimento: data_vencimento||null,
-        observacao: obs,
-        forma_pagamento,
-        prazo_dias: prazo_dias || null,
-        prazos_boleto: prazos_boleto || null,
-      }, `?id=eq.${pedido_id}`);
-      if (!resPed.ok) {
-        toast('Erro ao atualizar pedido.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
-        return;
-      }
-      // Apaga itens antigos
-      const resDel = await supabase('itens_pedido','DELETE',null,`?pedido_id=eq.${pedido_id}`);
-      if (!resDel.ok) {
-        toast('Erro ao limpar itens antigos.\n\nDetalhes: ' + (resDel.erro || 'desconhecido'));
-        return;
-      }
-      // Insere itens novos (preco_catalogo permite auditar ajustes de preço depois)
-      const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-        pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
-        preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
-      })));
-      if (resItens.some(r => !r.ok)) {
-        toast('Erro ao salvar itens atualizados. Verifique no banco.');
-        return;
-      }
-    }
-
-    // Atualiza local
-    const idx = todosOsPedidos.findIndex(p => p.id === pedido_id);
-    if (idx >= 0) {
-      Object.assign(todosOsPedidos[idx], {
-        cliente_id,
-        cliente_nome: cliente ? cliente.nome : todosOsPedidos[idx].cliente_nome,
-        descricao, valor, data_entrega,
-        data_vencimento: data_vencimento || null,
-        observacao: obs,
-        forma_pagamento,
-        prazo_dias: prazo_dias || null,
-        prazos_boleto: prazos_boleto || null,
-        itens,
-      });
-    }
-
-    pedidoEmEdicao = null;
-    fecharModal('modal-pedido');
-    agendarRender('dashboard');
-    agendarRender('entregas');
-    if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
-    if (usuario.perfil === 'admin')    agendarRender('financeiro');
+  if (pedidoEmEdicao && !podeEditarPedido(pedidoEmEdicao)) {
+    toast('Pedido indisponível para edição.');
     return;
   }
-
-  // === NOVO PEDIDO ===
-  const novoPedido = {
-    id: Date.now(), cliente_id, cliente_nome: cliente?.nome||'–',
-    descricao, valor, status:'pendente', data_entrega,
-    data_vencimento: data_vencimento||null, observacao:obs,
-    forma_pagamento, prazo_dias: prazo_dias || null,
-    prazos_boleto: prazos_boleto || null,
-    itens, vendedor: usuario.login,
-  };
-
+  const idEdit = pedidoEmEdicao?.id || null;
+  const dados = { cliente_id, data_entrega, data_vencimento: data_vencimento || null,
+    observacao: obs, forma_pagamento, prazo_dias: prazo_dias || null,
+    prazos_boleto: prazos_boleto || null };
+  let salvo = { ...dados, id: idEdit || Date.now(), descricao, valor, itens,
+    status:'pendente', vendedor:usuario.login };
   if (!MODO_DEMO) {
-    const resPed = await supabase('pedidos','POST',{
-      cliente_id, descricao, valor, status:'pendente',
-      data_entrega, data_vencimento:data_vencimento||null,
-      observacao:obs, vendedor:usuario.login,
-      forma_pagamento, prazo_dias: prazo_dias || null,
-      prazos_boleto: prazos_boleto || null,
+    const res = await supabase('rpc/salvar_pedido','POST', {
+      p_pedido: dados, p_itens: itens, p_id: idEdit, p_chave: chaveNovoPedido,
     });
-    if (!resPed.ok||!resPed.dados?.[0]) {
-      toast('Erro ao salvar pedido.\n\nDetalhes: ' + (resPed.erro || 'sem resposta'));
+    if (!res.ok || !res.dados?.id) {
+      toast('Pedido não salvo. Seus itens continuam aqui para tentar novamente.\n\n' + (res.erro || 'Sem resposta do servidor.'));
       return;
     }
-    const pedido_id = resPed.dados[0].id;
-    novoPedido.id = pedido_id;
-    // Salvar itens do pedido e VERIFICAR cada um (preco_catalogo = auditoria de ajustes)
-    const resItens = await Promise.all(itens.map(it => supabase('itens_pedido','POST',{
-      pedido_id, produto_id:it.produto_id, nome:it.nome, qtd:it.qtd,
-      preco_unit:it.preco_unit, preco_catalogo:it.preco_catalogo
-    })));
-    const falhouItens = resItens.some(r => !r.ok);
-    if (falhouItens) {
-      // Rollback: deleta o pedido criado (best-effort, loga se falhar)
-      const rollback = await supabase('pedidos','DELETE',null,`?id=eq.${pedido_id}`);
-      if (!rollback.ok) {
-        console.warn(`Rollback do pedido ${pedido_id} falhou. Verifique manualmente no banco.`);
-      }
-      toast('Erro ao salvar itens do pedido. Tente novamente.');
-      return;
-    }
+    salvo = res.dados;
   }
-
-  todosOsPedidos.push(novoPedido);
+  salvo.cliente_nome = cliente?.nome || '–';
+  const idx = todosOsPedidos.findIndex(p => p.id === salvo.id);
+  if (idx >= 0) Object.assign(todosOsPedidos[idx], salvo);
+  else todosOsPedidos.push(salvo);
   fecharModal('modal-pedido');
   agendarRender('dashboard');
   agendarRender('entregas');
-  if (usuario.perfil==='vendedor') agendarRender('meus-pedidos');
+  if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
+  if (usuario.perfil === 'admin') agendarRender('financeiro');
 }
 
 // ============================================================
@@ -3524,7 +3474,7 @@ async function confirmarEntrega() {
     if (!MODO_DEMO) {
       // Se está offline, enfileira em vez de tentar enviar (e falhar)
       if (!navigator.onLine) {
-        adicionarNaFilaOffline({
+        await adicionarNaFilaOffline({
           tipo: 'marcar-entregue',
           pedidoId: id,
           payload,
@@ -3536,11 +3486,11 @@ async function confirmarEntrega() {
           'Continue suas entregas normalmente.'
         );
       } else {
-        const res = await supabase('pedidos','PATCH', payload, `?id=eq.${id}`);
+        const res = await supabase('rpc/concluir_entrega','POST', { p_id:id, p_dados:payload });
         if (!res.ok) {
           // Se falhou por timeout (rede ruim), também enfileira
-          if (res.erro && /tempo esgotado|timeout|offline/i.test(res.erro)) {
-            adicionarNaFilaOffline({
+          if (res.rede || res.status === 408 || res.status === 429 || res.status >= 500) {
+            await adicionarNaFilaOffline({
               tipo: 'marcar-entregue',
               pedidoId: id,
               payload,
@@ -3553,6 +3503,8 @@ async function confirmarEntrega() {
             toast('Erro ao confirmar entrega.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
             return;
           }
+        } else {
+          Object.assign(payload, res.dados);
         }
       }
     }
@@ -3567,6 +3519,8 @@ async function confirmarEntrega() {
     agendarRender('dashboard');
     agendarRender('entregas');
     if (usuario.perfil==='admin') agendarRender('financeiro');
+  } catch (e) {
+    toast('A entrega não foi registrada. ' + e.message);
   } finally {
     salvando = false;
   }
@@ -3678,57 +3632,25 @@ async function salvarProduto() {
   const idEdit    = document.getElementById('produto-id').value;
 
   if (!nome) { toast('Informe o nome do produto.'); return; }
-  if (!preco) { toast('Informe o preço de venda.'); return; }
+  if (!Number.isFinite(preco) || preco <= 0 || (preco_custo != null && !Number.isFinite(preco_custo))) { toast('Informe preços válidos.'); return; }
 
   salvando = true;
   botaoSalvando('salvarProduto', true, 'Salvar Produto');
   try {
-    if (idEdit) {
-      // === EDITAR ===
-      const id = Number(idEdit);
-      if (!id) { toast('ID inválido.'); return; }
-      const produtoAntigo = todosOsProdutos.find(p => p.id === id);
-      const precoMudou = produtoAntigo && (Number(produtoAntigo.preco) !== preco);
-      const custoMudou = produtoAntigo && (Number(produtoAntigo.preco_custo || 0) !== Number(preco_custo || 0));
-
-      if (!MODO_DEMO) {
-        const res = await supabase('produtos','PATCH', { nome, categoria, preco, preco_custo }, `?id=eq.${id}`);
-        if (!res.ok) {
-          toast('Erro ao editar produto.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
-          return;
-        }
-        // Registra histórico SÓ se algum preço mudou
-        if (precoMudou || custoMudou) {
-          await supabase('historico_precos','POST', {
-            produto_id: id,
-            preco_venda: preco,
-            preco_custo,
-            alterado_por: usuario.login,
-          });
-        }
+    let salvo = { id: Number(idEdit) || Date.now(), nome, categoria, preco, preco_custo };
+    if (!MODO_DEMO) {
+      const res = await supabase('rpc/salvar_produto','POST', {
+        p_produto: { nome, categoria, preco, preco_custo }, p_id: Number(idEdit) || null,
+      });
+      if (!res.ok || !res.dados?.id) {
+        toast('Produto não salvo. Tente novamente.\n\n' + (res.erro || 'Sem resposta do servidor.'));
+        return;
       }
-      const idx = todosOsProdutos.findIndex(p=>p.id===id);
-      if (idx >= 0) Object.assign(todosOsProdutos[idx], { nome, categoria, preco, preco_custo });
-    } else {
-      // === NOVO ===
-      const novo = { id: Date.now(), nome, categoria, preco, preco_custo };
-      if (!MODO_DEMO) {
-        const res = await supabase('produtos','POST', { nome, categoria, preco, preco_custo });
-        if (!res.ok || !res.dados?.[0]) {
-          toast('Erro ao salvar produto.\n\nDetalhes: ' + (res.erro || 'sem resposta'));
-          return;
-        }
-        novo.id = res.dados[0].id;
-        // Primeiro registro do histórico
-        await supabase('historico_precos','POST', {
-          produto_id: novo.id,
-          preco_venda: preco,
-          preco_custo,
-          alterado_por: usuario.login,
-        });
-      }
-      todosOsProdutos.push(novo);
+      salvo = res.dados;
     }
+    const idx = todosOsProdutos.findIndex(p => p.id === salvo.id);
+    if (idx >= 0) Object.assign(todosOsProdutos[idx], salvo);
+    else todosOsProdutos.push(salvo);
     fecharModal('modal-produto');
     rerenderizarCatalogoMantendoBusca();
   } finally {
@@ -4217,6 +4139,7 @@ function abrirModal(id) {
     // Salva a posição de scroll da área que rola (desktop = .conteudo)
     const sc = document.querySelector('.conteudo');
     _scrollSalvo = sc ? sc.scrollTop : window.scrollY;
+    m.parentElement.appendChild(m); // O último modal aberto fica acima dos anteriores.
     m.classList.add('aberto');
     document.body.classList.add('modal-aberto'); // congela o app por trás
   }
@@ -4250,7 +4173,7 @@ document.addEventListener('keydown', e => {
       fecharViaPedido();
       return;
     }
-    const aberto = document.querySelector('.modal-overlay.aberto');
+    const aberto = [...document.querySelectorAll('.modal-overlay.aberto')].at(-1);
     if (aberto) {
       fecharModal(aberto.id);
     }
@@ -4317,80 +4240,100 @@ atualizarStatusConexao();
 const FILA_OFFLINE_KEY = 'kg-fila-offline';
 
 function lerFilaOffline() {
-  try {
-    const raw = localStorage.getItem(FILA_OFFLINE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch(e) { return []; }
+  const raw = localStorage.getItem(FILA_OFFLINE_KEY);
+  const fila = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(fila)) throw new Error('Fila offline inválida. Preserve os dados deste aparelho e procure suporte.');
+  return fila;
 }
 
 function gravarFilaOffline(fila) {
   try {
     localStorage.setItem(FILA_OFFLINE_KEY, JSON.stringify(fila));
-  } catch(e) { console.warn('Falha ao gravar fila offline:', e); }
+  } catch (e) {
+    throw new Error('Não foi possível guardar a entrega neste aparelho. Libere espaço ou conecte-se à internet e tente novamente.');
+  }
 }
 
-function adicionarNaFilaOffline(acao) {
-  const fila = lerFilaOffline();
-  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now() };
-  const repetida = fila.findIndex(a =>
-    a.tipo === nova.tipo && a.pedidoId === nova.pedidoId &&
-    (a.usuarioLogin || null) === nova.usuarioLogin
-  );
-  if (repetida >= 0) fila[repetida] = nova;
-  else fila.push(nova);
-  gravarFilaOffline(fila);
+async function alterarFilaOffline(alterar) {
+  const executar = () => gravarFilaOffline(alterar(lerFilaOffline()));
+  // Evita que duas abas sobrescrevam entregas uma da outra.
+  if (navigator.locks) await navigator.locks.request(FILA_OFFLINE_KEY, executar);
+  else executar();
+}
+
+async function adicionarNaFilaOffline(acao) {
+  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now(), acaoId:crypto.randomUUID() };
+  await alterarFilaOffline(fila => {
+    const repetida = fila.findIndex(a => a.tipo === nova.tipo && a.pedidoId === nova.pedidoId &&
+      (a.usuarioLogin || null) === nova.usuarioLogin);
+    if (repetida >= 0) fila[repetida] = nova;
+    else fila.push(nova);
+    return fila;
+  });
+  atualizarAvisoFila();
 }
 
 function acaoOfflinePertenceAoUsuario(acao) {
   if (!usuario) return false;
   if (acao.usuarioLogin) return acao.usuarioLogin === usuario.login;
-  // Compatibilidade com ações criadas antes de a fila ser identificada.
   return usuario.perfil === 'entregador';
+}
+
+function atualizarAvisoFila() {
+  const aviso = document.getElementById('aviso-fila-offline');
+  if (!aviso) return;
+  try {
+    const qtd = lerFilaOffline().filter(acaoOfflinePertenceAoUsuario).length;
+    aviso.hidden = !qtd;
+    aviso.textContent = qtd ? `${qtd} entrega(s) aguardando envio. Mantenha este aparelho com os dados do aplicativo até sincronizar.` : '';
+  } catch (e) {
+    aviso.hidden = false;
+    aviso.textContent = 'Não foi possível ler as entregas offline. Preserve os dados deste aparelho e procure suporte.';
+  }
+}
+
+function aplicarFilaOffline(pedidos) {
+  try {
+    for (const acao of lerFilaOffline()) {
+      if (acao.tipo !== 'marcar-entregue' || !acaoOfflinePertenceAoUsuario(acao)) continue;
+      const pedido = pedidos.find(p => p.id === acao.pedidoId);
+      if (pedido && pedido.status !== 'entregue') Object.assign(pedido, acao.payload);
+    }
+  } catch (e) { toast(e.message); }
+  atualizarAvisoFila();
 }
 
 let _processandoFila = false;
 async function processarFilaOffline() {
-  if (_processandoFila) return;
-  if (MODO_DEMO) return;
-  if (!navigator.onLine) return;
-  const fila = lerFilaOffline();
-  if (!fila.length) return;
-  const loginInicial = usuario?.login;
-
+  if (_processandoFila || MODO_DEMO || !navigator.onLine || !usuario) return;
+  const loginInicial = usuario.login;
   _processandoFila = true;
-  const sucesso = [], falha = [];
-  for (const acao of fila) {
-    if (!acaoOfflinePertenceAoUsuario(acao)) {
-      falha.push(acao);
-      continue;
-    }
-    try {
-      if (acao.tipo === 'marcar-entregue') {
-        const res = await supabase('pedidos', 'PATCH', acao.payload, `?id=eq.${acao.pedidoId}`);
-        if (res.ok) {
-          sucesso.push(acao);
-          // Atualiza no estado local
-          const idx = todosOsPedidos.findIndex(p => p.id === acao.pedidoId);
-          if (idx >= 0) Object.assign(todosOsPedidos[idx], acao.payload);
-        } else {
-          falha.push(acao);
-        }
+  const sucesso = [];
+  try {
+    for (const acao of lerFilaOffline()) {
+      if (usuario?.login !== loginInicial) break;
+      if (!acaoOfflinePertenceAoUsuario(acao) || acao.tipo !== 'marcar-entregue') continue;
+      const res = await supabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
+      if (!res.ok) continue;
+      sucesso.push(JSON.stringify(acao));
+      if (usuario?.login === loginInicial) {
+        const pedido = todosOsPedidos.find(p => p.id === acao.pedidoId);
+        if (pedido) Object.assign(pedido, res.dados);
       }
-    } catch(e) {
-      falha.push(acao);
     }
+    // Remove apenas as ações efetivamente enviadas, preservando novas entregas
+    // acrescentadas enquanto a rede estava respondendo.
+    if (sucesso.length) await alterarFilaOffline(fila => fila.filter(a => !sucesso.includes(JSON.stringify(a))));
+  } catch (e) {
+    console.warn('Fila de entregas preservada:', e);
+  } finally {
+    _processandoFila = false;
+    atualizarAvisoFila();
   }
-
-  // Mantém só os que falharam na fila (vai tentar de novo depois)
-  gravarFilaOffline(falha);
-  _processandoFila = false;
-
   if (sucesso.length && usuario?.login === loginInicial) {
-    // Re-renderiza telas afetadas após sincronizar
-    if (typeof agendarRender === 'function') {
-      agendarRender('dashboard');
-      agendarRender('entregas');
-    }
+    agendarRender('dashboard');
+    agendarRender('entregas');
+    if (usuario.perfil === 'admin') agendarRender('financeiro');
   }
 }
 
