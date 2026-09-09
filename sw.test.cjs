@@ -6,7 +6,7 @@ const handlers = {};
 const cached = new Map();
 const cachePutRequests = [];
 global.self = {
-  location: { origin: 'https://kg-entregas.vercel.app' },
+  location: { origin: 'https://kg-entregas.vercel.app', href: 'https://kg-entregas.vercel.app/sw.js' },
   addEventListener: (name, handler) => { handlers[name] = handler; },
   skipWaiting: () => {},
   clients: { claim: () => {} },
@@ -26,10 +26,10 @@ global.caches = {
 const sw = fs.readFileSync('sw.js', 'utf8');
 vm.runInThisContext(sw);
 
-async function requestApp() {
+async function requestApp(search = '') {
   let response;
   handlers.fetch({
-    request: { method: 'GET', url: 'https://kg-entregas.vercel.app/app.js', mode: 'navigate', destination: 'script' },
+    request: { method: 'GET', url: 'https://kg-entregas.vercel.app/app.js' + search, mode: 'no-cors', destination: 'script' },
     respondWith: promise => { response = promise; },
   });
   return response;
@@ -61,6 +61,21 @@ function tokenPara(sub) {
 }
 
 (async () => {
+  // Primeiro acesso offline: apenas o arquivo sem query foi pré-cacheado.
+  cached.set('https://kg-entregas.vercel.app/app.js', new Response('pre-cache'));
+  global.fetch = async () => { throw new Error('offline'); };
+  assert.equal(await (await requestApp('?v=51')).text(), 'pre-cache');
+  assert.equal((await requestApp('?v=51&outra=1')).status, 503);
+
+  // Atualização conserva os dados offline compatíveis e caches de outros apps.
+  const removidos = [];
+  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'outro-app'];
+  global.caches.delete = async key => { removidos.push(key); return true; };
+  let ativacao;
+  handlers.activate({ waitUntil: promise => { ativacao = promise; } });
+  await ativacao;
+  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets']);
+
   global.fetch = async () => new Response('versao-nova', { status: 200 });
   assert.equal(await (await requestApp()).text(), 'versao-nova');
 
@@ -90,8 +105,8 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v23'/);
-  assert.match(index, /app\.js\?v=50/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v24'/);
+  assert.match(index, /app\.js\?v=51/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');

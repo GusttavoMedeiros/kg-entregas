@@ -1010,17 +1010,22 @@ function persistirSessao() {
 
 // Login real: e-mail + senha → tokens
 async function authLogin(email, senha) {
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 15000);
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method:'POST',
       headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
       body: JSON.stringify({ email, password: senha }),
+      signal: ctrl.signal,
     });
     if (!res.ok) return { ok:false };
     return { ok:true, sessao: montarSessao(await res.json()) };
   } catch(e) {
     // Erro de rede ≠ senha errada — quem chama mostra mensagem apropriada
     return { ok:false, rede:true, erro:e.message };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -1030,12 +1035,15 @@ function authRefresh() {
   if (_refreshEmAndamento) return _refreshEmAndamento;
   if (!sessao?.refresh_token) return false;
   _refreshEmAndamento = (async () => {
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 15000);
     try {
       const refreshToken = sessao.refresh_token;
       const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
         method:'POST',
         headers:{ 'apikey':SUPABASE_KEY, 'Content-Type':'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
+        signal: ctrl.signal,
       });
       if (!res.ok) return false;
       const novaSessao = montarSessao(await res.json());
@@ -1051,6 +1059,7 @@ function authRefresh() {
     } catch(e) {
       return false;
     } finally {
+      clearTimeout(timeoutId);
       _refreshEmAndamento = null;
     }
   })();
@@ -1088,6 +1097,8 @@ async function restaurarSessao() {
   // e entra mesmo assim (offline-first: os dados vêm do cache do Service Worker
   // e a fila offline segura as ações até a conexão voltar).
   const renovou = await authRefresh();
+  // Logout ou outro login durante a espera invalidam esta restauração.
+  if (!sessao || !usuario || (!renovou && sessao !== salvo.sessao)) return;
   if (!renovou && !navigator.onLine) {
     entrarNoApp();
     return;
@@ -3359,7 +3370,8 @@ function abrirModalEntrega(id) {
 
   // Verifica se este pedido precisa de confirmação de pagamento
   // Só para À VISTA e CHEQUE (boleto tem prazo, paga depois)
-  const precisaPagamento = (p.forma_pagamento === 'avista' || p.forma_pagamento === 'cheque');
+  const precisaPagamento = p.status_pagamento !== 'pago' &&
+    (p.forma_pagamento === 'avista' || p.forma_pagamento === 'cheque');
   const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
   if (modalSheet) {
     modalSheet.dataset.precisaPagamento = precisaPagamento ? '1' : '0';
@@ -3370,7 +3382,8 @@ function abrirModalEntrega(id) {
 
   // Texto adicional sobre a forma de pagamento
   let pagtoInfo = '';
-  if (p.forma_pagamento === 'avista')  pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--o1)">💵 Pagamento à vista — confirme se recebeu</div>';
+  if (p.status_pagamento === 'pago') pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--gn)">✓ Pagamento já registrado — confirme apenas a entrega</div>';
+  else if (p.forma_pagamento === 'avista') pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--o1)">💵 Pagamento à vista — confirme se recebeu</div>';
   else if (p.forma_pagamento === 'cheque') pagtoInfo = '<div style="margin-top:6px;font-size:12px;color:var(--o1)">📝 Pagamento em cheque — confirme se recebeu</div>';
   else if (p.forma_pagamento === 'boleto') {
     const prazos = p.prazos_boleto ? ` (${p.prazos_boleto.split(',').join('+')} dias)` : (p.prazo_dias ? ` (${p.prazo_dias} dias)` : '');
@@ -3409,7 +3422,8 @@ async function confirmarEntrega() {
 
   // ====== VALIDAÇÃO DE PAGAMENTO (à vista ou cheque) ======
   const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
-  const precisaPagamento = modalSheet?.dataset.precisaPagamento === '1';
+  const pagamentoJaRegistrado = pedidoSelecionado.status_pagamento === 'pago';
+  const precisaPagamento = !pagamentoJaRegistrado && modalSheet?.dataset.precisaPagamento === '1';
   const pagtoEscolhido = modalSheet?.dataset.pagamentoEscolhido || '';
 
   if (precisaPagamento && !pagtoEscolhido) {
@@ -3429,7 +3443,11 @@ async function confirmarEntrega() {
   let forma_pagamento_real = null;
   let data_pagamento = null;
 
-  if (precisaPagamento) {
+  if (pagamentoJaRegistrado) {
+    status_pagamento = pedidoSelecionado.status_pagamento;
+    forma_pagamento_real = pedidoSelecionado.forma_pagamento_real;
+    data_pagamento = pedidoSelecionado.data_pagamento;
+  } else if (precisaPagamento) {
     if (pagtoEscolhido === 'dinheiro' || pagtoEscolhido === 'pix') {
       status_pagamento = 'pago';
       forma_pagamento_real = pagtoEscolhido;
@@ -4207,12 +4225,14 @@ if ('serviceWorker' in navigator) {
       reg.update().catch(() => {});
     }).catch(err => console.warn('SW falhou ao registrar:', err));
 
-    // Recarrega quando o SW novo assumir controle (atualização suave)
-    let recarregando = false;
+    // A atualização passa a valer na próxima abertura. Recarregar aqui pode
+    // destruir um pedido em edição ou interromper uma gravação em andamento.
+    const tinhaControlador = !!navigator.serviceWorker.controller;
+    let avisouAtualizacao = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (recarregando) return;
-      recarregando = true;
-      window.location.reload();
+      if (!tinhaControlador || avisouAtualizacao) return;
+      avisouAtualizacao = true;
+      toast('Atualização disponível. Conclua o que está fazendo e reabra o app para usar a nova versão.');
     });
   });
 }
@@ -4297,7 +4317,14 @@ function aplicarFilaOffline(pedidos) {
     for (const acao of lerFilaOffline()) {
       if (acao.tipo !== 'marcar-entregue' || !acaoOfflinePertenceAoUsuario(acao)) continue;
       const pedido = pedidos.find(p => p.id === acao.pedidoId);
-      if (pedido && pedido.status !== 'entregue') Object.assign(pedido, acao.payload);
+      if (pedido && pedido.status !== 'entregue') {
+        const pagamento = pedido.status_pagamento === 'pago' ? {
+          status_pagamento: pedido.status_pagamento,
+          forma_pagamento_real: pedido.forma_pagamento_real,
+          data_pagamento: pedido.data_pagamento,
+        } : {};
+        Object.assign(pedido, acao.payload, pagamento);
+      }
     }
   } catch (e) { toast(e.message); }
   atualizarAvisoFila();

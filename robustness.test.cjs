@@ -35,6 +35,16 @@ test('Falta de espaço rejeita gravação em vez de anunciar persistência',asyn
   await assert.rejects(c.adicionarNaFilaOffline(acao(1)),/Não foi possível guardar/);
   assert.equal(c.lerFilaOffline().length,0);
 });
+test('Fila antiga não reverte pagamento mais recente recebido do servidor',async()=>{
+  const c=fila();
+  await c.adicionarNaFilaOffline({...acao(1),payload:{status:'entregue',status_pagamento:'pendente',forma_pagamento_real:null,data_pagamento:null}});
+  Object.assign(c.todosOsPedidos[0],{status_pagamento:'pago',forma_pagamento_real:'pix',data_pagamento:'2026-09-01'});
+  c.aplicarFilaOffline(c.todosOsPedidos);
+  assert.equal(c.todosOsPedidos[0].status,'entregue');
+  assert.equal(c.todosOsPedidos[0].status_pagamento,'pago');
+  assert.equal(c.todosOsPedidos[0].forma_pagamento_real,'pix');
+  assert.equal(c.todosOsPedidos[0].data_pagamento,'2026-09-01');
+});
 test('Fila corrompida não é sobrescrita com outra entrega',async()=>{
   const c=fila(); c.localStorage.setItem('kg-fila-offline','conteúdo inválido');
   await assert.rejects(c.adicionarNaFilaOffline(acao(1)));

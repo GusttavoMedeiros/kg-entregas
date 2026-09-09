@@ -7,9 +7,11 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v23';
+const CACHE_VERSION = 'kg-v24';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
-const DATA_CACHE   = `${CACHE_VERSION}-data`;
+// O formato por usuário é compatível com v23. Atualizar assets não deve apagar
+// a única cópia disponível das rotas offline. Logout continua removendo -data.
+const DATA_CACHE   = 'kg-v23-data';
 
 // Arquivos do app que ficam em cache permanente
 const ASSETS_PARA_CACHEAR = [
@@ -44,7 +46,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys => {
       return Promise.all(
         keys
-          .filter(k => !k.startsWith(CACHE_VERSION))
+          .filter(k => /^kg-v\d+-(assets|data)$/.test(k) && k !== ASSETS_CACHE && k !== DATA_CACHE)
           .map(k => caches.delete(k))
       );
     }).then(() => self.clients.claim())
@@ -88,9 +90,21 @@ self.addEventListener('fetch', event => {
   // 5) O app principal busca a versão atual antes de recorrer ao cache.
   const ehAppPrincipal = event.request.mode === 'navigate' || ['script', 'style'].includes(event.request.destination);
   event.respondWith(ehAppPrincipal
-    ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000)
+    ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000, chaveCacheApp(event.request))
     : estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
 });
+
+// O HTML usa app.js?v=...; o pré-cache contém app.js. A rede mantém a URL
+// versionada, mas ambas precisam compartilhar a chave para funcionar offline.
+function chaveCacheApp(request) {
+  const url = new URL(request.url);
+  const appUrl = new URL('./app.js', self.location.href);
+  if (url.origin === appUrl.origin && url.pathname === appUrl.pathname) {
+    url.searchParams.delete('v');
+    return new Request(url.toString(), { method: 'GET' });
+  }
+  return request;
+}
 
 // ============================================================
 // ESTRATÉGIA: stale-while-revalidate (assets)

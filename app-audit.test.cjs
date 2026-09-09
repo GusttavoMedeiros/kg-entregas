@@ -34,6 +34,8 @@ const auth = {
   usuarioDoToken: () => ({ login: 'entregador', perfil: 'entregador' }),
   persistirSessao: () => {},
   setTimeout,
+  clearTimeout,
+  AbortController,
 };
 vm.runInNewContext(app.slice(inicioRefresh, fimRefresh) + '\nthis.authRefreshTeste = authRefresh;', auth);
 
