@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v27';
+const CACHE_VERSION = 'kg-v28';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -18,7 +18,7 @@ const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
   './app.js',
-  './ios-like.css?v=3',
+  './ios-like.css?v=4',
   './manifest.json',
   './logo.webp',
   './logo.png',

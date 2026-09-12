@@ -19,4 +19,12 @@ assert.doesNotMatch(html, /\*:hover\s*\{[^}]*box-shadow/s);
 // Acessibilidade: o refinamento de movimento respeita a preferência do SO.
 assert.match(css, /prefers-reduced-motion:reduce[\s\S]*\.tela\.ativa[\s\S]*animation:none !important/);
 
-console.log('Contraste do Novo Pedido, largura móvel e movimento validados.');
+// Aparelhos fracos recebem uma composição mais simples antes da pintura.
+assert.match(html, /deviceMemory&&n\.deviceMemory<=4/);
+assert.match(html, /hardwareConcurrency&&n\.hardwareConcurrency<=4/);
+assert.doesNotMatch(html, /family=Nunito/);
+assert.match(css, /html\.modo-economico \.header[\s\S]*backdrop-filter:none/);
+assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
+assert.match(css, /@media \(update:slow\)/);
+
+console.log('Contraste, largura móvel, movimento e modo econômico validados.');

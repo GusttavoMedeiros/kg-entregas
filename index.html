@@ -19,7 +19,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://eatmzxyckqrsjrlyosfg.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://brasilapi.com.br">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Nunito:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
+  var economico=(n.deviceMemory&&n.deviceMemory<=4)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4)||(c&&(c.saveData||/^(slow-)?2g$/.test(c.effectiveType||'')));
+  if(economico) document.documentElement.classList.add('modo-economico');
+})();
+</script>
 <style>
 :root {
   --v0:#0a1a10;--v1:#0d2218;--v2:#112b1e;--v3:#1a3a2a;--v4:#244d38;
@@ -1511,7 +1518,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
 
 </style>
-<link rel="stylesheet" href="ios-like.css?v=3">
+<link rel="stylesheet" href="ios-like.css?v=4">
 </head>
 <body>
 
