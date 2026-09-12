@@ -1765,19 +1765,22 @@ function renderizarDashboard() {
     : `${pendentesNaoPagos.length} pedido(s) em aberto`;
   document.getElementById('info-areceber').textContent = detalheReceber;
 
-  // Card 3: Atrasados
-  const atras = todosOsPedidos.filter(p => isAtrasado(p));
-  const valorAtras = atras.reduce((s,p)=>s+(Number(p.valor)||0),0);
-  document.getElementById('num-atrasados').textContent = atras.length;
-  document.getElementById('info-atrasados').textContent = atras.length ? moeda(valorAtras) : 'Tudo em dia ✓';
+  // Card 3: atraso LOGÍSTICO. Pagamento vencido é outro conceito e aparece
+  // no Financeiro/atalho de cobrança. Assim o número bate com Entregas.
+  const entregasAtrasadas = todosOsPedidos.filter(p => isEntregaAtrasada(p));
+  const valorEntregasAtrasadas = entregasAtrasadas.reduce((s,p)=>s+(Number(p.valor)||0),0);
+  document.getElementById('num-atrasados').textContent = entregasAtrasadas.length;
+  document.getElementById('info-atrasados').textContent = entregasAtrasadas.length
+    ? moeda(valorEntregasAtrasadas) : 'Tudo em dia ✓';
 
-  // Card 4: Clientes ativos (com pelo menos 1 pedido)
+  // Card 4: clientes com pelo menos um pedido no histórico.
   const clientesAtivos = new Set(todosOsPedidos.map(p => p.cliente_id)).size;
   document.getElementById('num-clientes').textContent = clientesAtivos;
   document.getElementById('info-clientes').textContent = `${todosOsClientes.length} cadastrados`;
 
   // ATALHOS — badges
-  document.getElementById('badge-cobrar').textContent = atras.length || '';
+  const pagamentosAtrasados = todosOsPedidos.filter(p => isPagamentoAtrasado(p));
+  document.getElementById('badge-cobrar').textContent = pagamentosAtrasados.length || '';
 
   // GRÁFICO de vendas dos últimos 30 dias
   renderizarGraficoVendas('grafico-vendas', 'grafico-total-30d', null);
@@ -2041,7 +2044,7 @@ function renderizarPerformanceVendedores(idDiv, pedidosMes) {
 // ATALHO: Cobrar todos os atrasados (gera lista de WhatsApps)
 // ============================================================
 function cobrarTodosAtrasados() {
-  const atras = todosOsPedidos.filter(p => isAtrasado(p));
+  const atras = todosOsPedidos.filter(p => isPagamentoAtrasado(p));
   if (!atras.length) {
     toast('🎉 Nenhum pagamento atrasado no momento!');
     return;
@@ -2261,7 +2264,7 @@ function alternarModoRota(modo, btn) {
 }
 
 function cardEntrega(p, mostrarBotoes, clienteOpc) {
-  const atrasado = isAtrasado(p);
+  const atrasado = isEntregaAtrasada(p);
   const classe = p.status==='entregue' ? 'entregue' : (atrasado ? 'atrasado' : 'pendente');
 
   // Badge principal: status da entrega + status do pagamento (se entregue)
@@ -2860,7 +2863,7 @@ function renderizarFinanceiro(filtro) {
 
   const lista = Object.values(porCliente).filter(({pedidos}) => {
     const dev  = pedidos.filter(p => !foiPago(p));
-    const atras= dev.filter(p => isAtrasado(p));
+    const atras= dev.filter(p => isPagamentoAtrasado(p));
     if (filtro==='atrasado') return atras.length>0;
     if (filtro==='devendo')  return dev.length>0;
     if (filtro==='em-dia')   return dev.length===0;
@@ -2874,14 +2877,14 @@ function renderizarFinanceiro(filtro) {
   }
   el.innerHTML = lista.map(({cliente:c, pedidos}) => {
     const dev  = pedidos.filter(p => !foiPago(p));
-    const atras= dev.filter(p => isAtrasado(p));
+    const atras= dev.filter(p => isPagamentoAtrasado(p));
     const totalD = dev.reduce((s,p)=>s+(Number(p.valor)||0),0);
     const badge = atras.length>0
       ? `<span class="badge badge-atrasado">⚠ Atrasado</span>`
       : totalD>0 ? `<span class="badge badge-devendo">Em aberto</span>`
       : `<span class="badge badge-em-dia">Em dia</span>`;
-    const info = atras.length ? `${atras.length} entrega(s) atrasada(s)`
-               : dev.length  ? `${dev.length} entrega(s) em aberto` : 'Sem pendências';
+    const info = atras.length ? `${atras.length} pagamento(s) atrasado(s)`
+               : dev.length  ? `${dev.length} pagamento(s) em aberto` : 'Sem pendências';
     return `
       <div class="item-cliente-card stagger-in" onclick="verFinanceiroCliente(${c.id})">
         <div>
@@ -2918,7 +2921,7 @@ function verFinanceiroCliente(id) {
   document.getElementById('fin-cliente-nome').textContent = c.nome;
   document.getElementById('fin-cliente-conteudo').innerHTML = `
     <div style="font-size:13px;color:var(--c2);margin-bottom:14px">📱 ${esc(c.whatsapp||'–')}</div>
-    <div class="separador">Entregas em aberto</div>
+    <div class="separador">Pagamentos em aberto</div>
     ${pedidos.length ? pedidos.map(p=>`
       <div style="border-bottom:1px solid var(--ol);padding:9px 0">
         <div class="flex-entre">
@@ -2926,10 +2929,10 @@ function verFinanceiroCliente(id) {
           <span style="font-size:14px;font-weight:700;color:#e05a4e">${moeda(p.valor)}</span>
         </div>
         <div style="font-size:12px;color:var(--c3);margin-top:3px">
-          Venc.: ${dataBR(p.data_vencimento)} ${isAtrasado(p)?'· <span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>':''}
+          Venc.: ${dataBR(p.data_vencimento)} ${isPagamentoAtrasado(p)?'· <span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>':''}
         </div>
       </div>`).join('')
-    : '<div class="vazio" style="padding:20px"><p>Sem entregas em aberto</p></div>'}
+    : '<div class="vazio" style="padding:20px"><p>Sem pagamentos em aberto</p></div>'}
     <div style="margin-top:12px;font-weight:700;color:var(--o1);font-size:15px">Total: ${moeda(total)}</div>
     ${linkWa?`<a href="${linkWa}" target="_blank" rel="noopener"
       style="display:block;margin-top:12px;background:var(--gnb);color:var(--gn);border:1px solid rgba(39,174,96,.3);
@@ -2948,7 +2951,7 @@ function montarMensagemCobranca(cliente, pedidos, total) {
   let corpo;
   if (pedidos.length === 1) {
     const p = pedidos[0];
-    const atrasado = isAtrasado(p);
+    const atrasado = isPagamentoAtrasado(p);
     // NÃO usar esc() aqui: mensagem de WhatsApp é texto puro, não HTML —
     // esc() faria "Ração & Cia" virar "Ração &amp; Cia" na conversa.
     corpo = atrasado
@@ -2956,10 +2959,10 @@ function montarMensagemCobranca(cliente, pedidos, total) {
       : `Passando para lembrar do pagamento referente ao pedido de ${p.descricao}, no valor de *${moeda(p.valor)}*, com vencimento em ${dataBR(p.data_vencimento)}.`;
   } else {
     const linhas = pedidos.map(p => {
-      const flag = isAtrasado(p) ? ' ⚠ (em atraso)' : '';
+      const flag = isPagamentoAtrasado(p) ? ' ⚠ (em atraso)' : '';
       return `• ${p.descricao} — ${moeda(p.valor)} (venc. ${dataBR(p.data_vencimento)})${flag}`;
     }).join('\n');
-    const temAtraso = pedidos.some(p => isAtrasado(p));
+    const temAtraso = pedidos.some(p => isPagamentoAtrasado(p));
     corpo = `${temAtraso ? 'Constam alguns pagamentos pendentes' : 'Segue um resumo dos pagamentos em aberto'} referentes aos seus pedidos:\n\n${linhas}\n\n*Total: ${moeda(total)}*`;
   }
 
@@ -4325,8 +4328,12 @@ async function carregarHistoricoPedido(pedidoId) {
 // ============================================================
 // HELPERS DE LÓGICA
 // ============================================================
-function isAtrasado(p) {
-  // Já foi pago de fato? Não está atrasado.
+function isEntregaAtrasada(p) {
+  return p.status === 'pendente' && !!p.data_entrega && p.data_entrega < fmt(new Date());
+}
+
+function isPagamentoAtrasado(p) {
+  // Já foi pago de fato? O pagamento não está atrasado.
   if (foiPago(p)) return false;
   if (!p.data_vencimento) return false;
   return p.data_vencimento < fmt(new Date());

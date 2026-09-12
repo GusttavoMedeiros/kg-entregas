@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const app = fs.readFileSync('app.js','utf8').replace(/\r\n/g,'\n');
+const html = fs.readFileSync('index.html','utf8').replace(/\r\n/g,'\n');
 const migration = fs.readFileSync(
   'supabase/migrations/20260912140943_realtime_and_safe_order_reset.sql','utf8'
 );
@@ -100,4 +101,39 @@ test('feedback de processamento fica restrito à ação correta', () => {
   assert.doesNotMatch(entrega,/botaoSalvando\('marcarPagoCliente'/);
 
   assert.doesNotMatch(excluir,/botaoSalvando\('confirmarEntrega'/);
+});
+
+test('atraso de entrega e atraso de pagamento são indicadores independentes', () => {
+  const c = { fmt:()=> '2026-09-12', Date };
+  vm.runInNewContext(
+    trecho('function foiPago(', '// Detecta se o pedido') + '\n' +
+    trecho('function isEntregaAtrasada(', 'let _scrollSalvo') +
+    '\nthis.entrega=isEntregaAtrasada;this.pagamento=isPagamentoAtrasado;', c
+  );
+
+  const entregaAtrasada = {
+    status:'pendente', status_pagamento:'pendente',
+    data_entrega:'2026-09-10', data_vencimento:'2026-09-20',
+  };
+  const pagamentoAtrasado = {
+    status:'entregue', status_pagamento:'pendente',
+    data_entrega:'2026-09-01', data_vencimento:'2026-09-10',
+  };
+  const prePagoNaoEntregue = {
+    status:'pendente', status_pagamento:'pago',
+    data_entrega:'2026-09-10', data_vencimento:'2026-09-10',
+  };
+
+  assert.equal(c.entrega(entregaAtrasada),true);
+  assert.equal(c.pagamento(entregaAtrasada),false);
+  assert.equal(c.entrega(pagamentoAtrasado),false);
+  assert.equal(c.pagamento(pagamentoAtrasado),true);
+  assert.equal(c.entrega(prePagoNaoEntregue),true);
+  assert.equal(c.pagamento(prePagoNaoEntregue),false);
+
+  const dashboard = trecho('function renderizarDashboard()', '// DASHBOARD VENDEDOR');
+  assert.match(dashboard,/filter\(p => isEntregaAtrasada\(p\)\)/);
+  assert.match(dashboard,/filter\(p => isPagamentoAtrasado\(p\)\)/);
+  assert.match(html,/>Entregas atrasadas</);
+  assert.match(html,/>Clientes com pedidos</);
 });
