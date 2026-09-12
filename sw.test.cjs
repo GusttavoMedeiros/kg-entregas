@@ -72,10 +72,10 @@ function tokenPara(sub) {
 (async () => {
   // Primeiro acesso offline: apenas o arquivo sem query foi pré-cacheado.
   cached.set('https://kg-entregas.vercel.app/app.js', new Response('pre-cache'));
-  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=1', new Response('estilo-pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=2', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
   assert.equal(await (await requestApp('?v=51')).text(), 'pre-cache');
-  assert.equal(await (await requestEstilo('?v=1')).text(), 'estilo-pre-cache');
+  assert.equal(await (await requestEstilo('?v=2')).text(), 'estilo-pre-cache');
   assert.equal((await requestApp('?v=51&outra=1')).status, 503);
 
   // Atualização conserva os dados offline compatíveis e caches de outros apps.
@@ -85,7 +85,7 @@ function tokenPara(sub) {
   let ativacao;
   handlers.activate({ waitUntil: promise => { ativacao = promise; } });
   await ativacao;
-  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets']);
+  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets', 'kg-v25-assets']);
 
   global.fetch = async () => new Response('versao-nova', { status: 200 });
   assert.equal(await (await requestApp()).text(), 'versao-nova');
@@ -116,10 +116,10 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v25'/);
-  assert.match(sw, /\.\/ios-like\.css\?v=1/);
-  assert.match(index, /ios-like\.css\?v=1/);
-  assert.match(index, /app\.js\?v=51/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v26'/);
+  assert.match(sw, /\.\/ios-like\.css\?v=2/);
+  assert.match(index, /ios-like\.css\?v=2/);
+  assert.match(index, /app\.js\?v=52/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');
