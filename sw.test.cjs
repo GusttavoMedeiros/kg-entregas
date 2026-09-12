@@ -35,6 +35,15 @@ async function requestApp(search = '') {
   return response;
 }
 
+async function requestEstilo(search = '') {
+  let response;
+  handlers.fetch({
+    request: { method: 'GET', url: 'https://kg-entregas.vercel.app/ios-like.css' + search, mode: 'no-cors', destination: 'style' },
+    respondWith: promise => { response = promise; },
+  });
+  return response;
+}
+
 async function requestSupabase(token) {
   let response;
   handlers.fetch({
@@ -63,18 +72,20 @@ function tokenPara(sub) {
 (async () => {
   // Primeiro acesso offline: apenas o arquivo sem query foi pré-cacheado.
   cached.set('https://kg-entregas.vercel.app/app.js', new Response('pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=1', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
   assert.equal(await (await requestApp('?v=51')).text(), 'pre-cache');
+  assert.equal(await (await requestEstilo('?v=1')).text(), 'estilo-pre-cache');
   assert.equal((await requestApp('?v=51&outra=1')).status, 503);
 
   // Atualização conserva os dados offline compatíveis e caches de outros apps.
   const removidos = [];
-  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'outro-app'];
+  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'kg-v25-assets', 'outro-app'];
   global.caches.delete = async key => { removidos.push(key); return true; };
   let ativacao;
   handlers.activate({ waitUntil: promise => { ativacao = promise; } });
   await ativacao;
-  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets']);
+  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets']);
 
   global.fetch = async () => new Response('versao-nova', { status: 200 });
   assert.equal(await (await requestApp()).text(), 'versao-nova');
@@ -105,7 +116,9 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v24'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v25'/);
+  assert.match(sw, /\.\/ios-like\.css\?v=1/);
+  assert.match(index, /ios-like\.css\?v=1/);
   assert.match(index, /app\.js\?v=51/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
