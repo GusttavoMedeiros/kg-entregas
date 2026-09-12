@@ -61,6 +61,10 @@ let ajusteCarrinhoIdx  = null;    // índice do item do carrinho sendo ajustado
 let todosOsPedidos     = [];
 let todosOsClientes    = [];
 let todosOsProdutos    = [];
+// Toda gravação confirmada avança esta revisão. Uma leitura iniciada antes da
+// gravação nunca pode substituir o estado novo com uma resposta antiga.
+let revisaoEstado      = 0;
+let sincronizacaoPendente = false;
 
 // ============================================================
 // TOAST + CONFIRMAÇÃO (substituem os diálogos nativos do navegador,
@@ -402,7 +406,7 @@ function agendarRender(tela) {
         if (t === 'dashboard')        renderizarDashboard();
         else if (t === 'entregas')    renderizarEntregas(filtroEntregas);
         else if (t === 'catalogo')    rerenderizarCatalogoMantendoBusca();
-        else if (t === 'clientes')    renderizarClientes(todosOsClientes);
+        else if (t === 'clientes')    rerenderizarClientesMantendoBusca();
         else if (t === 'financeiro')  renderizarFinanceiro(filtroFinanceiro);
         else if (t === 'meus-pedidos') renderizarMeusPedidos(filtroMeusPedidos);
         else if (t === 'inicio-vendedor') renderizarInicioVendedor();
@@ -410,6 +414,65 @@ function agendarRender(tela) {
       } catch(e) { console.error('Erro ao renderizar', t, e); }
     });
   });
+}
+
+function rerenderizarClientesMantendoBusca() {
+  const busca = document.getElementById('busca-clientes');
+  if (busca?.value.trim()) _buscarClienteImpl(busca.value);
+  else renderizarClientes(todosOsClientes);
+}
+
+// Matriz central de dependências. Qualquer mudança em pedido atualiza todos os
+// cálculos derivados da mesma fonte: listas, filtros, clientes, financeiro e
+// painéis dos dois perfis. Isso evita que cada botão mantenha uma lista própria.
+function invalidarInterfaces(...entidades) {
+  const telas = new Set();
+  if (entidades.includes('pedidos')) {
+    ['dashboard','entregas','clientes','financeiro','meus-pedidos','inicio-vendedor']
+      .forEach(t => telas.add(t));
+  }
+  if (entidades.includes('clientes')) {
+    ['dashboard','entregas','clientes','financeiro','inicio-vendedor']
+      .forEach(t => telas.add(t));
+    popularSelectClientes();
+  }
+  if (entidades.includes('produtos')) telas.add('catalogo');
+  // As telas ocultas serão renderizadas ao abrir pela navegação. Evitar montar
+  // todas as listas a cada evento Realtime reduz muito o trabalho em celulares
+  // modestos sem deixar dados antigos visíveis.
+  telas.forEach(tela => {
+    const elemento = document.getElementById(`tela-${tela}`);
+    if (!elemento || elemento.classList.contains('ativa')) agendarRender(tela);
+  });
+  atualizarDetalhesAbertos(entidades);
+}
+
+function registrarMudancaLocal(...entidades) {
+  revisaoEstado++;
+  invalidarInterfaces(...entidades);
+}
+
+function formularioDeDadosAberto() {
+  return ['modal-pedido','modal-cliente','modal-produto','modal-entrega','modal-ajustar-preco','modal-reset']
+    .some(id => document.getElementById(id)?.classList.contains('aberto'));
+}
+
+function atualizarDetalhesAbertos(entidades) {
+  const atualizar = (modalId, fn) => {
+    const modal = document.getElementById(modalId);
+    const id = Number(modal?.dataset.registroId);
+    if (modal?.classList.contains('aberto') && Number.isSafeInteger(id)) fn(id);
+  };
+  if (entidades.includes('pedidos')) {
+    atualizar('modal-detalhe-pedido', verDetalhePedido);
+    atualizar('modal-detalhe-cliente', verDetalheCliente);
+    atualizar('modal-fin-cliente', verFinanceiroCliente);
+  }
+  if (entidades.includes('clientes')) {
+    atualizar('modal-detalhe-cliente', verDetalheCliente);
+    atualizar('modal-fin-cliente', verFinanceiroCliente);
+  }
+  if (entidades.includes('produtos')) atualizar('modal-detalhe-produto', verDetalheProduto);
 }
 
 // Wrappers públicos com debounce (chamados pelo oninput do HTML).
@@ -904,7 +967,7 @@ const DEMO_PEDIDOS = [
 // ============================================================
 // SUPABASE
 // ============================================================
-async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=true) {
+async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=true, opcoes={}) {
   if (MODO_DEMO) return { ok:true, dados:null };
   // Sem sessão logada, a RLS bloqueia tudo — nem tenta a chamada.
   if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
@@ -920,7 +983,11 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
       'Content-Type': 'application/json',
     };
     if (metodo === 'POST') headers['Prefer'] = 'return=representation';
-    if (metodo === 'PATCH') headers['Prefer'] = 'return=minimal';
+    if (metodo === 'PATCH' || metodo === 'DELETE') {
+      headers['Prefer'] = opcoes.retorno === 'minimal'
+        ? 'return=minimal,count=exact'
+        : 'return=representation,count=exact';
+    }
     const opts = { method:metodo, headers };
     if (dados) opts.body = JSON.stringify(dados);
 
@@ -939,7 +1006,7 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
     // Token expirou/ficou inválido no meio do uso: renova UMA vez e refaz.
     if (res.status === 401 && _retry) {
       const renovou = await authRefresh();
-      if (renovou) return supabase(tabela, metodo, dados, filtros, false);
+      if (renovou) return apiSupabase(tabela, metodo, dados, filtros, false, opcoes);
       forcarRelogin();
       return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
     }
@@ -949,8 +1016,16 @@ async function supabase(tabela, metodo='GET', dados=null, filtros='', _retry=tru
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
-    if (metodo === 'DELETE' || res.status === 204) return { ok:true, dados:true };
-    return { ok:true, dados: await res.json() };
+    const texto = res.status === 204 ? '' : await res.text();
+    let resposta = true;
+    if (texto) {
+      try { resposta = JSON.parse(texto); }
+      catch (e) { return { ok:false, erro:'Resposta inválida do servidor.', status:502 }; }
+    }
+    const faixa = res.headers?.get?.('Content-Range') || '';
+    const total = Number(faixa.match(/\/(\d+)$/)?.[1]);
+    const count = Number.isFinite(total) ? total : (Array.isArray(resposta) ? resposta.length : null);
+    return { ok:true, dados:resposta, count };
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
@@ -1055,6 +1130,7 @@ function authRefresh() {
       sessao = novaSessao;
       usuario = identidade;
       persistirSessao();
+      atualizarTokenRealtime(novaSessao.access_token);
       return true;
     } catch(e) {
       return false;
@@ -1213,6 +1289,7 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 
 function sair() {
   pararAutoRefresh();
+  pararRealtime();
   let acoesOfflinePendentes = 0;
   try { acoesOfflinePendentes = lerFilaOffline().length; }
   catch (e) { toast('A fila offline não pôde ser lida. Seus dados serão preservados ao sair.'); }
@@ -1257,6 +1334,8 @@ function sair() {
   filtroFinanceiro = 'atrasado';
   filtroCatalogo = 'todos';
   filtroMeusPedidos = 'pendente';
+  revisaoEstado++;
+  sincronizacaoPendente = false;
 
   // Fecha qualquer modal aberto
   document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
@@ -1387,7 +1466,7 @@ async function listarTodos(tabela, select='*') {
   const dados = [];
   let ultimo = 0;
   while (true) {
-    const res = await supabase(tabela,'GET',null,
+    const res = await apiSupabase(tabela,'GET',null,
       `?select=${select}&order=id.asc&limit=500&id=gt.${ultimo}`);
     if (!res.ok) return res;
     if (!Array.isArray(res.dados)) return { ok:false, erro:'Resposta de dados inválida.' };
@@ -1434,13 +1513,11 @@ async function carregarTudo() {
     }));
     aplicarFilaOffline(todosOsPedidos);
   }
-  renderizarDashboard();
-  renderizarEntregas(filtroEntregas);
-  renderizarCatalogo(filtroCatalogo);
-  if (usuario.perfil==='vendedor') {
-    renderizarInicioVendedor();
-    renderizarMeusPedidos(filtroMeusPedidos);
-  }
+  // Só monta a primeira tela. As demais são montadas quando o usuário as abre,
+  // evitando criar centenas de nós invisíveis logo após o login.
+  if (usuario.perfil === 'admin') renderizarDashboard();
+  else if (usuario.perfil === 'vendedor') renderizarInicioVendedor();
+  else renderizarEntregas(filtroEntregas);
   popularSelectClientes();
 
   // Limpa checklists antigos (>30 dias) e órfãos (pedidos deletados)
@@ -1450,7 +1527,9 @@ async function carregarTudo() {
   // expirada. Tenta sincronizar imediatamente após o próximo login correto.
   if (navigator.onLine) processarFilaOffline();
 
-  // Inicia sincronização automática a cada 30 segundos
+  // Realtime atualiza outras abas/aparelhos; o intervalo permanece como
+  // recuperação caso o WebSocket seja bloqueado pela rede.
+  iniciarRealtime();
   iniciarAutoRefresh();
 }
 
@@ -1460,17 +1539,32 @@ async function carregarTudo() {
 // ============================================================
 let sincronizandoDados = false;
 async function sincronizarDados() {
-  // Não sincroniza em modo demo ou com modais abertos (não quebrar a UX)
-  if (MODO_DEMO || !usuario || sincronizandoDados || !navigator.onLine || document.hidden) return;
-  if (document.querySelector('.modal-overlay.aberto')) return;
+  if (MODO_DEMO || !usuario || !navigator.onLine || document.hidden) return;
+  if (sincronizandoDados || formularioDeDadosAberto()) {
+    sincronizacaoPendente = true;
+    return;
+  }
   const loginInicial = usuario.login;
+  const revisaoInicial = revisaoEstado;
   sincronizandoDados = true;
 
   try {
     const [resPed, resCli, resProd] = await carregarListas();
 
-    if (!resPed.ok || !resCli.ok || !resProd.ok) return; // falha silenciosa
+    if (!resPed.ok || !resCli.ok || !resProd.ok) {
+      console.warn('Sincronização incompleta:', {
+        pedidos:resPed.status || resPed.erro, clientes:resCli.status || resCli.erro,
+        produtos:resProd.status || resProd.erro,
+      });
+      return;
+    }
     if (!usuario || usuario.login !== loginInicial) return;
+    // A requisição pode ter começado antes de uma entrega ou edição. Nesse caso
+    // a resposta é obsoleta e não deve reverter a interface recém-atualizada.
+    if (revisaoEstado !== revisaoInicial || formularioDeDadosAberto()) {
+      sincronizacaoPendente = true;
+      return;
+    }
 
     // Detecta se algo mudou (comparando hash completo dos pedidos)
     const novosPedidos = (resPed.dados || []).map(p => ({
@@ -1503,30 +1597,24 @@ async function sincronizarDados() {
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
 
-    // Re-renderiza só se algo mudou (para não causar flicker)
-    if (mudou) {
-      renderizarDashboard();
-      renderizarEntregas(filtroEntregas);
-      // Catálogo: preserva a busca que o usuário estiver digitando
-      rerenderizarCatalogoMantendoBusca();
-      // Clientes: idem — não apaga a busca ativa
-      const buscaCli = document.getElementById('busca-clientes');
-      if (buscaCli && buscaCli.value.trim()) {
-        _buscarClienteImpl(buscaCli.value);
-      } else {
-        renderizarClientes(todosOsClientes);
-      }
-      if (usuario.perfil==='vendedor') {
-        renderizarInicioVendedor();
-        renderizarMeusPedidos(filtroMeusPedidos);
-      }
-      if (usuario.perfil==='admin')    renderizarFinanceiro(filtroFinanceiro);
-    }
+    if (mudou) invalidarInterfaces('pedidos','clientes','produtos');
   } catch (e) {
     console.warn('Sincronização falhou:', e);
   } finally {
     sincronizandoDados = false;
+    if (sincronizacaoPendente && !formularioDeDadosAberto() && usuario && navigator.onLine) {
+      sincronizacaoPendente = false;
+      queueMicrotask(sincronizarDados);
+    }
   }
+}
+
+function solicitarSincronizacao() {
+  if (formularioDeDadosAberto() || sincronizandoDados) {
+    sincronizacaoPendente = true;
+    return;
+  }
+  sincronizarDados();
 }
 
 function iniciarAutoRefresh() {
@@ -1547,8 +1635,84 @@ function pararAutoRefresh() {
 
 function handleVisibility() {
   if (document.visibilityState === 'visible' && usuario) {
-    sincronizarDados();
+    solicitarSincronizacao();
   }
+}
+
+// O SDK é carregado somente depois do login. Assim o primeiro desenho continua
+// leve em celulares fracos; se ele falhar, a revalidação periódica permanece.
+let clienteRealtime = null;
+let canalRealtime = null;
+let loginRealtime = null;
+let sdkRealtimePromise = null;
+let loginRealtimeIniciando = null;
+
+function carregarSdkRealtime() {
+  if (window.supabase?.createClient) return Promise.resolve(window.supabase);
+  if (sdkRealtimePromise) return sdkRealtimePromise;
+  sdkRealtimePromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'supabase.min.js?v=2.116.0';
+    script.async = true;
+    script.onload = () => window.supabase?.createClient
+      ? resolve(window.supabase)
+      : reject(new Error('SDK Realtime indisponível'));
+    script.onerror = () => {
+      script.remove();
+      sdkRealtimePromise = null;
+      reject(new Error('SDK Realtime não carregou'));
+    };
+    document.head.appendChild(script);
+  });
+  return sdkRealtimePromise;
+}
+
+async function iniciarRealtime() {
+  if (MODO_DEMO || !usuario || !sessao || !navigator.onLine) return;
+  const loginInicial = usuario.login;
+  if ((canalRealtime && loginRealtime === loginInicial) || loginRealtimeIniciando === loginInicial) return;
+  loginRealtimeIniciando = loginInicial;
+  pararRealtime();
+  try {
+    const sdk = await carregarSdkRealtime();
+    if (!usuario || usuario.login !== loginInicial || !sessao) return;
+    const cliente = sdk.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false },
+      realtime:{ params:{ eventsPerSecond:2 } },
+    });
+    await cliente.realtime.setAuth(sessao.access_token);
+    const aoMudar = () => solicitarSincronizacao();
+    const canal = cliente.channel('kg-dados')
+      .on('postgres_changes',{event:'*',schema:'public',table:'pedidos'},aoMudar)
+      .on('postgres_changes',{event:'*',schema:'public',table:'clientes'},aoMudar)
+      .on('postgres_changes',{event:'*',schema:'public',table:'produtos'},aoMudar)
+      .on('postgres_changes',{event:'*',schema:'public',table:'produto_custos'},aoMudar)
+      .subscribe((status, erro) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime indisponível; usando revalidação periódica:', status, erro || '');
+        }
+      });
+    clienteRealtime = cliente;
+    canalRealtime = canal;
+    loginRealtime = loginInicial;
+  } catch (e) {
+    console.warn('Realtime não iniciou; usando revalidação periódica:', e.message);
+  } finally {
+    if (loginRealtimeIniciando === loginInicial) loginRealtimeIniciando = null;
+  }
+}
+
+function atualizarTokenRealtime(token) {
+  if (!clienteRealtime || !token) return;
+  clienteRealtime.realtime.setAuth(token)
+    .catch(e => console.warn('Realtime não renovou a sessão:', e.message));
+}
+
+function pararRealtime() {
+  if (clienteRealtime && canalRealtime) clienteRealtime.removeChannel(canalRealtime).catch(() => {});
+  clienteRealtime = null;
+  canalRealtime = null;
+  loginRealtime = null;
 }
 
 
@@ -1957,6 +2121,7 @@ async function executarResetPedidos() {
 
   // CONFIRMAÇÃO 2: prompt nativo do navegador
   const qtd = todosOsPedidos.length;
+  const idsConfirmados = todosOsPedidos.map(p => Number(p.id)).filter(Number.isSafeInteger);
   if (qtd === 0) {
     toast('Não há pedidos para apagar.');
     fecharModal('modal-reset');
@@ -1973,29 +2138,35 @@ async function executarResetPedidos() {
   salvando = true;
   const btn = document.getElementById('btn-confirmar-reset');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Apagando, aguarde...'; }
+  let qtdApagada = qtd;
 
   try {
     if (!MODO_DEMO) {
-      // A FK remove os itens em cascata. Apagar primeiro os itens poderia
-      // deixar pedidos vazios se a segunda chamada falhasse.
-      const resPed = await supabase('pedidos','DELETE',null,'?id=gt.0');
+      // O servidor apaga somente o conjunto exibido nas confirmações. Pedidos
+      // criados simultaneamente em outro aparelho são preservados.
+      const resPed = await apiSupabase('rpc/limpar_pedidos','POST',{ p_ids:idsConfirmados });
       if (!resPed.ok) {
         toast('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
+        return;
+      }
+      qtdApagada = Number(resPed.dados);
+      if (!Number.isSafeInteger(qtdApagada) || qtdApagada < 0) {
+        toast('O servidor não confirmou quantos pedidos foram apagados. Os dados serão recarregados.');
+        solicitarSincronizacao();
         return;
       }
     }
 
     // Limpa estado local
-    todosOsPedidos = [];
+    const idsApagados = new Set(idsConfirmados);
+    todosOsPedidos = todosOsPedidos.filter(p => !idsApagados.has(Number(p.id)));
+    idsConfirmados.forEach(limparChecklist);
 
     fecharModal('modal-reset');
 
-    // Atualiza tudo
-    agendarRender('dashboard');
-    agendarRender('entregas');
-    agendarRender('financeiro');
+    registrarMudancaLocal('pedidos');
 
-    toast(`✓ Histórico de ${qtd} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
+    toast(`✓ Histórico de ${qtdApagada} pedido(s) foi apagado com sucesso.\n\nClientes e produtos foram mantidos.`);
   } catch (e) {
     console.error('Erro ao resetar:', e);
     toast('Erro inesperado ao resetar: ' + e.message);
@@ -2621,6 +2792,7 @@ function verDetalheCliente(id) {
   const c = todosOsClientes.find(x => x.id===id);
   if (!c) return;
   clienteSelecionado = c;
+  document.getElementById('modal-detalhe-cliente').dataset.registroId = String(id);
   const pedidos = todosOsPedidos.filter(p => p.cliente_id===id);
 
   // Formata documento de acordo com o tipo
@@ -2732,6 +2904,7 @@ function verFinanceiroCliente(id) {
   const c = todosOsClientes.find(x => x.id===id);
   if (!c) return;
   clienteSelecionado = c;
+  document.getElementById('modal-fin-cliente').dataset.registroId = String(id);
   // Cobrança = tudo que ainda não foi PAGO (inclui entregue sem pagar —
   // que é justamente quem mais precisa ser cobrado)
   const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && !foiPago(p));
@@ -2810,6 +2983,7 @@ async function marcarPagoCliente() {
   );
   if (!paraPagar.length) { fecharModal('modal-fin-cliente'); return; }
   salvando = true;
+  botaoSalvando('marcarPagoCliente', true, '✓ Marcar como Pago');
   try {
     const hojeStr = fmt(new Date());
     // IMPORTANTE: baixa manual só mexe no PAGAMENTO. O status de ENTREGA não
@@ -2822,16 +2996,21 @@ async function marcarPagoCliente() {
     if (!MODO_DEMO) {
       // Uma única instrução evita baixa parcial se a conexão cair entre pedidos.
       const ids = paraPagar.map(p => Number(p.id)).filter(Number.isFinite);
-      const res = await supabase('pedidos','PATCH', payload, `?id=in.(${ids.join(',')})`);
-      if (!res.ok) { toast('Erro ao atualizar. Tente novamente.'); return; }
+      const res = await apiSupabase('pedidos','PATCH', payload, `?id=in.(${ids.join(',')})`);
+      if (!res.ok || !Array.isArray(res.dados)) { toast('Erro ao atualizar. Tente novamente.'); return; }
+      const porId = new Map(res.dados.map(p => [Number(p.id), p]));
+      paraPagar.forEach(p => { if (porId.has(Number(p.id))) Object.assign(p, porId.get(Number(p.id))); });
+      if (res.count !== ids.length) {
+        console.warn('Baixa confirmou menos pedidos que o esperado:', { esperados:ids.length, confirmados:res.count });
+      }
+    } else {
+      paraPagar.forEach(p => { Object.assign(p, payload); });
     }
-    paraPagar.forEach(p => { Object.assign(p, payload); });
     fecharModal('modal-fin-cliente');
-    agendarRender('financeiro');
-    agendarRender('dashboard');
-    agendarRender('entregas');
+    registrarMudancaLocal('pedidos');
   } finally {
     salvando = false;
+    botaoSalvando('marcarPagoCliente', false, '✓ Marcar como Pago');
   }
 }
 
@@ -3138,7 +3317,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   let salvo = { ...dados, id: idEdit || Date.now(), descricao, valor, itens,
     status:'pendente', vendedor:usuario.login };
   if (!MODO_DEMO) {
-    const res = await supabase('rpc/salvar_pedido','POST', {
+    const res = await apiSupabase('rpc/salvar_pedido','POST', {
       p_pedido: dados, p_itens: itens, p_id: idEdit, p_chave: chaveNovoPedido,
     });
     if (!res.ok || !res.dados?.id) {
@@ -3152,10 +3331,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   if (idx >= 0) Object.assign(todosOsPedidos[idx], salvo);
   else todosOsPedidos.push(salvo);
   fecharModal('modal-pedido');
-  agendarRender('dashboard');
-  agendarRender('entregas');
-  if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
-  if (usuario.perfil === 'admin') agendarRender('financeiro');
+  registrarMudancaLocal('pedidos');
 }
 
 // ============================================================
@@ -3284,8 +3460,13 @@ async function salvarCliente() {
         observacao: observacao || null,
       };
       if (!MODO_DEMO) {
-        const res = await supabase('clientes','PATCH', payload, `?id=eq.${id}`);
-        if (!res.ok) { toast('Erro ao atualizar cliente.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
+        const res = await apiSupabase('clientes','PATCH', payload, `?id=eq.${id}`);
+        if (!res.ok || res.count !== 1 || !res.dados?.[0]) {
+          toast('Cliente não atualizado. Ele pode ter sido alterado ou removido em outra sessão.');
+          solicitarSincronizacao();
+          return;
+        }
+        Object.assign(payload, res.dados[0]);
       }
       const idx = todosOsClientes.findIndex(c => c.id === id);
       if (idx >= 0) Object.assign(todosOsClientes[idx], payload);
@@ -3296,16 +3477,12 @@ async function salvarCliente() {
       clienteSelecionado = null;
       fecharModal('modal-cliente');
       fecharModal('modal-detalhe-cliente');
-      agendarRender('clientes');
-      agendarRender('entregas');
-      agendarRender('dashboard');
-      popularSelectClientes();
+      registrarMudancaLocal('clientes');
       return;
     }
 
     // ==== NOVO ====
-    const novo = {
-      id: Date.now(),
+    let novo = {
       nome, responsavel,
       whatsapp: whatsappRaw,
       email: email || null,
@@ -3316,19 +3493,18 @@ async function salvarCliente() {
       observacao: observacao || null,
     };
     if (!MODO_DEMO) {
-      const res = await supabase('clientes','POST', novo);
+      const res = await apiSupabase('clientes','POST', novo);
       if (!res.ok || !res.dados?.[0]) {
         toast('Erro ao salvar.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
         return;
       }
-      novo.id = res.dados[0].id;
+      novo = res.dados[0];
+    } else {
+      novo.id = Date.now();
     }
     todosOsClientes.push(novo);
     fecharModal('modal-cliente');
-    agendarRender('clientes');
-    popularSelectClientes();
-    const numCli = document.getElementById('num-clientes');
-    if (numCli) numCli.textContent = todosOsClientes.length;
+    registrarMudancaLocal('clientes');
   } finally {
     salvando = false;
     botaoSalvando('salvarCliente', false, 'Salvar Cliente');
@@ -3346,15 +3522,16 @@ async function excluirCliente(id) {
   salvando = true;
   try {
     if (!MODO_DEMO) {
-      const res = await supabase('clientes','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
+      const res = await apiSupabase('clientes','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok || res.count !== 1) {
+        toast('Cliente não excluído. Atualize os dados e tente novamente.');
+        solicitarSincronizacao();
+        return;
+      }
     }
     todosOsClientes = todosOsClientes.filter(c=>c.id!==id);
     fecharModal('modal-detalhe-cliente');
-    renderizarClientes(todosOsClientes);
-    popularSelectClientes();
-    const numCli = document.getElementById('num-clientes');
-    if (numCli) numCli.textContent = todosOsClientes.length;
+    registrarMudancaLocal('clientes');
   } finally {
     salvando = false;
   }
@@ -3480,6 +3657,7 @@ async function confirmarEntrega() {
   }
 
   salvando = true;
+  botaoSalvando('confirmarEntrega', true, '✓ Confirmar Entrega');
   try {
     const payload = {
       ...dadosEntregaConcluida(),
@@ -3504,7 +3682,7 @@ async function confirmarEntrega() {
           'Continue suas entregas normalmente.'
         );
       } else {
-        const res = await supabase('rpc/concluir_entrega','POST', { p_id:id, p_dados:payload });
+        const res = await apiSupabase('rpc/concluir_entrega','POST', { p_id:id, p_dados:payload });
         if (!res.ok) {
           // Se falhou por timeout (rede ruim), também enfileira
           if (res.rede || res.status === 408 || res.status === 429 || res.status >= 500) {
@@ -3534,13 +3712,13 @@ async function confirmarEntrega() {
     // Pedido entregue: limpa o checklist (não precisa mais)
     limparChecklist(id);
     fecharModal('modal-entrega');
-    agendarRender('dashboard');
-    agendarRender('entregas');
-    if (usuario.perfil==='admin') agendarRender('financeiro');
+    registrarMudancaLocal('pedidos');
   } catch (e) {
+    console.error('Erro ao concluir entrega:', e);
     toast('A entrega não foi registrada. ' + e.message);
   } finally {
     salvando = false;
+    botaoSalvando('confirmarEntrega', false, '✓ Confirmar Entrega');
   }
 }
 
@@ -3570,9 +3748,10 @@ async function excluirPedido(id) {
   try {
     if (!MODO_DEMO) {
       // A FK remove os itens em cascata; assim uma falha não deixa o pedido vazio.
-      const res = await supabase('pedidos','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) {
+      const res = await apiSupabase('pedidos','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok || res.count !== 1) {
         toast('Erro ao excluir pedido.\n\nDetalhes: ' + (res.erro || 'desconhecido'));
+        solicitarSincronizacao();
         return;
       }
     }
@@ -3580,10 +3759,7 @@ async function excluirPedido(id) {
     todosOsPedidos = todosOsPedidos.filter(x => x.id !== id);
     limparChecklist(id);
 
-    agendarRender('dashboard');
-    agendarRender('entregas');
-    if (usuario.perfil === 'vendedor') agendarRender('meus-pedidos');
-    if (usuario.perfil === 'admin')    agendarRender('financeiro');
+    registrarMudancaLocal('pedidos');
   } finally {
     salvando = false;
   }
@@ -3657,7 +3833,7 @@ async function salvarProduto() {
   try {
     let salvo = { id: Number(idEdit) || Date.now(), nome, categoria, preco, preco_custo };
     if (!MODO_DEMO) {
-      const res = await supabase('rpc/salvar_produto','POST', {
+      const res = await apiSupabase('rpc/salvar_produto','POST', {
         p_produto: { nome, categoria, preco, preco_custo }, p_id: Number(idEdit) || null,
       });
       if (!res.ok || !res.dados?.id) {
@@ -3670,7 +3846,7 @@ async function salvarProduto() {
     if (idx >= 0) Object.assign(todosOsProdutos[idx], salvo);
     else todosOsProdutos.push(salvo);
     fecharModal('modal-produto');
-    rerenderizarCatalogoMantendoBusca();
+    registrarMudancaLocal('produtos');
   } finally {
     salvando = false;
     botaoSalvando('salvarProduto', false, 'Salvar Produto');
@@ -3708,11 +3884,15 @@ async function excluirProduto(id) {
   salvando = true;
   try {
     if (!MODO_DEMO) {
-      const res = await supabase('produtos','DELETE',null,`?id=eq.${id}`);
-      if (!res.ok) { toast('Erro ao excluir. Tente novamente.'); return; }
+      const res = await apiSupabase('produtos','DELETE',null,`?id=eq.${id}`);
+      if (!res.ok || res.count !== 1) {
+        toast('Produto não excluído. Ele pode estar vinculado a pedidos ou ter sido alterado.');
+        solicitarSincronizacao();
+        return;
+      }
     }
     todosOsProdutos = todosOsProdutos.filter(p=>p.id!==id);
-    rerenderizarCatalogoMantendoBusca();
+    registrarMudancaLocal('produtos');
   } finally {
     salvando = false;
   }
@@ -3722,6 +3902,7 @@ async function excluirProduto(id) {
 async function verDetalheProduto(id) {
   const p = todosOsProdutos.find(x => x.id === id);
   if (!p) return;
+  document.getElementById('modal-detalhe-produto').dataset.registroId = String(id);
 
   // Mostra modal com loading enquanto busca histórico
   document.getElementById('detalhe-produto-nome').textContent = p.nome;
@@ -3745,7 +3926,7 @@ async function verDetalheProduto(id) {
   let historico = [];
   let modoDemoSemHistorico = false;
   if (!MODO_DEMO) {
-    const res = await supabase('historico_precos', 'GET', null,
+    const res = await apiSupabase('historico_precos', 'GET', null,
       `?produto_id=eq.${id}&order=criado_em.desc&limit=20`);
     if (res.ok && Array.isArray(res.dados)) historico = res.dados;
   } else {
@@ -4022,6 +4203,7 @@ function enviarPedidoWhatsApp(id) {
 function verDetalhePedido(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
+  document.getElementById('modal-detalhe-pedido').dataset.registroId = String(id);
   document.getElementById('detalhe-pedido-titulo').textContent = `Pedido — ${p.cliente_nome}`;
   const itensHtml = p.itens?.length
     ? p.itens.map(i=>`
@@ -4108,7 +4290,7 @@ async function carregarHistoricoPedido(pedidoId) {
   if (!el || MODO_DEMO || usuario.perfil === 'entregador') return;
 
   el.innerHTML = '<div class="separador">🕘 Histórico do pedido</div><div class="loading"><div class="spinner"></div> Carregando histórico...</div>';
-  const res = await supabase('historico_pedidos', 'GET', null,
+  const res = await apiSupabase('historico_pedidos', 'GET', null,
     `?pedido_id=eq.${pedidoId}&select=acao,alterado_por,campos,criado_em&order=criado_em.desc&limit=20`);
 
   if (!el.isConnected || el.dataset.pedidoId !== String(pedidoId)) return;
@@ -4173,6 +4355,10 @@ function fecharModal(id) {
     // Restaura a posição de scroll (evita o "pulo" ao fechar no desktop)
     const sc = document.querySelector('.conteudo');
     if (sc && _scrollSalvo) sc.scrollTop = _scrollSalvo;
+  }
+  if (sincronizacaoPendente && !formularioDeDadosAberto()) {
+    sincronizacaoPendente = false;
+    solicitarSincronizacao();
   }
 }
 
@@ -4244,7 +4430,13 @@ function atualizarStatusConexao() {
   const offline = !navigator.onLine;
   document.body.classList.toggle('offline', offline);
   // Se voltou online, tenta processar fila de ações pendentes
-  if (!offline && usuario) processarFilaOffline();
+  if (!offline && usuario) {
+    iniciarRealtime();
+    processarFilaOffline();
+    solicitarSincronizacao();
+  } else if (offline) {
+    pararRealtime();
+  }
 }
 
 window.addEventListener('online',  atualizarStatusConexao);
@@ -4340,7 +4532,7 @@ async function processarFilaOffline() {
     for (const acao of lerFilaOffline()) {
       if (usuario?.login !== loginInicial) break;
       if (!acaoOfflinePertenceAoUsuario(acao) || acao.tipo !== 'marcar-entregue') continue;
-      const res = await supabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
+      const res = await apiSupabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
       if (!res.ok) continue;
       sucesso.push(JSON.stringify(acao));
       if (usuario?.login === loginInicial) {
@@ -4358,9 +4550,7 @@ async function processarFilaOffline() {
     atualizarAvisoFila();
   }
   if (sucesso.length && usuario?.login === loginInicial) {
-    agendarRender('dashboard');
-    agendarRender('entregas');
-    if (usuario.perfil === 'admin') agendarRender('financeiro');
+    registrarMudancaLocal('pedidos');
   }
 }
 

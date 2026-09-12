@@ -28,6 +28,7 @@ function authContext() {
     sessao: { access_token: 'a', refresh_token: 'r', expires_at: 0 }, usuario: { login: 'admin' },
     SUPABASE_URL: 'https://teste.invalid', SUPABASE_KEY: 'teste',
     montarSessao: x => x, usuarioDoToken: () => ({ login: 'admin' }), persistirSessao() {},
+    atualizarTokenRealtime() {},
     AbortController,
     setTimeout: f => { timers.set(++sequencia, f); return sequencia; },
     clearTimeout: id => timers.delete(id),
@@ -86,6 +87,7 @@ test('Entrega de pedido pré-pago preserva recebimento no modo offline', async (
       dadosEntregaConcluida: () => ({ status: 'entregue', data_entregue_em: '2026-09-09' }),
       adicionarNaFilaOffline: async a => { payload = a.payload; },
       toast() {}, limparChecklist() {}, fecharModal() {}, agendarRender() {},
+      botaoSalvando() {}, registrarMudancaLocal() {}, console,
     };
     vm.runInNewContext(trecho('async function confirmarEntrega()', '// EXCLUIR PEDIDO'), c);
     await c.confirmarEntrega();

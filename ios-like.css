@@ -601,6 +601,18 @@ html.modo-economico button:active {
   opacity:.86;
 }
 
+/* O navegador pode pular layout/pintura dos cartões fora da área visível.
+   A altura intrínseca mantém a rolagem estável enquanto eles entram na tela. */
+@supports (content-visibility:auto) {
+  .item-card,
+  .item-cliente-card,
+  .item-produto-card,
+  .card-financeiro {
+    content-visibility:auto;
+    contain-intrinsic-size:auto 172px;
+  }
+}
+
 /* Navegadores que expõem uma tela de atualização lenta recebem o mesmo corte. */
 @media (update:slow) {
   body::before,body::after,#tela-login svg.deco { display:none; }

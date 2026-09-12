@@ -24,6 +24,8 @@ assert.match(html, /deviceMemory&&n\.deviceMemory<=4/);
 assert.match(html, /hardwareConcurrency&&n\.hardwareConcurrency<=4/);
 assert.doesNotMatch(html, /family=Nunito/);
 assert.match(css, /html\.modo-economico \.header[\s\S]*backdrop-filter:none/);
+assert.match(css, /@supports \(content-visibility:auto\)[\s\S]*contain-intrinsic-size:auto 172px/);
+assert.match(html, /ios-like\.css\?v=5/);
 assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
 assert.match(css, /@media \(update:slow\)/);
 

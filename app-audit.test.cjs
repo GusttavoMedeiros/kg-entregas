@@ -32,7 +32,7 @@ const auth = {
   },
   montarSessao: dados => dados,
   usuarioDoToken: () => ({ login: 'entregador', perfil: 'entregador' }),
-  persistirSessao: () => {},
+  persistirSessao: () => {}, atualizarTokenRealtime: () => {},
   setTimeout,
   clearTimeout,
   AbortController,
@@ -103,7 +103,8 @@ vm.runInNewContext(
   assert.match(baixa, /\?id=in\.\(\$\{ids\.join\(','\)\}\)/);
   assert.doesNotMatch(baixa, /Promise\.all\(paraPagar/);
 
-  assert.match(app, /metodo === 'PATCH'\) headers\['Prefer'\] = 'return=minimal'/);
+  assert.match(app, /metodo === 'PATCH' \|\| metodo === 'DELETE'/);
+  assert.match(app, /return=representation,count=exact/);
   assert.match(app, /i\.preco_catalogo \?\? ''/);
   assert.match(app, /c\.inscricao_estadual\|\|''/);
   assert.match(app, /if \(!usuario \|\| usuario\.login !== loginInicial\) return/);

@@ -12,9 +12,9 @@ function fila() {
     usuario:{login:'entregador',perfil:'entregador'}, MODO_DEMO:false,
     navigator:{onLine:true}, crypto, console, Date,
     localStorage:{getItem:k=>memoria.get(k)??null,setItem:(k,v)=>memoria.set(k,v)},
-    document:{getElementById:()=>null}, agendarRender:()=>{}, toast:()=>{},
+    document:{getElementById:()=>null}, agendarRender:()=>{}, registrarMudancaLocal:()=>{}, toast:()=>{},
     todosOsPedidos:[{id:1,status:'pendente'},{id:2,status:'pendente'}],
-    supabase:async(t,m,d)=>({ok:true,dados:{id:d.p_id,...d.p_dados}}),
+    apiSupabase:async(t,m,d)=>({ok:true,dados:{id:d.p_id,...d.p_dados}}),
   };
   vm.createContext(contexto);
   vm.runInContext(trecho("const FILA_OFFLINE_KEY =",'// Tenta processar a fila'),contexto);
@@ -53,7 +53,7 @@ test('Fila corrompida não é sobrescrita com outra entrega',async()=>{
 test('Entrega acrescentada durante envio não desaparece ao remover a anterior',async()=>{
   const c=fila(); await c.adicionarNaFilaOffline(acao(1));
   let liberar;
-  c.supabase=()=>new Promise(resolve=>{liberar=()=>resolve({ok:true,dados:{status:'entregue'}});});
+  c.apiSupabase=()=>new Promise(resolve=>{liberar=()=>resolve({ok:true,dados:{status:'entregue'}});});
   const enviando=c.processarFilaOffline();
   await c.adicionarNaFilaOffline(acao(2));
   liberar(); await enviando;
@@ -62,22 +62,22 @@ test('Entrega acrescentada durante envio não desaparece ao remover a anterior',
 });
 test('Falha mantém ação e libera processamento para próxima tentativa',async()=>{
   const c=fila(); await c.adicionarNaFilaOffline(acao(1));
-  c.supabase=async()=>({ok:false,status:503}); await c.processarFilaOffline();
+  c.apiSupabase=async()=>({ok:false,status:503}); await c.processarFilaOffline();
   assert.equal(c.lerFilaOffline().length,1);
-  c.supabase=async()=>({ok:true,dados:{status:'entregue'}}); await c.processarFilaOffline();
+  c.apiSupabase=async()=>({ok:true,dados:{status:'entregue'}}); await c.processarFilaOffline();
   assert.equal(c.lerFilaOffline().length,0);
 });
 test('Trocar usuário não envia nem aplica entrega de outro login',async()=>{
   const c=fila(); await c.adicionarNaFilaOffline(acao(1));
   c.usuario={login:'admin',perfil:'admin'};
-  c.supabase=async()=>assert.fail('Enviou ação de outro usuário');
+  c.apiSupabase=async()=>assert.fail('Enviou ação de outro usuário');
   await c.processarFilaOffline();c.aplicarFilaOffline(c.todosOsPedidos);
   assert.equal(c.lerFilaOffline().length,1);
   assert.equal(c.todosOsPedidos[0].status,'pendente');
 });
 test('Paginação recupera tudo mesmo quando o servidor limita abaixo de 500',async()=>{
   const registros=[1,2,3,4,5].map(id=>({id}));let chamadas=0;
-  const c={supabase:async(t,m,d,f)=>{
+  const c={apiSupabase:async(t,m,d,f)=>{
     chamadas++;const ultimo=Number(f.match(/id=gt\.(\d+)/)[1]);
     return {ok:true,dados:registros.filter(r=>r.id>ultimo).slice(0,2)};
   }};
@@ -86,7 +86,7 @@ test('Paginação recupera tudo mesmo quando o servidor limita abaixo de 500',as
   assert.equal(res.dados.length,5);assert.equal(chamadas,4);
 });
 test('Falha em página posterior não devolve uma lista parcial como completa',async()=>{
-  let chamadas=0;const c={supabase:async()=>++chamadas===1?{ok:true,dados:[{id:1}]}:{ok:false,status:503}};
+  let chamadas=0;const c={apiSupabase:async()=>++chamadas===1?{ok:true,dados:[{id:1}]}:{ok:false,status:503}};
   vm.runInNewContext(trecho('async function listarTodos(', 'async function carregarListas('),c);
   assert.equal((await c.listarTodos('pedidos')).ok,false);
 });
@@ -104,7 +104,7 @@ test('Falha de rede durante renovação não é confundida com logout',async()=>
     fetch:async()=>{throw new TypeError('Failed to fetch');},
     AbortController,setTimeout,clearTimeout,console:{error:()=>{},warn:()=>{}},
   };
-  vm.runInNewContext(trecho('async function supabase(', '// ============================================================\n// AUTENTICAÇÃO'),c);
-  const res=await c.supabase('rpc/concluir_entrega','POST',{p_id:1});
+  vm.runInNewContext(trecho('async function apiSupabase(', '// ============================================================\n// AUTENTICAÇÃO'),c);
+  const res=await c.apiSupabase('rpc/concluir_entrega','POST',{p_id:1});
   assert.equal(res.ok,false);assert.equal(res.rede,true);
 });
