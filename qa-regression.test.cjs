@@ -16,7 +16,7 @@ test('Atualização e primeira instalação preservam o formulário aberto', asy
       window: { addEventListener: (n, f) => { eventos[n] = f; }, location: { reload: () => reloads++ } },
       toast() {}, console,
     };
-    vm.runInNewContext(trecho("if ('serviceWorker' in navigator)", '// DETECÇÃO DE STATUS ONLINE/OFFLINE'), c);
+    vm.runInNewContext(trecho('// REGISTRO AUTOMÁTICO DO SERVICE WORKER', '// DETECÇÃO DE STATUS ONLINE/OFFLINE'), c);
     eventos.load(); eventos.controllerchange();
     assert.equal(reloads, 0, 'Não pode destruir rascunho durante controllerchange');
   }

@@ -4395,6 +4395,72 @@ document.addEventListener('keydown', e => {
 // SERVICE WORKER + DETECÇÃO OFFLINE + INSTALAR PWA
 // ============================================================
 
+let atualizandoAplicativo = false;
+async function atualizarAplicativo() {
+  if (atualizandoAplicativo) return;
+  const botao = document.getElementById('btn-atualizar-app');
+  const status = document.getElementById('status-atualizar-app');
+  if (!navigator.onLine) {
+    if (status) {
+      status.textContent = 'Sem internet. Conecte-se e tente novamente.';
+      status.className = 'status-atualizar-login erro';
+    }
+    return;
+  }
+
+  atualizandoAplicativo = true;
+  if (botao) {
+    botao.disabled = true;
+    botao.textContent = '⏳ Verificando atualização…';
+  }
+  if (status) {
+    status.textContent = 'Buscando os arquivos mais recentes…';
+    status.className = 'status-atualizar-login';
+  }
+
+  try {
+    // Esta leitura sem cache confirma a conexão e evita recarregar uma cópia
+    // antiga do HTML. Os caches de dados e a fila offline não são removidos.
+    const versao = Date.now();
+    const resposta = await fetch(`./index.html?atualizar=${versao}`, {
+      cache:'no-store', headers:{ 'Cache-Control':'no-cache' },
+    });
+    if (!resposta.ok) throw new Error(`Servidor respondeu ${resposta.status}`);
+
+    if ('serviceWorker' in navigator) {
+      const registro = await navigator.serviceWorker.getRegistration()
+        || await navigator.serviceWorker.register('sw.js', { updateViaCache:'none' });
+      await registro.update();
+      if (registro.waiting) registro.waiting.postMessage({ type:'SKIP_WAITING' });
+    }
+
+    if (status) {
+      status.textContent = 'Aplicativo atualizado. Reabrindo…';
+      status.className = 'status-atualizar-login ok';
+    }
+    setTimeout(() => {
+      const destino = new URL(location.href);
+      destino.searchParams.set('atualizado', String(versao));
+      location.replace(destino.toString());
+    }, 300);
+  } catch (e) {
+    console.warn('Atualização manual falhou:', e);
+    if (status) {
+      status.textContent = 'Não foi possível atualizar. Verifique a conexão e tente novamente.';
+      status.className = 'status-atualizar-login erro';
+    }
+    atualizandoAplicativo = false;
+    if (botao) {
+      botao.disabled = false;
+      botao.textContent = '↻ Atualizar aplicativo';
+    }
+  }
+}
+
+// ============================================================
+// REGISTRO AUTOMÁTICO DO SERVICE WORKER
+// ============================================================
+
 // Registra o Service Worker (silencioso em caso de erro)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

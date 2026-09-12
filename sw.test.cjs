@@ -72,20 +72,20 @@ function tokenPara(sub) {
 (async () => {
   // Primeiro acesso offline: apenas o arquivo sem query foi pré-cacheado.
   cached.set('https://kg-entregas.vercel.app/app.js', new Response('pre-cache'));
-  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=5', new Response('estilo-pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=6', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
-  assert.equal(await (await requestApp('?v=54')).text(), 'pre-cache');
-  assert.equal(await (await requestEstilo('?v=5')).text(), 'estilo-pre-cache');
-  assert.equal((await requestApp('?v=54&outra=1')).status, 503);
+  assert.equal(await (await requestApp('?v=55')).text(), 'pre-cache');
+  assert.equal(await (await requestEstilo('?v=6')).text(), 'estilo-pre-cache');
+  assert.equal((await requestApp('?v=55&outra=1')).status, 503);
 
   // Atualização conserva os dados offline compatíveis e caches de outros apps.
   const removidos = [];
-  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'outro-app'];
+  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets', 'outro-app'];
   global.caches.delete = async key => { removidos.push(key); return true; };
   let ativacao;
   handlers.activate({ waitUntil: promise => { ativacao = promise; } });
   await ativacao;
-  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets']);
+  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets']);
 
   global.fetch = async () => new Response('versao-nova', { status: 200 });
   assert.equal(await (await requestApp()).text(), 'versao-nova');
@@ -116,10 +116,10 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v30'/);
-  assert.match(sw, /\.\/ios-like\.css\?v=5/);
-  assert.match(index, /ios-like\.css\?v=5/);
-  assert.match(index, /app\.js\?v=54/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v31'/);
+  assert.match(sw, /\.\/ios-like\.css\?v=6/);
+  assert.match(index, /ios-like\.css\?v=6/);
+  assert.match(index, /app\.js\?v=55/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');

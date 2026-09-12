@@ -24,8 +24,10 @@ assert.match(html, /deviceMemory&&n\.deviceMemory<=4/);
 assert.match(html, /hardwareConcurrency&&n\.hardwareConcurrency<=4/);
 assert.doesNotMatch(html, /family=Nunito/);
 assert.match(css, /html\.modo-economico \.header[\s\S]*backdrop-filter:none/);
+assert.match(css, /#tela-login\s*\{[^}]*overflow-y:auto/s);
+assert.match(css, /max-height:700px[\s\S]*#tela-login[\s\S]*justify-content:flex-start/);
 assert.match(css, /@supports \(content-visibility:auto\)[\s\S]*contain-intrinsic-size:auto 172px/);
-assert.match(html, /ios-like\.css\?v=5/);
+assert.match(html, /ios-like\.css\?v=6/);
 assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
 assert.match(css, /@media \(update:slow\)/);
 

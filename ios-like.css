@@ -72,6 +72,8 @@ body::after { opacity:.56; }
 /* Login: mantém a marca e simplifica a leitura e os controles. */
 #tela-login {
   justify-content:center;
+  overflow-x:hidden;
+  overflow-y:auto;
   padding:calc(28px + var(--safe-top)) max(20px,var(--safe-left)) calc(28px + var(--safe-bot));
   background:
     radial-gradient(circle at 50% 12%,rgba(205,154,24,.12),transparent 19rem),
@@ -128,6 +130,33 @@ body::after { opacity:.56; }
   box-shadow:0 24px 64px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.07);
   animation:iosFadeUp .48s .08s var(--ios-ease) both;
 }
+
+.btn-atualizar-login {
+  width:100%;
+  min-height:44px;
+  margin-top:10px;
+  border:1px solid rgba(239,190,48,.22);
+  border-radius:13px;
+  background:rgba(239,190,48,.065);
+  color:var(--c1);
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+  transition:background .15s var(--ios-ease),border-color .15s var(--ios-ease),opacity .15s;
+}
+
+.btn-atualizar-login:active { background:rgba(239,190,48,.13); }
+.btn-atualizar-login:disabled { cursor:wait;opacity:.72; }
+.status-atualizar-login {
+  min-height:17px;
+  margin-top:7px;
+  color:var(--c3);
+  font-size:11px;
+  line-height:1.35;
+  text-align:center;
+}
+.status-atualizar-login.erro { color:#ef7b70; }
+.status-atualizar-login.ok { color:#65ce8d; }
 
 @keyframes iosFadeUp {
   from { opacity:0; transform:translateY(12px); }
@@ -699,4 +728,21 @@ html.modo-economico button:active {
 @media (prefers-reduced-motion:reduce) {
   .logo-login,.card-login,.modal-sheet,.tela.ativa,.stagger-in,
   .nav-item.ativo .nav-icon { animation:none !important; }
+}
+
+/* Mantém todas as ações de login alcançáveis em aparelhos baixos/antigos. */
+@media (max-width:599px) and (max-height:700px) {
+  #tela-login {
+    justify-content:flex-start;
+    padding-top:12px;
+    padding-bottom:12px;
+  }
+  #tela-login .logo-login { margin-bottom:9px; }
+  #tela-login .logo-login img { width:64px;height:64px;margin-bottom:6px;border-radius:19px; }
+  #tela-login .logo-login h1 { font-size:19px; }
+  #tela-login .logo-login p { font-size:8.5px; }
+  #tela-login .card-login { padding:15px 17px; }
+  #tela-login .card-login h2 { margin-bottom:11px;font-size:17px; }
+  #tela-login .campo { margin-bottom:8px; }
+  #tela-login .perfil-login-btn { padding:8px 4px; }
 }

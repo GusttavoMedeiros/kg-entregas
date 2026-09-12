@@ -1518,7 +1518,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
 
 </style>
-<link rel="stylesheet" href="ios-like.css?v=5">
+<link rel="stylesheet" href="ios-like.css?v=6">
 </head>
 <body>
 
@@ -1580,6 +1580,12 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     <div class="campo"><label>Senha</label>
       <input type="password" id="input-senha" placeholder="••••••••" autocomplete="current-password"></div>
     <button class="btn-primario" onclick="fazerLogin()">Entrar</button>
+    <button type="button" class="btn-atualizar-login" id="btn-atualizar-app" onclick="atualizarAplicativo()">
+      <span aria-hidden="true">↻</span> Atualizar aplicativo
+    </button>
+    <div class="status-atualizar-login" id="status-atualizar-app" role="status" aria-live="polite">
+      Busca a versão mais recente sem apagar seus dados.
+    </div>
     <p class="erro-login" id="erro-login">Toque no seu perfil e digite a senha</p>
   </div>
 </div>
@@ -2213,6 +2219,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=54"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
