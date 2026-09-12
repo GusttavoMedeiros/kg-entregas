@@ -1448,7 +1448,10 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 /* Touch: sem hover */
 @media (hover: none), (pointer: coarse) {
-  *:hover { transform: none !important; box-shadow: var(--sv) !important; }
+  .card-resumo:hover,.atalho-card:hover,.item-card:hover,
+  .item-cliente-card:hover,.item-produto-card:hover {
+    transform:none;
+  }
 }
 
 /* ===== TOAST (avisos que substituem o alert nativo) ===== */
@@ -1508,7 +1511,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
 
 </style>
-<link rel="stylesheet" href="ios-like.css?v=2">
+<link rel="stylesheet" href="ios-like.css?v=3">
 </head>
 <body>
 

@@ -29,14 +29,34 @@
   --ios-glass:rgba(13,37,25,.82);
 }
 
-html { background:#06140d; }
+html {
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+  background:#06140d;
+}
 
 body {
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
   font-family:var(--ios-font);
   background:
     radial-gradient(circle at 15% -5%,rgba(210,161,34,.10),transparent 32rem),
     radial-gradient(circle at 92% 92%,rgba(49,112,78,.17),transparent 38rem),
     #06140d;
+}
+
+#app {
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+
+@supports (overflow:clip) {
+  html,body,#app { overflow-x:clip; }
 }
 
 button,input,select,textarea { font-family:var(--ios-font); }
@@ -257,6 +277,19 @@ body::after { opacity:.56; }
   box-shadow:0 10px 28px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.035);
 }
 
+/* O atalho principal precisa vencer a regra genérica de cartões acima. */
+.atalho-card.atalho-novo {
+  border:1px solid rgba(255,220,150,.28);
+  background:var(--go);
+  box-shadow:0 8px 24px rgba(200,150,12,.36),inset 0 1px 0 rgba(255,255,255,.28);
+}
+
+.atalho-card.atalho-novo .atalho-icone,
+.atalho-card.atalho-novo .atalho-label {
+  color:#102317;
+  opacity:1;
+}
+
 .card-resumo {
   border-radius:22px;
   text-align:left;
@@ -337,11 +370,56 @@ body::after { opacity:.56; }
 
 /* Navegação inferior em cápsula flutuante no celular. */
 @media (max-width:899px) {
-  .conteudo { padding-bottom:18px; }
+  body,#app { touch-action:pan-y; }
+
+  .header,.conteudo,.conteudo > .tela,
+  .grid-resumo,.atalhos-row,.grid-rankings,
+  #lista-proximas,#lista-entregas,#lista-meus-pedidos,
+  #lista-clientes,#lista-financeiro,#lista-catalogo {
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .conteudo {
+    padding-bottom:calc(28px + var(--safe-bot));
+    overflow-x:clip;
+  }
+
+  .grid-resumo,.grid-rankings,.resumo-financeiro {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .atalhos-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .resumo-entregador-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+
+  .card-resumo,.atalho-card,.card-grafico,.card-ranking,
+  .item-card,.item-cliente-card,.item-produto-card,.card-financeiro {
+    min-width:0;
+    max-width:100%;
+  }
+
+  .item-header {
+    min-width:0;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .item-nome {
+    flex:1 1 160px;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .item-header > .badge { flex:0 1 auto; }
+
+  .item-acoes,.row-gap,.resumo-entregador-abas { min-width:0; flex-wrap:wrap; }
+  .item-acoes > *,.row-gap > * { min-width:0; }
 
   .nav-bottom {
-    width:calc(100% - 20px);
-    margin:0 10px calc(8px + var(--safe-bot));
+    width:calc(100% - 24px);
+    max-width:calc(100% - 24px);
+    margin:0 12px calc(8px + var(--safe-bot));
     bottom:8px;
     padding:5px 4px;
     border:1px solid rgba(255,255,255,.085);
@@ -417,6 +495,39 @@ body::after { opacity:.56; }
   }
 }
 
+/* Movimento corporativo/premium: curto, vertical e sem deslocar a página. */
+@keyframes iosTelaIn {
+  from { opacity:.72; transform:translateY(6px); }
+  to { opacity:1; transform:none; }
+}
+
+@keyframes iosCardIn {
+  from { opacity:0; transform:translateY(8px) scale(.992); }
+  to { opacity:1; transform:none; }
+}
+
+@keyframes iosNavSelect {
+  0% { transform:scale(.92); opacity:.72; }
+  100% { transform:scale(1); opacity:1; }
+}
+
+.tela.ativa { animation:iosTelaIn .24s cubic-bezier(.2,0,0,1) both; }
+
+.stagger-in {
+  animation:iosCardIn .28s cubic-bezier(.2,0,0,1) both;
+  animation-delay:0s;
+}
+
+.stagger-in:nth-child(1) { animation-delay:.02s; }
+.stagger-in:nth-child(2) { animation-delay:.05s; }
+.stagger-in:nth-child(3) { animation-delay:.08s; }
+.stagger-in:nth-child(4) { animation-delay:.11s; }
+.stagger-in:nth-child(5) { animation-delay:.14s; }
+.stagger-in:nth-child(6) { animation-delay:.17s; }
+.stagger-in:nth-child(n+7) { animation-delay:.17s; }
+
+.nav-item.ativo .nav-icon { animation:iosNavSelect .22s cubic-bezier(.2,0,0,1) both; }
+
 /* Sidebar de desktop com o mesmo material, sem alterar o layout funcional. */
 @media (min-width:900px) {
   body { background:#041008; }
@@ -490,6 +601,6 @@ body::after { opacity:.56; }
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .logo-login,.card-login,.modal-sheet { animation:none !important; }
+  .logo-login,.card-login,.modal-sheet,.tela.ativa,.stagger-in,
+  .nav-item.ativo .nav-icon { animation:none !important; }
 }
-
