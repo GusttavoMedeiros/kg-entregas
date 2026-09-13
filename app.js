@@ -983,6 +983,7 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
       'Content-Type': 'application/json',
     };
     if (metodo === 'POST') headers['Prefer'] = 'return=representation';
+    if (metodo === 'GET' && opcoes.contar) headers['Prefer'] = 'count=exact';
     if (metodo === 'PATCH' || metodo === 'DELETE') {
       headers['Prefer'] = opcoes.retorno === 'minimal'
         ? 'return=minimal,count=exact'
@@ -1025,7 +1026,7 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
     const faixa = res.headers?.get?.('Content-Range') || '';
     const total = Number(faixa.match(/\/(\d+)$/)?.[1]);
     const count = Number.isFinite(total) ? total : (Array.isArray(resposta) ? resposta.length : null);
-    return { ok:true, dados:resposta, count };
+    return { ok:true, dados:resposta, count, total:Number.isFinite(total) ? total : null };
   } catch(e) {
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
@@ -1165,13 +1166,22 @@ async function restaurarSessao() {
   if (!salvo?.sessao?.refresh_token || !salvo?.usuario) return;
 
   sessao  = salvo.sessao;
-  usuario = salvo.usuario;
+  usuario = usuarioDoToken(sessao.access_token);
+  if (!usuario) {
+    sessao = null; persistirSessao();
+    return;
+  }
 
-  // Começa com um token fresco. Se o refresh falhar E o access já expirou,
-  // descarta e cai na tela de login normalmente.
-  // EXCEÇÃO: sem internet o refresh sempre falha — nesse caso MANTÉM a sessão
-  // e entra mesmo assim (offline-first: os dados vêm do cache do Service Worker
-  // e a fila offline segura as ações até a conexão voltar).
+  // Reutiliza o access token até a margem de renovação. A API continua
+  // validando o JWT e as permissões em cada consulta e operação.
+  // Offline não aguarda uma renovação que não pode terminar com sucesso.
+  if (!navigator.onLine || Date.now() < sessao.expires_at - 60000) {
+    entrarNoApp();
+    return;
+  }
+
+  // Renova apenas perto da expiração. Se a conexão cair durante a espera,
+  // preserva o acesso offline; expirado e online exige nova autenticação.
   const renovou = await authRefresh();
   // Logout ou outro login durante a espera invalidam esta restauração.
   if (!sessao || !usuario || (!renovou && sessao !== salvo.sessao)) return;
@@ -1467,13 +1477,18 @@ async function listarTodos(tabela, select='*') {
   let ultimo = 0;
   while (true) {
     const res = await apiSupabase(tabela,'GET',null,
-      `?select=${select}&order=id.asc&limit=500&id=gt.${ultimo}`);
+      `?select=${select}&order=id.asc&limit=500&id=gt.${ultimo}`, true, { contar:true });
     if (!res.ok) return res;
     if (!Array.isArray(res.dados)) return { ok:false, erro:'Resposta de dados inválida.' };
     if (!res.dados.length) return { ok:true, dados };
     const proximo = Number(res.dados.at(-1).id);
     if (!Number.isSafeInteger(proximo) || proximo <= ultimo) return { ok:false, erro:'Paginação inválida.' };
     dados.push(...res.dados);
+    // O total é dos registros restantes (id > ultimo), não das páginas já
+    // acumuladas. Sem total (cache antigo), mantém a paginação conservadora.
+    if (Number.isSafeInteger(res.total) && res.total >= 0 && res.dados.length >= res.total) {
+      return { ok:true, dados };
+    }
     ultimo = proximo;
   }
 }

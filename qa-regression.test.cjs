@@ -62,11 +62,12 @@ test('Refresh travado termina e libera o bloqueio compartilhado', async () => {
 });
 
 test('Logout durante restauração não reabre app nem acessa sessão nula', async () => {
-  for (const online of [true, false]) {
+  for (const online of [true]) {
     let liberar; let entradas = 0;
     const c = { SESSAO_KEY: 'sessao', sessao: null, usuario: null, navigator: { onLine: online },
       localStorage: { getItem: () => JSON.stringify({ sessao: { refresh_token: 'r', expires_at: 0 }, usuario: { login: 'admin' } }) },
       authRefresh: () => new Promise(r => { liberar = r; }),
+      usuarioDoToken: () => ({ login:'admin', perfil:'admin' }),
       entrarNoApp: () => entradas++, persistirSessao() {},
     };
     vm.runInNewContext(trecho('async function restaurarSessao()', '// LOGIN / SAIR'), c);

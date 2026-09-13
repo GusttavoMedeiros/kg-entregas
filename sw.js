@@ -1,13 +1,13 @@
 // ============================================================
 // KG ENTREGAS — Service Worker
 // Estratégia:
-//   - App principal (HTML/JS/CSS): network-first (sempre atualizado)
+//   - HTML: network-first; JS/CSS versionados: cache-first por URL exata
 //   - Imagens: stale-while-revalidate (carrega instantâneo)
 //   - Supabase API: network-first com fallback de cache
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v31';
+const CACHE_VERSION = 'kg-v32';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -17,7 +17,7 @@ const DATA_CACHE   = 'kg-v23-data';
 const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
-  './app.js',
+  './app.js?v=56',
   './ios-like.css?v=6',
   './manifest.json',
   './logo.webp',
@@ -88,23 +88,30 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) O app principal busca a versão atual antes de recorrer ao cache.
+  // 5) A versão vem do HTML atualizado. Uma URL nova nunca reutiliza
+  // bytes de outra versão; reabrir a mesma versão dispensa outra ida à rede.
+  if (['script', 'style'].includes(event.request.destination) && url.searchParams.has('v')) {
+    event.respondWith(estrategiaVersaoCacheada(event.request));
+    return;
+  }
+
+  // O HTML continua buscando a versão atual antes de recorrer ao cache.
   const ehAppPrincipal = event.request.mode === 'navigate' || ['script', 'style'].includes(event.request.destination);
   event.respondWith(ehAppPrincipal
     ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000, chaveCacheApp(event.request))
     : estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
 });
 
-// O HTML usa app.js?v=...; o pré-cache contém app.js. A rede mantém a URL
-// versionada, mas ambas precisam compartilhar a chave para funcionar offline.
+// URLs versionadas são chaves distintas para evitar misturar versões offline.
 function chaveCacheApp(request) {
-  const url = new URL(request.url);
-  const appUrl = new URL('./app.js', self.location.href);
-  if (url.origin === appUrl.origin && url.pathname === appUrl.pathname) {
-    url.searchParams.delete('v');
-    return new Request(url.toString(), { method: 'GET' });
-  }
   return request;
+}
+
+async function estrategiaVersaoCacheada(request) {
+  const cache = await caches.open(ASSETS_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  return estrategiaNetworkPrimeiro(request, ASSETS_CACHE, 3000);
 }
 
 // ============================================================
