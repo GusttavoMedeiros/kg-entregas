@@ -540,19 +540,22 @@ body::after { opacity:.56; }
   100% { transform:scale(1); opacity:1; }
 }
 
-.tela.ativa { animation:iosTelaIn .24s cubic-bezier(.2,0,0,1) both; }
+.tela.ativa { animation:iosTelaIn .20s cubic-bezier(.2,0,0,1) backwards; }
 
 .stagger-in {
-  animation:iosCardIn .28s cubic-bezier(.2,0,0,1) both;
+  animation:none;
   animation-delay:0s;
+}
+.tela.entrada .stagger-in:nth-child(-n+6) {
+  animation:iosCardIn .22s cubic-bezier(.2,0,0,1) backwards;
 }
 
 .stagger-in:nth-child(1) { animation-delay:.02s; }
-.stagger-in:nth-child(2) { animation-delay:.05s; }
-.stagger-in:nth-child(3) { animation-delay:.08s; }
-.stagger-in:nth-child(4) { animation-delay:.11s; }
-.stagger-in:nth-child(5) { animation-delay:.14s; }
-.stagger-in:nth-child(6) { animation-delay:.17s; }
+.tela.entrada .stagger-in:nth-child(2) { animation-delay:.04s; }
+.tela.entrada .stagger-in:nth-child(3) { animation-delay:.06s; }
+.tela.entrada .stagger-in:nth-child(4) { animation-delay:.08s; }
+.tela.entrada .stagger-in:nth-child(5) { animation-delay:.10s; }
+.tela.entrada .stagger-in:nth-child(6) { animation-delay:.12s; }
 .stagger-in:nth-child(n+7) { animation:none; }
 
 .nav-item.ativo .nav-icon { animation:iosNavSelect .22s cubic-bezier(.2,0,0,1) both; }
@@ -607,6 +610,7 @@ html.modo-economico .atalho-card.atalho-novo {
 
 html.modo-economico .tela.ativa,
 html.modo-economico .stagger-in,
+html.modo-economico .tela.entrada .stagger-in:nth-child(-n+6),
 html.modo-economico .nav-item.ativo .nav-icon,
 html.modo-economico .logo-login,
 html.modo-economico .card-login,
@@ -652,6 +656,30 @@ html.modo-economico button:active {
     backdrop-filter:none;
   }
 }
+
+.status-carregamento {
+  display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+  gap:10px; padding:14px; margin-bottom:12px; border:1px solid var(--ol);
+  border-radius:14px; background:var(--v2); color:var(--c1); font-size:14px;
+}
+.status-carregamento[hidden] { display:none; }
+
+/* Feedback curto; só transform/opacity participam do movimento. */
+@keyframes iosSheetIn {
+  from { opacity:.7; transform:translateY(24px) scale(.995); }
+  to { opacity:1; transform:none; }
+}
+.modal-overlay.aberto .modal-sheet { animation:iosSheetIn .28s cubic-bezier(.2,0,0,1) backwards; }
+.btn-qtd:active,.btn-azul:active,.btn-primario:active { transform:scale(.97); }
+@keyframes slideDown {
+  from { opacity:.7; transform:translateY(-8px); }
+  to { opacity:1; transform:none; }
+}
+@media (prefers-reduced-motion:reduce), (update:slow) {
+  .tela.entrada .stagger-in:nth-child(-n+6),.modal-overlay.aberto .modal-sheet { animation:none !important; }
+  .btn-qtd:active,.btn-azul:active,.btn-primario:active { transform:none; }
+}
+html.modo-economico .modal-overlay.aberto .modal-sheet { animation:none; }
 
 /* Sidebar de desktop com o mesmo material, sem alterar o layout funcional. */
 @media (min-width:900px) {

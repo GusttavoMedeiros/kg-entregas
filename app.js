@@ -44,6 +44,7 @@ let filtroMeusPedidos  = 'pendente';
 let carrinho           = [];      // [{produto, qtd}]
 let autoRefreshTimer   = null;    // timer de sincronização automática
 let salvando           = false;   // trava anti double-submit em operações async
+let geracaoAcesso      = 0;       // invalida respostas de uma sessão encerrada
 
 // Feedback visual nos botões de salvar: desabilita e mostra "Salvando…"
 // enquanto a operação roda. Em conexão lenta (3G), sem isso o usuário
@@ -104,8 +105,12 @@ function toast(msg, tipo) {
 // Confirmação com visual do app. Retorna Promise<boolean>.
 // Uso: if (!await confirmar('Tem certeza?')) return;
 // opts: { titulo, okLabel, cancelLabel, perigo }
+let resolverConfirmacao = null;
 function confirmar(mensagem, opts = {}) {
+  if (resolverConfirmacao) resolverConfirmacao(false);
   return new Promise(resolve => {
+    const focoAnterior = document.activeElement;
+    let encerrado = false;
     let overlay = document.getElementById('confirmar-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -130,14 +135,22 @@ function confirmar(mensagem, opts = {}) {
     btOk.textContent = opts.okLabel || 'Confirmar';
 
     const fechar = (valor) => {
+      if (encerrado) return;
+      encerrado = true;
+      resolverConfirmacao = null;
       overlay.classList.remove('aberto');
       document.removeEventListener('keydown', onKey);
+      if (focoAnterior?.isConnected) focoAnterior.focus();
       resolve(valor);
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') fechar(false);
-      else if (e.key === 'Enter')  fechar(true);
+      if (e.key === 'Escape') { e.preventDefault(); fechar(false); }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        (document.activeElement === btOk ? btCancel : btOk).focus();
+      }
     };
+    resolverConfirmacao = fechar;
     btCancel.addEventListener('click', () => fechar(false));
     btOk.addEventListener('click', () => fechar(true));
     document.addEventListener('keydown', onKey);
@@ -153,10 +166,11 @@ const fmt = d => dataHojeBrasil(d);
 
 // Data civil no fuso da operação. Não usa UTC para evitar registrar o dia
 // seguinte perto da meia-noite no Brasil.
-function dataHojeBrasil(agora = new Date()) {
-  const partes = new Intl.DateTimeFormat('en-US', {
+const formatadorDataBrasil = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(agora);
+});
+function dataHojeBrasil(agora = new Date()) {
+  const partes = formatadorDataBrasil.formatToParts(agora);
   const valor = tipo => partes.find(p => p.type === tipo)?.value;
   return `${valor('year')}-${valor('month')}-${valor('day')}`;
 }
@@ -304,12 +318,11 @@ function matchBusca(termo, ...campos) {
 // Aplica highlight dourado nas palavras encontradas (com escape de HTML).
 // Mostra o texto ORIGINAL mas destaca os pedaços que casaram (com ou sem acento).
 function highlightBusca(textoOriginal, termo) {
-  const seguro = esc(textoOriginal || '');
-  if (!termo || !termo.trim()) return seguro;
-  const palavras = termo.trim().split(/\s+/).filter(Boolean);
+  const original = String(textoOriginal ?? '');
+  if (!termo || !termo.trim()) return esc(original);
+  const palavras = [...new Set(termo.trim().split(/\s+/).filter(Boolean))];
   // Para cada palavra, gera regex que ignora acentos do texto original
-  let resultado = seguro;
-  palavras.forEach(palavra => {
+  const padroes = palavras.map(palavra => {
     const palavraNorm = normalizar(palavra);
     if (!palavraNorm) return;
     // Constrói regex que casa a sequência de caracteres ignorando acentos
@@ -321,14 +334,19 @@ function highlightBusca(textoOriginal, termo) {
         'o': '[oóòõôöOÓÒÕÔÖ]', 'u': '[uúùûüUÚÙÛÜ]', 'c': '[cçCÇ]',
         'n': '[nñNÑ]'
       };
-      return variantes[c] || c;
+      return variantes[c] || c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }).join('');
-    try {
-      const re = new RegExp('(' + padraoChars + ')', 'gi');
-      resultado = resultado.replace(re, '<mark class="busca-match">$1</mark>');
-    } catch(e) { /* regex inválida — ignora highlight */ }
-  });
-  return resultado;
+    return padraoChars;
+  }).filter(Boolean);
+  if (!padroes.length) return esc(original);
+  // Uma passagem pelo texto original: nunca busca dentro do HTML já criado.
+  const re = new RegExp(padroes.join('|'), 'gi');
+  let fim = 0, resultado = '';
+  for (const match of original.matchAll(re)) {
+    resultado += esc(original.slice(fim, match.index)) + '<mark class="busca-match">' + esc(match[0]) + '</mark>';
+    fim = match.index + match[0].length;
+  }
+  return resultado + esc(original.slice(fim));
 }
 
 // Debounce — evita re-render a cada tecla digitada em buscas (150ms = imperceptível)
@@ -742,8 +760,8 @@ async function consultarCNPJ(cnpjLimpo) {
 
 // Aplica dados retornados da Receita nos campos do modal de cliente
 // Lida com nome divergente (alerta) e CNPJ inativo (aviso)
-async function aplicarDadosReceita(dados) {
-  if (!dados) return;
+async function aplicarDadosReceita(dados, aindaAtual = () => true) {
+  if (!dados || !aindaAtual()) return;
 
   // 1) Avisa se CNPJ inativo/suspenso/baixado ANTES de preencher
   const descSit = (dados.descricao_situacao_cadastral || '').toUpperCase();
@@ -753,7 +771,7 @@ async function aplicarDadosReceita(dados) {
       `Pode indicar que a empresa está inativa, suspensa ou baixada.\n\n` +
       `Deseja preencher os dados mesmo assim?`
     );
-    if (!continuar) return;
+    if (!continuar || !aindaAtual()) return;
   }
 
   // 2) Decide qual nome usar (nome_fantasia > razao_social)
@@ -773,6 +791,7 @@ async function aplicarDadosReceita(dados) {
   }
 
   // 4) Preenche os campos (só sobrescreve se vazio OU se usuário autorizou)
+  if (!aindaAtual()) return;
   if (inputNome && nomeReceita && (!nomeAtual || usarNomeReceita)) {
     inputNome.value = nomeReceita;
   }
@@ -854,7 +873,16 @@ async function tentarConsultarCNPJ() {
   status.className = 'cnpj-status carregando';
   status.innerHTML = '<span class="spinner-mini"></span> Consultando Receita Federal...';
 
+  const abertura = document.getElementById('modal-cliente')?.dataset.abertura;
+  const consulta = {};
+  modal.consultaAtual = consulta;
+  const aindaAtual = () => modal.consultaAtual === consulta &&
+    document.getElementById('modal-cliente')?.classList.contains('aberto') &&
+    document.getElementById('modal-cliente')?.dataset.abertura === abertura &&
+    modal.dataset.tipoPessoa !== 'fisica' && soDigitos(input.value) === digitos;
+
   const res = await consultarCNPJ(digitos);
+  if (!aindaAtual()) return;
 
   if (!res.ok) {
     status.className = 'cnpj-status aviso';
@@ -895,7 +923,7 @@ async function tentarConsultarCNPJ() {
     <div style="font-size:10px;opacity:.6;margin-top:3px">Itens com ✗ não são divulgados pela Receita para este CNPJ</div>`;
 
   // Aplica os dados (com confirmações se necessário)
-  await aplicarDadosReceita(d);
+  await aplicarDadosReceita(d, aindaAtual);
 }
 
 // Aplica máscaras nos inputs do modal de cliente (delegação por evento)
@@ -968,12 +996,14 @@ const DEMO_PEDIDOS = [
 // SUPABASE
 // ============================================================
 async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=true, opcoes={}) {
+  const acessoInicial = geracaoAcesso;
   if (MODO_DEMO) return { ok:true, dados:null };
   // Sem sessão logada, a RLS bloqueia tudo — nem tenta a chamada.
   if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
 
   // Renova o token proativamente se estiver perto de expirar
   if (navigator.onLine) await garantirTokenValido();
+  if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada. Reabra a operação.' };
   if (!sessao) return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
 
   try {
@@ -997,27 +1027,29 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
     const timeoutId = setTimeout(() => ctrl.abort(), 15000);
     opts.signal = ctrl.signal;
 
-    let res;
+    let res, texto;
     try {
       res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}${filtros}`, opts);
+      texto = res.status === 204 ? '' : await res.text();
     } finally {
       clearTimeout(timeoutId);
     }
 
+    if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada. Reabra a operação.' };
     // Token expirou/ficou inválido no meio do uso: renova UMA vez e refaz.
     if (res.status === 401 && _retry) {
       const renovou = await authRefresh();
+      if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada.' };
       if (renovou) return apiSupabase(tabela, metodo, dados, filtros, false, opcoes);
       forcarRelogin();
       return { ok:false, erro:'Sessão expirada. Faça login novamente.', status:401 };
     }
 
     if (!res.ok) {
-      const txt = await res.text();
+      const txt = texto;
       console.error(`[Supabase ${metodo} ${tabela}] HTTP ${res.status}:`, txt);
       return { ok:false, erro: `HTTP ${res.status}: ${txt}`, status: res.status };
     }
-    const texto = res.status === 204 ? '' : await res.text();
     let resposta = true;
     if (texto) {
       try { resposta = JSON.parse(texto); }
@@ -1028,6 +1060,7 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
     const count = Number.isFinite(total) ? total : (Array.isArray(resposta) ? resposta.length : null);
     return { ok:true, dados:resposta, count, total:Number.isFinite(total) ? total : null };
   } catch(e) {
+    if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada.' };
     if (e.name === 'AbortError') {
       console.warn(`[Supabase ${metodo} ${tabela}] Timeout (15s) — verifique a internet`);
       return { ok:false, rede:true, erro: 'Tempo esgotado. Verifique sua conexão de internet e tente novamente.' };
@@ -1223,7 +1256,9 @@ function resetarPerfilLogin() {
   document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => b.classList.remove('ativo'));
 }
 
+let loginEmAndamento = false;
 async function fazerLogin() {
+  if (loginEmAndamento) return;
   const u = document.getElementById('input-usuario').value.trim().toLowerCase();
   const s = document.getElementById('input-senha').value;   // senha é case-sensitive — NÃO alterar
   const email  = LOGIN_EMAILS[u];
@@ -1234,11 +1269,12 @@ async function fazerLogin() {
 
   // Feedback: evita duplo-clique e mostra que está acontecendo algo
   const btn = document.querySelector('#tela-login .btn-primario');
+  const acessoInicial = geracaoAcesso;
+  loginEmAndamento = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
-
+  try {
   const r = await authLogin(email, s);
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+  if (geracaoAcesso !== acessoInicial) return;
 
   if (!r.ok) {
     if (r.rede) {
@@ -1260,11 +1296,16 @@ async function fazerLogin() {
   persistirSessao();
   document.getElementById('erro-login').style.display = 'none';
   entrarNoApp();
+  } finally {
+    loginEmAndamento = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+  }
 }
 
 // Configura a UI e carrega os dados depois que já há sessão + usuario.
 // Usado tanto no login manual quanto na restauração de sessão.
 function entrarNoApp() {
+  geracaoAcesso++;
   const user = usuario;
   document.getElementById('tela-login').style.display = 'none';
   const appEl = document.getElementById('app');
@@ -1298,6 +1339,9 @@ if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
 }});
 
 function sair() {
+  if (resolverConfirmacao) resolverConfirmacao(false);
+  geracaoAcesso++;
+  carregandoDados = false;
   pararAutoRefresh();
   pararRealtime();
   let acoesOfflinePendentes = 0;
@@ -1455,6 +1499,7 @@ function navegarPara(id) {
   document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
   const el = document.getElementById(item.tela);
   if (el) { el.style.display=''; el.classList.add('ativa'); }
+  animarEntradaTela(el);
   document.getElementById('header-titulo').textContent = TITULOS[id] || '';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('ativo'));
   const btn = document.getElementById(`nav-${id}`);
@@ -1509,15 +1554,28 @@ async function carregarListas() {
   return resultados;
 }
 
+let carregandoDados = false;
 async function carregarTudo() {
+  if (carregandoDados || !usuario) return;
+  carregandoDados = true;
   const loginInicial = usuario?.login;
+  const acessoInicial = geracaoAcesso;
+  const revisaoInicial = revisaoEstado;
+  const aviso = document.getElementById('status-carregamento');
+  if (aviso) {
+    aviso.hidden = false;
+    aviso.innerHTML = '<span class="spinner-mini" aria-hidden="true"></span> Carregando informações…';
+  }
+  try {
   if (!MODO_DEMO) {
     const [resPed, resCli, resProd] = await carregarListas();
+    if (geracaoAcesso !== acessoInicial || !usuario || usuario.login !== loginInicial) return;
     if (!resPed.ok || !resCli.ok || !resProd.ok) {
-      toast('Erro ao carregar dados. Verifique sua conexão e recarregue a página.');
-      return;
+      throw new Error('Falha no carregamento das listas');
     }
-    if (!usuario || usuario.login !== loginInicial) return;
+    if (revisaoEstado !== revisaoInicial || formularioDeDadosAberto()) {
+      throw new Error('Os dados mudaram durante a leitura. Tente novamente.');
+    }
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
     todosOsPedidos = (resPed.dados || []).map(p => ({
@@ -1528,9 +1586,13 @@ async function carregarTudo() {
     }));
     aplicarFilaOffline(todosOsPedidos);
   }
+  animarEntradaTela(document.querySelector('.tela.ativa'));
   // Só monta a primeira tela. As demais são montadas quando o usuário as abre,
   // evitando criar centenas de nós invisíveis logo após o login.
-  if (usuario.perfil === 'admin') renderizarDashboard();
+  const telaAtiva = document.querySelector('.tela.ativa')?.id;
+  const telaInicial = NAV[usuario.perfil]?.[0]?.tela;
+  if (telaAtiva && telaAtiva !== telaInicial) agendarRender(telaAtiva.replace('tela-', ''));
+  else if (usuario.perfil === 'admin') renderizarDashboard();
   else if (usuario.perfil === 'vendedor') renderizarInicioVendedor();
   else renderizarEntregas(filtroEntregas);
   popularSelectClientes();
@@ -1546,6 +1608,21 @@ async function carregarTudo() {
   // recuperação caso o WebSocket seja bloqueado pela rede.
   iniciarRealtime();
   iniciarAutoRefresh();
+  if (aviso) aviso.hidden = true;
+  } catch (e) {
+    if (geracaoAcesso !== acessoInicial) return;
+    console.warn('Carregamento inicial falhou:', e.message);
+    if (aviso) aviso.innerHTML = 'Não foi possível carregar as informações. <button type="button" class="btn-azul" onclick="carregarTudo()">Tentar novamente</button>';
+  } finally {
+    if (geracaoAcesso === acessoInicial) carregandoDados = false;
+  }
+}
+
+function animarEntradaTela(el) {
+  if (!el) return;
+  clearTimeout(el.fimEntrada);
+  el.classList.add('entrada');
+  el.fimEntrada = setTimeout(() => el.classList.remove('entrada'), 400);
 }
 
 // ============================================================
@@ -1684,19 +1761,20 @@ function carregarSdkRealtime() {
 
 async function iniciarRealtime() {
   if (MODO_DEMO || !usuario || !sessao || !navigator.onLine) return;
+  const acessoInicial = geracaoAcesso;
   const loginInicial = usuario.login;
   if ((canalRealtime && loginRealtime === loginInicial) || loginRealtimeIniciando === loginInicial) return;
   loginRealtimeIniciando = loginInicial;
   pararRealtime();
   try {
     const sdk = await carregarSdkRealtime();
-    if (!usuario || usuario.login !== loginInicial || !sessao) return;
+    if (geracaoAcesso !== acessoInicial || !usuario || usuario.login !== loginInicial || !sessao) return;
     const cliente = sdk.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false },
       realtime:{ params:{ eventsPerSecond:2 } },
     });
     await cliente.realtime.setAuth(sessao.access_token);
-    const aoMudar = () => solicitarSincronizacao();
+    const aoMudar = debounce(solicitarSincronizacao, 250);
     const canal = cliente.channel('kg-dados')
       .on('postgres_changes',{event:'*',schema:'public',table:'pedidos'},aoMudar)
       .on('postgres_changes',{event:'*',schema:'public',table:'clientes'},aoMudar)
@@ -1879,7 +1957,7 @@ function renderizarInicioVendedor() {
   renderizarGraficoVendas('v-grafico-vendas', 'v-grafico-total', usuario.login);
 
   // Meus melhores clientes (todo tempo)
-  const porCli = {};
+  const porCli = Object.create(null);
   meusPedidos.filter(p=>p.status==='entregue').forEach(p => {
     if (!porCli[p.cliente_id]) porCli[p.cliente_id] = { nome:p.cliente_nome, total:0, qtd:0 };
     porCli[p.cliente_id].total += Number(p.valor) || 0;
@@ -1928,7 +2006,7 @@ function renderizarInicioVendedor() {
 function renderizarGraficoVendas(idDiv, idTotal, vendedorLogin) {
   const dias = 30;
   const agora = new Date();
-  const mapa = {};
+  const mapa = Object.create(null);
   for (let i = dias-1; i >= 0; i--) {
     const d = new Date(agora);
     d.setDate(d.getDate() - i);
@@ -1962,7 +2040,7 @@ function renderizarGraficoVendas(idDiv, idTotal, vendedorLogin) {
 // TOP CLIENTES do mês
 // ============================================================
 function renderizarTopClientes(idDiv, pedidosMes) {
-  const totalPorCliente = {};
+  const totalPorCliente = Object.create(null);
   pedidosMes.forEach(p => {
     if (!totalPorCliente[p.cliente_id]) {
       totalPorCliente[p.cliente_id] = { nome: p.cliente_nome, total: 0, qtd: 0 };
@@ -1991,7 +2069,7 @@ function renderizarTopClientes(idDiv, pedidosMes) {
 // TOP PRODUTOS do mês
 // ============================================================
 function renderizarTopProdutos(idDiv, pedidosMes) {
-  const totalPorProduto = {};
+  const totalPorProduto = Object.create(null);
   pedidosMes.forEach(p => {
     (p.itens || []).forEach(it => {
       const nome = it.nome || 'Produto';
@@ -2024,7 +2102,7 @@ function renderizarTopProdutos(idDiv, pedidosMes) {
 // PERFORMANCE dos vendedores
 // ============================================================
 function renderizarPerformanceVendedores(idDiv, pedidosMes) {
-  const porVendedor = {};
+  const porVendedor = Object.create(null);
   pedidosMes.forEach(p => {
     const v = p.vendedor || '—';
     if (!porVendedor[v]) porVendedor[v] = { qtd: 0, valor: 0 };
@@ -2065,7 +2143,7 @@ function cobrarTodosAtrasados() {
     return;
   }
   // Agrupa por cliente
-  const porCliente = {};
+  const porCliente = Object.create(null);
   atras.forEach(p => {
     if (!porCliente[p.cliente_id]) {
       const c = todosOsClientes.find(x => x.id === p.cliente_id);
@@ -2250,9 +2328,10 @@ function extrairBairro(endereco) {
 
 // Renderiza entregas agrupadas por bairro
 function renderizarRotaPorBairro(lista) {
-  const porBairro = {};
+  const porBairro = Object.create(null);
+  const clientesPorId = new Map(todosOsClientes.map(c => [c.id, c]));
   lista.forEach(p => {
-    const cliente = todosOsClientes.find(c => c.id === p.cliente_id);
+    const cliente = clientesPorId.get(p.cliente_id);
     const bairro = extrairBairro(cliente?.endereco);
     if (!porBairro[bairro]) porBairro[bairro] = [];
     porBairro[bairro].push({ pedido: p, cliente });
@@ -2608,9 +2687,8 @@ function adicionarAoCarrinho(produtoId) {
   buscarProdutoModal(termo);
 }
 
-function alterarQtdCarrinho(produtoId, delta) {
-  const idx = carrinho.findIndex(c => c.produto.id===produtoId);
-  if (idx<0) return;
+function alterarQtdCarrinho(idx, delta) {
+  if (!carrinho[idx]) return;
   carrinho[idx].qtd += delta;
   if (carrinho[idx].qtd <= 0) carrinho.splice(idx,1);
   renderizarCarrinho();
@@ -2651,16 +2729,16 @@ function renderizarCarrinho() {
         </div>
         <div class="carrinho-controle">
           <div class="carrinho-qtd">
-            <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},-1)" aria-label="Diminuir 1">−</button>
+            <button class="btn-qtd" onclick="alterarQtdCarrinho(${idx},-1)" aria-label="Diminuir 1">−</button>
             <input type="number" class="qtd-input" value="${c.qtd}" min="1" step="1"
                    inputmode="numeric"
-                   onchange="definirQtdCarrinho(${c.produto.id}, this.value)"
+                   onchange="definirQtdCarrinho(${idx}, this.value)"
                    onfocus="this.select()">
-            <button class="btn-qtd" onclick="alterarQtdCarrinho(${c.produto.id},1)" aria-label="Aumentar 1">+</button>
+            <button class="btn-qtd" onclick="alterarQtdCarrinho(${idx},1)" aria-label="Aumentar 1">+</button>
           </div>
           <div class="carrinho-acoes">
             <div class="carrinho-subtotal">${moeda(subtotal)}</div>
-            <button class="btn-remover" onclick="removerDoCarrinho(${c.produto.id})" aria-label="Remover produto">🗑️</button>
+            <button class="btn-remover" onclick="removerDoCarrinho(${idx})" aria-label="Remover produto">🗑️</button>
           </div>
         </div>
       </div>`;
@@ -2669,10 +2747,14 @@ function renderizarCarrinho() {
 }
 
 // Permite definir quantidade exata digitando
-function definirQtdCarrinho(produtoId, valorStr) {
-  const idx = carrinho.findIndex(c => c.produto.id === produtoId);
-  if (idx < 0) return;
-  const qtd = Math.max(1, Math.floor(Number(valorStr) || 1));
+function definirQtdCarrinho(idx, valorStr) {
+  if (!carrinho[idx]) return;
+  const qtd = Number(valorStr);
+  if (!Number.isSafeInteger(qtd) || qtd < 1 || qtd > 2147483647) {
+    toast('Informe uma quantidade inteira válida.');
+    renderizarCarrinho();
+    return;
+  }
   carrinho[idx].qtd = qtd;
   renderizarCarrinho();
   const termo = document.getElementById('busca-produto-modal').value;
@@ -2680,8 +2762,9 @@ function definirQtdCarrinho(produtoId, valorStr) {
 }
 
 // Remove totalmente o produto do carrinho
-function removerDoCarrinho(produtoId) {
-  carrinho = carrinho.filter(c => c.produto.id !== produtoId);
+function removerDoCarrinho(idx) {
+  if (!carrinho[idx]) return;
+  carrinho.splice(idx, 1);
   renderizarCarrinho();
   const termo = document.getElementById('busca-produto-modal').value;
   buscarProdutoModal(termo);
@@ -2746,12 +2829,12 @@ function confirmarAjustePreco() {
   const c = carrinho[ajusteCarrinhoIdx];
   if (!c) return;
   const novoStr = document.getElementById('ajustar-preco-input').value.replace(',', '.');
-  const novo = parseFloat(novoStr);
-  if (isNaN(novo) || novo < 0) {
+  const novo = Number(novoStr);
+  if (!novoStr.trim() || !Number.isFinite(novo) || novo < 0) {
     toast('Informe um preço válido (maior ou igual a zero).');
     return;
   }
-  c.preco_unit = novo;
+  c.preco_unit = Math.round((novo + Number.EPSILON) * 100) / 100;
   ajusteCarrinhoIdx = null;
   fecharModal('modal-ajustar-preco');
   renderizarCarrinho();
@@ -2776,11 +2859,15 @@ function renderizarClientes(lista, termoBusca = '') {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">🏪</div><p>Nenhum cliente cadastrado</p></div>`;
     return;
   }
+  const dividaPorCliente = new Map();
+  for (const p of todosOsPedidos) {
+    if (!foiPago(p)) dividaPorCliente.set(p.cliente_id,
+      (dividaPorCliente.get(p.cliente_id) || 0) + (Number(p.valor) || 0));
+  }
   el.innerHTML = lista.map(c => {
-    const pedidosCli = todosOsPedidos.filter(p => p.cliente_id===c.id);
     // "Em aberto" = tudo que ainda não foi PAGO (inclui entregue sem pagar),
     // mesma régua do Financeiro — antes usava só o status de entrega e divergia.
-    const devendo = pedidosCli.filter(p => !foiPago(p)).reduce((s,p)=>s+(Number(p.valor)||0),0);
+    const devendo = dividaPorCliente.get(c.id) || 0;
     const badge = devendo>0
       ? `<span class="badge badge-devendo">${moeda(devendo)} em aberto</span>`
       : `<span class="badge badge-em-dia">Em dia</span>`;
@@ -2856,7 +2943,7 @@ function verDetalheCliente(id) {
 // ============================================================
 function renderizarFinanceiro(filtro) {
   filtroFinanceiro = filtro;
-  const porCliente = {};
+  const porCliente = Object.create(null);
   todosOsClientes.forEach(c => { porCliente[c.id]={ cliente:c, pedidos:[] }; });
   todosOsPedidos.forEach(p => { if (porCliente[p.cliente_id]) porCliente[p.cliente_id].pedidos.push(p); });
 
@@ -2868,7 +2955,7 @@ function renderizarFinanceiro(filtro) {
       if (!foiPago(p)) totalDev += Number(p.valor)||0;
       // RECEBIDO: foi pago de fato, no mês atual (usa data_pagamento se houver, senão data_entrega)
       else {
-        const dataRef = p.data_pagamento || p.data_entrega;
+        const dataRef = p.data_pagamento || dataRealEntrega(p);
         if (dataRef?.startsWith(mes)) totalRec += Number(p.valor)||0;
       }
     });
@@ -3037,6 +3124,7 @@ async function marcarPagoCliente() {
 // ============================================================
 let chaveNovoPedido = null;
 function abrirModalNovoPedido(idEdit) {
+  if (carregandoDados) { toast('Aguarde o carregamento das informações.'); return; }
   if (!idEdit) chaveNovoPedido = crypto.randomUUID();
   const hoje = fmt(new Date());
   document.getElementById('busca-produto-modal').value = '';
@@ -3080,12 +3168,13 @@ function abrirModalNovoPedido(idEdit) {
     (p.itens || []).forEach(it => {
       const prod = todosOsProdutos.find(x => x.id === it.produto_id);
       const produto = prod || { id: it.produto_id, nome: it.nome, preco: it.preco_unit };
-      const existente = carrinho.find(c => c.produto.id === produto.id);
       // Compat: itens antigos não têm preco_catalogo — usa o do catálogo atual ou o próprio preco_unit
       const precoUnit = Number(it.preco_unit ?? produto.preco ?? 0);
       const precoCat  = (it.preco_catalogo != null)
         ? Number(it.preco_catalogo)
         : (prod ? Number(prod.preco) : precoUnit);
+      const existente = carrinho.find(c => c.produto.id === produto.id &&
+        c.preco_unit === precoUnit && c.preco_catalogo === precoCat);
       if (existente) {
         existente.qtd += Number(it.qtd) || 0;
         // Mantém preço já carregado (não sobrescreve em duplicatas)
@@ -3241,8 +3330,8 @@ function validarPrazosBoleto(prazos) {
 function calcularDataVencimento(data_entrega, forma, prazo) {
   if (!data_entrega) return null;
   if (forma === 'boleto' && prazo) {
-    const d = new Date(data_entrega + 'T12:00:00');
-    d.setDate(d.getDate() + Number(prazo));
+    const d = new Date(data_entrega + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + Number(prazo));
     return fmt(d);
   }
   // À vista e Cheque: vencimento = data do pedido
@@ -3260,8 +3349,10 @@ function podeEditarPedido(p) {
 function popularSelectClientes() {
   const sel = document.getElementById('pedido-cliente');
   if (!sel) return;
+  const selecionado = sel.value;
   sel.innerHTML = '<option value="">Selecionar cliente...</option>' +
     todosOsClientes.map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('');
+  sel.value = selecionado;
 }
 
 async function salvarPedido() {
@@ -3310,6 +3401,11 @@ async function salvarPedido() {
 }
 
 async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, obs, forma_pagamento, prazo_dias, prazos_boleto) {
+  if (carrinho.some(c => !Number.isSafeInteger(c.qtd) || c.qtd < 1 || c.qtd > 2147483647 ||
+      !Number.isFinite(Number(c.preco_unit ?? c.produto.preco)) || Number(c.preco_unit ?? c.produto.preco) < 0)) {
+    toast('Revise as quantidades e preços do pedido.');
+    return;
+  }
   // Valor calculado com o preço EFETIVO (preco_unit), que pode ter sido ajustado
   const precoUnitDe = c => (c.preco_unit != null ? Number(c.preco_unit) : Number(c.produto.preco)) || 0;
   const precoCatDe  = c => (c.preco_catalogo != null ? Number(c.preco_catalogo) : Number(c.produto.preco)) || 0;
@@ -3918,6 +4014,8 @@ async function excluirProduto(id) {
 
 // Mostra modal com detalhes do produto + histórico de preços
 async function verDetalheProduto(id) {
+  if (usuario?.perfil !== 'admin') return;
+  const acessoInicial = geracaoAcesso;
   const p = todosOsProdutos.find(x => x.id === id);
   if (!p) return;
   document.getElementById('modal-detalhe-produto').dataset.registroId = String(id);
@@ -3926,6 +4024,7 @@ async function verDetalheProduto(id) {
   document.getElementById('detalhe-produto-nome').textContent = p.nome;
   document.getElementById('detalhe-produto-conteudo').innerHTML = `
     <div class="loading"><div class="spinner"></div> Carregando histórico...</div>`;
+  const carregamento = document.getElementById('detalhe-produto-conteudo').firstElementChild;
   abrirModal('modal-detalhe-produto');
 
   // Calcula margem atual
@@ -3942,16 +4041,21 @@ async function verDetalheProduto(id) {
 
   // Busca histórico no banco
   let historico = [];
+  let falhaHistorico = false;
   let modoDemoSemHistorico = false;
   if (!MODO_DEMO) {
     const res = await apiSupabase('historico_precos', 'GET', null,
       `?produto_id=eq.${id}&order=criado_em.desc&limit=20`);
     if (res.ok && Array.isArray(res.dados)) historico = res.dados;
+    else falhaHistorico = true;
   } else {
     modoDemoSemHistorico = true;
   }
 
   // Resumo
+  if (geracaoAcesso !== acessoInicial ||
+      document.getElementById('detalhe-produto-conteudo').firstElementChild !== carregamento ||
+      !document.getElementById('modal-detalhe-produto').classList.contains('aberto')) return;
   let resumoHtml = `
     <div class="historico-resumo">
       <div class="historico-resumo-linha">
@@ -3983,6 +4087,8 @@ async function verDetalheProduto(id) {
   let historicoHtml = '<div class="separador">📊 Histórico de preços</div>';
   if (modoDemoSemHistorico) {
     historicoHtml += `<div class="historico-vazio">Histórico só fica disponível no modo real (com banco conectado).</div>`;
+  } else if (falhaHistorico) {
+    historicoHtml += '<div class="historico-vazio">Não foi possível carregar o histórico. Feche e abra novamente para tentar.</div>';
   } else if (!historico.length) {
     historicoHtml += `<div class="historico-vazio">Nenhuma alteração registrada ainda.<br>O histórico começa a partir da próxima alteração.</div>`;
   } else {
@@ -4358,6 +4464,7 @@ let _scrollSalvo = 0;
 function abrirModal(id) {
   const m = document.getElementById(id);
   if (m) {
+    m.dataset.abertura = String(Number(m.dataset.abertura || 0) + 1);
     // Salva a posição de scroll da área que rola (desktop = .conteudo)
     const sc = document.querySelector('.conteudo');
     _scrollSalvo = sc ? sc.scrollTop : window.scrollY;
@@ -4424,6 +4531,9 @@ async function atualizarAplicativo() {
   }
 
   atualizandoAplicativo = true;
+  const acessoInicial = geracaoAcesso;
+  const ctrl = new AbortController();
+  const tempoLimite = setTimeout(() => ctrl.abort(), 15000);
   if (botao) {
     botao.disabled = true;
     botao.textContent = '⏳ Verificando atualização…';
@@ -4439,21 +4549,38 @@ async function atualizarAplicativo() {
     const versao = Date.now();
     const resposta = await fetch(`./index.html?atualizar=${versao}`, {
       cache:'no-store', headers:{ 'Cache-Control':'no-cache' },
+      signal:ctrl.signal,
     });
     if (!resposta.ok) throw new Error(`Servidor respondeu ${resposta.status}`);
+    if (resposta.headers?.get('x-from-cache') === '1') throw new Error('Sem confirmação da rede');
+    await resposta.text();
 
     if ('serviceWorker' in navigator) {
-      const registro = await navigator.serviceWorker.getRegistration()
-        || await navigator.serviceWorker.register('sw.js', { updateViaCache:'none' });
-      await registro.update();
-      if (registro.waiting) registro.waiting.postMessage({ type:'SKIP_WAITING' });
+      await Promise.race([
+        (async () => {
+          const registro = await navigator.serviceWorker.getRegistration()
+            || await navigator.serviceWorker.register('sw.js', { updateViaCache:'none' });
+          await registro.update();
+          if (registro.waiting) registro.waiting.postMessage({ type:'SKIP_WAITING' });
+        })(),
+        new Promise((_, reject) => {
+          if (ctrl.signal.aborted) reject(new Error('Tempo esgotado'));
+          else ctrl.signal.addEventListener('abort', () => reject(new Error('Tempo esgotado')), { once:true });
+        }),
+      ]);
     }
+    if (geracaoAcesso !== acessoInicial || ctrl.signal.aborted) throw new Error('Atualização interrompida');
 
     if (status) {
       status.textContent = 'Aplicativo atualizado. Reabrindo…';
       status.className = 'status-atualizar-login ok';
     }
     setTimeout(() => {
+      if (geracaoAcesso !== acessoInicial) {
+        atualizandoAplicativo = false;
+        if (botao) { botao.disabled = false; botao.textContent = '↻ Atualizar aplicativo'; }
+        return;
+      }
       const destino = new URL(location.href);
       destino.searchParams.set('atualizado', String(versao));
       location.replace(destino.toString());
@@ -4469,6 +4596,8 @@ async function atualizarAplicativo() {
       botao.disabled = false;
       botao.textContent = '↻ Atualizar aplicativo';
     }
+  } finally {
+    clearTimeout(tempoLimite);
   }
 }
 
@@ -4778,39 +4907,39 @@ function navegarPeriodoRelatorio(delta) {
 
 // Calcula a janela [ini, fim] (strings YYYY-MM-DD) + label legível
 function calcularJanelaRelatorio(tipo, offset) {
-  const hoje = new Date();
+  const hoje = new Date(fmt(new Date()) + 'T12:00:00Z');
 
   if (tipo === 'semanal') {
     // Semana de segunda a domingo
     const base = new Date(hoje);
-    base.setDate(base.getDate() + offset * 7);
-    const diaSemana = (base.getDay() + 6) % 7; // 0 = segunda
-    const ini = new Date(base); ini.setDate(base.getDate() - diaSemana);
-    const fim = new Date(ini);  fim.setDate(ini.getDate() + 6);
+    base.setUTCDate(base.getUTCDate() + offset * 7);
+    const diaSemana = (base.getUTCDay() + 6) % 7; // 0 = segunda
+    const ini = new Date(base); ini.setUTCDate(base.getUTCDate() - diaSemana);
+    const fim = new Date(ini);  fim.setUTCDate(ini.getUTCDate() + 6);
     return { ini: fmt(ini), fim: fmt(fim), label: `Semana ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
   }
 
   if (tipo === 'quinzenal') {
     // Índice absoluto de quinzena: cada mês tem Q1 (1–15) e Q2 (16–fim)
-    let idx = hoje.getFullYear() * 24 + hoje.getMonth() * 2 + (hoje.getDate() > 15 ? 1 : 0);
+    let idx = hoje.getUTCFullYear() * 24 + hoje.getUTCMonth() * 2 + (hoje.getUTCDate() > 15 ? 1 : 0);
     idx += offset;
     const ano = Math.floor(idx / 24);
     const resto = idx % 24;
     const mes = Math.floor(resto / 2);
     const metade = resto % 2;
-    const ini = new Date(ano, mes, metade ? 16 : 1);
-    const fim = metade ? new Date(ano, mes + 1, 0) : new Date(ano, mes, 15);
+    const ini = new Date(Date.UTC(ano, mes, metade ? 16 : 1, 12));
+    const fim = metade ? new Date(Date.UTC(ano, mes + 1, 0, 12)) : new Date(Date.UTC(ano, mes, 15, 12));
     return { ini: fmt(ini), fim: fmt(fim), label: `${metade ? '2ª' : '1ª'} quinzena · ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
   }
 
   // mensal
-  const ano = hoje.getFullYear();
-  const mes = hoje.getMonth() + offset;
-  const ini = new Date(ano, mes, 1);
-  const fim = new Date(ano, mes + 1, 0);
+  const ano = hoje.getUTCFullYear();
+  const mes = hoje.getUTCMonth() + offset;
+  const ini = new Date(Date.UTC(ano, mes, 1, 12));
+  const fim = new Date(Date.UTC(ano, mes + 1, 0, 12));
   const nomesMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                       'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  return { ini: fmt(ini), fim: fmt(fim), label: `${nomesMeses[ini.getMonth()]} de ${ini.getFullYear()}` };
+  return { ini: fmt(ini), fim: fmt(fim), label: `${nomesMeses[ini.getUTCMonth()]} de ${ini.getUTCFullYear()}` };
 }
 
 // Filtra somente pedidos entregues do período (e do vendedor, se for o perfil dele)
@@ -4832,7 +4961,7 @@ function calcularDadosRelatorio(pedidos) {
   const aReceber  = total - recebido;
 
   // Top produtos (por valor) a partir dos itens
-  const porProduto = {};
+  const porProduto = Object.create(null);
   pedidos.forEach(p => (p.itens||[]).forEach(i => {
     const nome = i.nome || i.produto_nome || 'Produto';
     if (!porProduto[nome]) porProduto[nome] = { valor: 0, qtd: 0 };
@@ -4844,7 +4973,7 @@ function calcularDadosRelatorio(pedidos) {
     .sort((a,b) => b.valor - a.valor).slice(0, 5);
 
   // Top clientes (por valor)
-  const porCliente = {};
+  const porCliente = Object.create(null);
   pedidos.forEach(p => {
     const nome = p.cliente_nome || 'Cliente';
     if (!porCliente[nome]) porCliente[nome] = { valor: 0, pedidos: 0 };

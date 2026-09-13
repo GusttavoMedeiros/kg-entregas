@@ -16,6 +16,7 @@ function contexto({ online=true, fetchImpl } = {}) {
     update:async()=>{ registro.atualizou=true; },
   };
   const c = {
+    geracaoAcesso:0, AbortController, clearTimeout(){},
     document:{ getElementById:id => id === 'btn-atualizar-app' ? botao : status },
     navigator:{
       onLine:online,
@@ -24,9 +25,9 @@ function contexto({ online=true, fetchImpl } = {}) {
         register:async()=>registro,
       },
     },
-    fetch:fetchImpl || (async()=>({ok:true,status:200})),
+    fetch:fetchImpl || (async()=>({ok:true,status:200,text:async()=>''})),
     location:{ href:'https://kg-entregas.test/', replace:url=>{ c.destino=url; } },
-    setTimeout:fn=>{ fn(); return 1; },
+    setTimeout:(fn,ms)=>{ if(ms===300) fn(); else c.abortar=fn; return 1; },
     URL, Date, console:{ warn(){} },
   };
   vm.runInNewContext(codigo,c);
@@ -42,7 +43,7 @@ test('botão força consulta sem cache, atualiza o SW e preserva dados locais', 
   const segunda = c.atualizarAplicativo();
   assert.equal(chamadas,1);
   assert.equal(botao.disabled,true);
-  liberar({ok:true,status:200});
+  liberar({ok:true,status:200,text:async()=>''});
   await Promise.all([primeira,segunda]);
   assert.equal(opcoes.cache,'no-store');
   assert.equal(registro.atualizou,true);
@@ -68,4 +69,18 @@ test('falha de rede libera o botão para uma nova tentativa', async () => {
   assert.equal(botao.disabled,false);
   assert.match(botao.textContent,/Atualizar aplicativo/);
   assert.match(status.textContent,/Não foi possível atualizar/);
+});
+
+test('atualização com Service Worker travado termina e libera nova tentativa',async()=>{
+  const {c,botao,registro}=contexto();
+  registro.update=()=>new Promise(()=>{});
+  const p=c.atualizarAplicativo();await new Promise(setImmediate);c.abortar();await p;
+  assert.equal(botao.disabled,false);assert.equal(c.destino,undefined);
+});
+
+test('login durante atualização impede recarga que apagaria o formulário aberto',async()=>{
+  let liberar;const {c,botao}=contexto({fetchImpl:()=>new Promise(r=>liberar=r)});
+  const p=c.atualizarAplicativo();c.geracaoAcesso++;
+  liberar({ok:true,status:200,text:async()=>''});await p;
+  assert.equal(c.destino,undefined);assert.equal(botao.disabled,false);
 });

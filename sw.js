@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v32';
+const CACHE_VERSION = 'kg-v33';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -17,8 +17,8 @@ const DATA_CACHE   = 'kg-v23-data';
 const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
-  './app.js?v=56',
-  './ios-like.css?v=6',
+  './app.js?v=57',
+  './ios-like.css?v=7',
   './manifest.json',
   './logo.webp',
   './logo.png',
@@ -98,14 +98,9 @@ self.addEventListener('fetch', event => {
   // O HTML continua buscando a versão atual antes de recorrer ao cache.
   const ehAppPrincipal = event.request.mode === 'navigate' || ['script', 'style'].includes(event.request.destination);
   event.respondWith(ehAppPrincipal
-    ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000, chaveCacheApp(event.request))
+    ? estrategiaNetworkPrimeiro(event.request, ASSETS_CACHE, 3000)
     : estrategiaStaleWhileRevalidate(event.request, ASSETS_CACHE));
 });
-
-// URLs versionadas são chaves distintas para evitar misturar versões offline.
-function chaveCacheApp(request) {
-  return request;
-}
 
 async function estrategiaVersaoCacheada(request) {
   const cache = await caches.open(ASSETS_CACHE);

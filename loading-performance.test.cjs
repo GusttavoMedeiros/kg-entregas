@@ -76,7 +76,7 @@ test('total por página respeita limite menor do servidor e não corta pedidos',
 test('GET solicita total exato e não confunde tamanho da página com total ausente', async () => {
   let total = '0-1/5';
   const c = {
-    MODO_DEMO:false, sessao:{access_token:'token'}, navigator:{onLine:true},
+    geracaoAcesso:0, MODO_DEMO:false, sessao:{access_token:'token'}, navigator:{onLine:true},
     garantirTokenValido:async()=>true, SUPABASE_URL:'https://teste.invalid', SUPABASE_KEY:'publica',
     AbortController, setTimeout, clearTimeout, console,
     fetch:async(u,o) => {

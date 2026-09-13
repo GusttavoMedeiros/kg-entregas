@@ -9,7 +9,7 @@ const trecho = (inicio,fim) => app.slice(app.indexOf(inicio),app.indexOf(fim,app
 function fila() {
   const memoria = new Map();
   const contexto = {
-    usuario:{login:'entregador',perfil:'entregador'}, MODO_DEMO:false,
+    usuario:{login:'entregador',perfil:'entregador'}, geracaoAcesso:0, MODO_DEMO:false,
     navigator:{onLine:true}, crypto, console, Date,
     localStorage:{getItem:k=>memoria.get(k)??null,setItem:(k,v)=>memoria.set(k,v)},
     document:{getElementById:()=>null}, agendarRender:()=>{}, registrarMudancaLocal:()=>{}, toast:()=>{},
@@ -91,7 +91,7 @@ test('Falha em página posterior não devolve uma lista parcial como completa',a
   assert.equal((await c.listarTodos('pedidos')).ok,false);
 });
 test('Limites mensais usam Brasil e atravessam dezembro sem depender do fuso do aparelho',()=>{
-  const c={};vm.runInNewContext(trecho('function dataHojeBrasil(', 'function dataBR('),c);
+  const c={};vm.runInNewContext(trecho('const formatadorDataBrasil =', 'function dataBR('),c);
   const r=c.periodoMesBrasil(new Date('2027-01-01T01:00:00Z'));
   assert.equal(r.inicioMes,'2026-12-01');
   assert.equal(r.inicioMesPassado,'2026-11-01');
@@ -99,7 +99,7 @@ test('Limites mensais usam Brasil e atravessam dezembro sem depender do fuso do 
 });
 test('Falha de rede durante renovação não é confundida com logout',async()=>{
   const c={
-    MODO_DEMO:false,sessao:{access_token:'token-local'},navigator:{onLine:true},
+    geracaoAcesso:0, MODO_DEMO:false,sessao:{access_token:'token-local'},navigator:{onLine:true},
     garantirTokenValido:async()=>false,SUPABASE_URL:'https://local.invalid',SUPABASE_KEY:'teste',
     fetch:async()=>{throw new TypeError('Failed to fetch');},
     AbortController,setTimeout,clearTimeout,console:{error:()=>{},warn:()=>{}},

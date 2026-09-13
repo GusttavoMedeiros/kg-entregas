@@ -33,7 +33,7 @@ test('uma mudança de pedido cobre todas as interfaces e só renderiza a tela vi
 test('sincronização antiga não reverte uma entrega recém-confirmada', async () => {
   let liberar; let formulario = false;
   const c = {
-    MODO_DEMO:false, usuario:{login:'admin'}, navigator:{onLine:true},
+    geracaoAcesso:0, MODO_DEMO:false, usuario:{login:'admin'}, navigator:{onLine:true},
     document:{hidden:false}, formularioDeDadosAberto:()=>formulario,
     carregarListas:()=>new Promise(resolve=>{liberar=resolve;}),
     aplicarFilaOffline(){}, invalidarInterfaces(){}, console, queueMicrotask,
@@ -59,7 +59,7 @@ test('sincronização antiga não reverte uma entrega recém-confirmada', async 
 test('PATCH exige representação e informa quantas linhas o servidor alterou', async () => {
   let prefer;
   const c = {
-    MODO_DEMO:false, sessao:{access_token:'token'}, navigator:{onLine:true},
+    geracaoAcesso:0, MODO_DEMO:false, sessao:{access_token:'token'}, navigator:{onLine:true},
     garantirTokenValido:async()=>true, SUPABASE_URL:'https://teste.invalid', SUPABASE_KEY:'publica',
     authRefresh:async()=>false, forcarRelogin(){}, AbortController, setTimeout, clearTimeout,
     fetch:async(_url,opcoes)=>{

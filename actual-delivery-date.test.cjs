@@ -8,7 +8,7 @@ const migration = fs.readFileSync(
   'utf8',
 );
 
-const inicioDatas = app.indexOf('function dataHojeBrasil');
+const inicioDatas = app.indexOf('const formatadorDataBrasil =');
 const fimDatas = app.indexOf('\n}\n', app.indexOf('function dadosEntregaConcluida', inicioDatas)) + 2;
 const contexto = {};
 vm.runInNewContext(app.slice(inicioDatas, fimDatas), contexto);
