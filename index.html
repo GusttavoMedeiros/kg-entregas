@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=61" as="script">
+<link rel="preload" href="app.js?v=62" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -750,13 +750,20 @@ body.offline #app{padding-top:54px}
   .via-papel .via-indicador b,
   .via-papel .via-total-valor,
   .via-papel .via-total-label {
-    font-family: Georgia, 'Times New Roman', serif !important;
+    /* Arial/sans-serif em vez de Georgia/serif — fonte mais estreita cabe
+       mais conteúdo na largura do papel (iOS Safari ignora @page margin
+       e usa margens próprias, então fonte compacta é defesa importante). */
+    font-family: Arial, Helvetica, sans-serif !important;
     color: #111 !important;
     -webkit-text-fill-color: #111 !important;
     background: none !important;
     background-clip: initial !important;
     -webkit-background-clip: initial !important;
   }
+  /* Via do Pedido / N° XX mais compacto também (era font 13px/10.5px) */
+  .via-papel .via-doc-titulo b { font-size: 11px; letter-spacing: .5px; }
+  .via-papel .via-doc-titulo span { font-size: 9.5px; }
+  .via-papel .via-cab-nome { font-size: 16px; letter-spacing: .8px; }
   /* Garante que textos do papel saiam em cor escura mesmo se herdaram tema */
   .via-papel, .via-papel * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
@@ -2253,6 +2260,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

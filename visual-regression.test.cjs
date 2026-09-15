@@ -48,10 +48,11 @@ assert.match(html, /\.via-tabela-itens td:first-child[\s\S]{0,200}width:\s*10%/)
 assert.match(html, /\.via-tabela-itens th:nth-child\(2\)[\s\S]{0,200}width:\s*38%/);
 assert.match(html, /\.via-tabela-itens th:nth-child\(3\)[\s\S]{0,200}min-width:\s*32mm/);
 assert.match(html, /\.via-tabela-itens th:nth-child\(4\)[\s\S]{0,200}min-width:\s*30mm/);
-// Fallback de fonte pra TODOS os Cinzel dentro do papel
-assert.match(html, /\.via-papel \.via-cab-nome[\s\S]{0,400}font-family:\s*Georgia/s);
-assert.match(html, /\.via-papel \.via-indicador b[\s\S]{0,400}font-family:\s*Georgia/s);
-assert.match(html, /\.via-papel \.via-total-valor[\s\S]{0,400}font-family:\s*Georgia/s);
+// Fallback de fonte pra TODOS os Cinzel dentro do papel (Arial/sans-serif agora,
+// fonte estreita pra caber mais conteúdo na largura do papel A4)
+assert.match(html, /\.via-papel \.via-cab-nome[\s\S]{0,400}font-family:\s*Arial/s);
+assert.match(html, /\.via-papel \.via-indicador b[\s\S]{0,400}font-family:\s*Arial/s);
+assert.match(html, /\.via-papel \.via-total-valor[\s\S]{0,400}font-family:\s*Arial/s);
 // Cor visível forçada em print
 assert.match(html, /\.via-papel \.via-total-valor[\s\S]{0,400}color:\s*#111\s*!important/s);
 

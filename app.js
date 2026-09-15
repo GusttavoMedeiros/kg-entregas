@@ -201,7 +201,11 @@ function dataBR(d) {
 
 function moeda(v) {
   const n = Number(v);
-  return 'R$ ' + (isNaN(n) ? 0 : n).toFixed(2).replace('.', ',');
+  const valor = isNaN(n) ? 0 : n;
+  // Formato brasileiro: 00.000,00 (ponto nos milhares, vírgula decimal)
+  const [intPart, decPart] = valor.toFixed(2).split('.');
+  const intFmt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return 'R$ ' + intFmt + ',' + decPart;
 }
 
 function esc(t) {
@@ -4257,7 +4261,7 @@ function gerarViaPedido(id) {
       <div>${itensRows}</div>
       <div class="via-total" style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">
         <span class="via-total-label" style="font-size:11px;font-weight:800;color:#222;letter-spacing:.7px;text-transform:uppercase">Total</span>
-        <span class="via-total-valor" style="font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;color:#111">${moeda(p.valor)}</span>
+        <span class="via-total-valor" style="font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;letter-spacing:-.3px">${moeda(p.valor)}</span>
       </div>
     </div>
 
