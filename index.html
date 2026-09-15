@@ -19,7 +19,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://eatmzxyckqrsjrlyosfg.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://brasilapi.com.br">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
+     print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="preload" href="app.js?v=57" as="script">
 <script>
 (function(){
@@ -725,6 +727,32 @@ body.offline #app{padding-top:54px}
   .via-tabela thead { display: table-header-group; }
   .via-tabela tr { break-inside: avoid; page-break-inside: avoid; }
   .via-tabela td { overflow-wrap: anywhere; }
+  /* Larguras explícitas no print: sem elas o iOS Safari pode colapsar a coluna
+     de subtotal e o valor total quando a fonte Cinzel ainda não carregou. */
+  .via-tabela-itens { table-layout: fixed; width: 100%; }
+  .via-tabela-itens th:first-child,
+  .via-tabela-itens td:first-child { width: 10%; }
+  .via-tabela-itens th:nth-child(2),
+  .via-tabela-itens td:nth-child(2) { width: 38%; }
+  .via-tabela-itens th:nth-child(3),
+  .via-tabela-itens td:nth-child(3) { width: 30%; min-width: 32mm; }
+  .via-tabela-itens th:nth-child(4),
+  .via-tabela-itens td:nth-child(4) { width: 22%; min-width: 30mm; }
+  .via-total-valor { color: #111 !important; font-family: Georgia, 'Times New Roman', serif; }
+  /* Cobertura geral: TODOS os textos Cinzel dentro do papel caem pra serif de sistema
+     na impressão. Sem isso, qualquer elemento que use Cinzel pode sumir no print
+     (iOS Safari print preview pode capturar o snapshot antes da fonte baixar). */
+  .via-papel .via-cab-nome,
+  .via-papel .via-indicador b,
+  .via-papel .via-total-valor,
+  .via-papel .via-total-label {
+    font-family: Georgia, 'Times New Roman', serif !important;
+    color: #111 !important;
+    -webkit-text-fill-color: #111 !important;
+    background: none !important;
+    background-clip: initial !important;
+    -webkit-background-clip: initial !important;
+  }
   /* Garante que textos do papel saiam em cor escura mesmo se herdaram tema */
   .via-papel, .via-papel * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
