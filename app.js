@@ -4194,24 +4194,25 @@ function gerarViaPedido(id) {
   const c = todosOsClientes.find(x => x.id === p.cliente_id);
 
   // Linhas de itens (usa preco_unit real, que considera ajustes de preço)
-  // IMPORTANTE: estilos inline nas células (incluindo a 4ª coluna do subtotal)
-  // porque o iOS Safari print preview tem um snapshot/render diferente do
-  // Chrome/Edge e ignora algumas regras @media print. Inline style sempre ganha.
+  // IMPORTANTE: cada item agora é um BLOCO DE DIVS (não <table>). Tabelas têm
+  // bugs conhecidos no iOS Safari print preview mesmo com inline styles —
+  // a coluna 4 (Subtotal) e a linha TOTAL sumiam. Layout em div+flex garante
+  // que cada valor seja renderizado em sua própria caixa, sem colapso.
   const itensRows = (p.itens?.length)
     ? p.itens.map(i => {
       const d = formatarPrecoItemPedido(i);
       return `
-        <tr>
-          <td style="padding:6px;border-bottom:1px solid #e3e3e3;color:#222;text-align:center;width:42px">${d.quantidade}</td>
-          <td style="padding:6px;border-bottom:1px solid #e3e3e3;color:#222">${esc(d.nome)}</td>
-          <td class="via-preco-item" style="padding:6px;border-bottom:1px solid #e3e3e3;color:#222;text-align:right;white-space:nowrap">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid #e3e3e3;color:#222">
+          <div style="flex:0 0 42px;text-align:center;font-weight:600">${d.quantidade}</div>
+          <div style="flex:1 1 auto;min-width:0">${esc(d.nome)}</div>
+          <div style="flex:0 0 auto;text-align:right;white-space:nowrap">
             <b style="color:#222">${esc(d.textoUnidade)}</b>
-            ${d.textoEmbalagem ? `<small style="display:block;margin-top:2px;color:#666;font-size:9.5px;font-weight:600">${esc(d.textoEmbalagem)}</small>` : ''}
-          </td>
-          <td style="padding:6px;border-bottom:1px solid #e3e3e3;color:#222;text-align:right;white-space:nowrap;min-width:80px">${moeda(d.subtotal)}</td>
-        </tr>`;
+            ${d.textoEmbalagem ? `<span style="display:block;font-size:9.5px;color:#666;font-weight:600">${esc(d.textoEmbalagem)}</span>` : ''}
+          </div>
+          <div style="flex:0 0 90px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
+        </div>`;
     }).join('')
-    : `<tr><td colspan="4">${esc(p.descricao || '')}</td></tr>`;
+    : `<div style="padding:8px 0;color:#666">${esc(p.descricao || '')}</div>`;
 
   // Dados do cliente (só o que existe)
   const cliLinhas = [];
@@ -4247,15 +4248,13 @@ function gerarViaPedido(id) {
 
     <div class="via-bloco">
       <div class="via-bloco-titulo">Itens do pedido</div>
-      <table class="via-tabela via-tabela-itens" style="width:100%;border-collapse:collapse;font-size:12.5px">
-        <thead><tr>
-          <th style="text-align:left;font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;width:42px">Qtd</th>
-          <th style="text-align:left;font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555">Produto</th>
-          <th style="text-align:right;font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;white-space:nowrap">Unid./Saco</th>
-          <th style="text-align:right;font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;white-space:nowrap;min-width:80px">Subtotal</th>
-        </tr></thead>
-        <tbody>${itensRows}</tbody>
-      </table>
+      <div style="font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;display:flex;gap:10px">
+        <div style="flex:0 0 42px;text-align:center">Qtd</div>
+        <div style="flex:1 1 auto">Produto</div>
+        <div style="flex:0 0 auto;text-align:right">Unid./Saco</div>
+        <div style="flex:0 0 90px;text-align:right">Subtotal</div>
+      </div>
+      <div>${itensRows}</div>
       <div class="via-total" style="display:flex;justify-content:flex-end;gap:18px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">
         <span class="via-total-label" style="font-size:12px;font-weight:800;color:#222;letter-spacing:.7px;text-transform:uppercase">Total</span>
         <span class="via-total-valor" style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#111">${moeda(p.valor)}</span>
