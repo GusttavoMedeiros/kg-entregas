@@ -4209,7 +4209,7 @@ function gerarViaPedido(id) {
             <b style="color:#222">${esc(d.textoUnidade)}</b>
             ${d.textoEmbalagem ? `<span style="display:block;font-size:9.5px;color:#666;font-weight:600">${esc(d.textoEmbalagem)}</span>` : ''}
           </div>
-          <div style="flex:0 0 90px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
+          <div style="flex:0 0 75px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
         </div>`;
     }).join('')
     : `<div style="padding:8px 0;color:#666">${esc(p.descricao || '')}</div>`;
@@ -4252,12 +4252,12 @@ function gerarViaPedido(id) {
         <div style="flex:0 0 42px;text-align:center">Qtd</div>
         <div style="flex:1 1 auto">Produto</div>
         <div style="flex:0 0 auto;text-align:right">Unid./Saco</div>
-        <div style="flex:0 0 90px;text-align:right">Subtotal</div>
+        <div style="flex:0 0 75px;text-align:right">Subtotal</div>
       </div>
       <div>${itensRows}</div>
-      <div class="via-total" style="display:flex;justify-content:flex-end;gap:18px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">
-        <span class="via-total-label" style="font-size:12px;font-weight:800;color:#222;letter-spacing:.7px;text-transform:uppercase">Total</span>
-        <span class="via-total-valor" style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;color:#111">${moeda(p.valor)}</span>
+      <div class="via-total" style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">
+        <span class="via-total-label" style="font-size:11px;font-weight:800;color:#222;letter-spacing:.7px;text-transform:uppercase">Total</span>
+        <span class="via-total-valor" style="font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;color:#111">${moeda(p.valor)}</span>
       </div>
     </div>
 
