@@ -4202,14 +4202,14 @@ function gerarViaPedido(id) {
     ? p.itens.map(i => {
       const d = formatarPrecoItemPedido(i);
       return `
-        <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid #e3e3e3;color:#222">
-          <div style="flex:0 0 42px;text-align:center;font-weight:600">${d.quantidade}</div>
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #e3e3e3;color:#222">
+          <div style="flex:0 0 38px;text-align:center;font-weight:600">${d.quantidade}</div>
           <div style="flex:1 1 auto;min-width:0">${esc(d.nome)}</div>
           <div style="flex:0 0 auto;text-align:right;white-space:nowrap">
             <b style="color:#222">${esc(d.textoUnidade)}</b>
             ${d.textoEmbalagem ? `<span style="display:block;font-size:9.5px;color:#666;font-weight:600">${esc(d.textoEmbalagem)}</span>` : ''}
           </div>
-          <div style="flex:0 0 75px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
+          <div style="flex:0 0 70px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
         </div>`;
     }).join('')
     : `<div style="padding:8px 0;color:#666">${esc(p.descricao || '')}</div>`;
@@ -4248,11 +4248,11 @@ function gerarViaPedido(id) {
 
     <div class="via-bloco">
       <div class="via-bloco-titulo">Itens do pedido</div>
-      <div style="font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;display:flex;gap:10px">
-        <div style="flex:0 0 42px;text-align:center">Qtd</div>
-        <div style="flex:1 1 auto">Produto</div>
+      <div style="font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;display:flex;gap:8px">
+        <div style="flex:0 0 38px;text-align:center">Qtd</div>
+        <div style="flex:1 1 auto;min-width:0">Produto</div>
         <div style="flex:0 0 auto;text-align:right">Unid./Saco</div>
-        <div style="flex:0 0 75px;text-align:right">Subtotal</div>
+        <div style="flex:0 0 70px;text-align:right">Subtotal</div>
       </div>
       <div>${itensRows}</div>
       <div class="via-total" style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">

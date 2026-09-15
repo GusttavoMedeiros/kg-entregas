@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=60" as="script">
+<link rel="preload" href="app.js?v=61" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -715,12 +715,14 @@ body.offline #app{padding-top:54px}
     box-sizing: border-box !important;
     box-shadow: none !important;
     border-radius: 0 !important;
-    /* 170mm (não 186mm) pra ter folga e caber em qualquer margem que o iOS Safari
-       print preview aplicar — o Safari ignora @page margin e usa default ~25mm. */
-    max-width: 170mm !important;
-    width: 170mm !important;
+    /* 150mm (não 170mm/186mm) — medindo pelo print do usuário, o iOS Safari
+       print preview aplica margem interna de ~25mm de cada lado, deixando
+       só ~160mm de área imprimível. via-papel em 150mm + margin auto fica
+       centralizado e cabe folgado em qualquer cenário. */
+    max-width: 150mm !important;
+    width: 150mm !important;
     padding: 0 !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     background: #fff !important;
   }
   .via-cab, .via-total, .via-aviso-fiscal { break-inside: avoid; page-break-inside: avoid; }
@@ -2251,6 +2253,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<script src="app.js?v=60"></script>
+<script src="app.js?v=61"></script>
 </body>
 </html>
