@@ -4189,116 +4189,383 @@ function formatarPrecoItemPedido(item) {
 }
 
 // ============================================================
-// VIA DE PEDIDO — imprimir / salvar PDF / enviar no WhatsApp
-// Disponível para admin e vendedor.
+// VIA DE PEDIDO — geração de PDF real via jsPDF
+//
+// Por que PDF e não HTML + window.print()?
+// O print preview do Safari (especialmente iOS) é um snapshot que ignora
+// @page, aplica margens próprias (~25mm), não respeita inline styles em
+// alguns casos e pode cortar conteúdo à direita. Resultado: a coluna
+// SUBTOTAL e o TOTAL sumiam no iPhone, mesmo com várias tentativas de
+// CSS/HTML.
+//
+// Solução: gerar um PDF A4 vetorial em JavaScript (jsPDF + autoTable).
+// Posições, margens, fontes e quebras de linha ficam definidas no PDF
+// em si. O Safari só precisa VISUALIZAR o PDF — não decide mais nada
+// sobre layout. iOS tem suporte nativo a PDF com Share/Print/Save.
 // ============================================================
-function gerarViaPedido(id) {
+
+// Gera o Blob do PDF da via. Retorna { blob, url, nomeArquivo }.
+function gerarPdfViaPedido(id) {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    throw new Error('Biblioteca jsPDF não está carregada. Verifique vendor/jspdf.umd.min.js.');
+  }
+
   const p = todosOsPedidos.find(x => x.id === id);
-  if (!p) return;
+  if (!p) throw new Error('Pedido não encontrado: ' + id);
   const c = todosOsClientes.find(x => x.id === p.cliente_id);
 
-  // Linhas de itens (usa preco_unit real, que considera ajustes de preço)
-  // IMPORTANTE: cada item agora é um BLOCO DE DIVS (não <table>). Tabelas têm
-  // bugs conhecidos no iOS Safari print preview mesmo com inline styles —
-  // a coluna 4 (Subtotal) e a linha TOTAL sumiam. Layout em div+flex garante
-  // que cada valor seja renderizado em sua própria caixa, sem colapso.
-  const itensRows = (p.itens?.length)
-    ? p.itens.map(i => {
-      const d = formatarPrecoItemPedido(i);
-      return `
-        <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #e3e3e3;color:#222">
-          <div style="flex:0 0 38px;text-align:center;font-weight:600">${d.quantidade}</div>
-          <div style="flex:1 1 auto;min-width:0">${esc(d.nome)}</div>
-          <div style="flex:0 0 auto;text-align:right;white-space:nowrap">
-            <b style="color:#222">${esc(d.textoUnidade)}</b>
-            ${d.textoEmbalagem ? `<span style="display:block;font-size:9.5px;color:#666;font-weight:600">${esc(d.textoEmbalagem)}</span>` : ''}
-          </div>
-          <div style="flex:0 0 70px;text-align:right;white-space:nowrap;font-weight:700;color:#111">${moeda(d.subtotal)}</div>
-        </div>`;
-    }).join('')
-    : `<div style="padding:8px 0;color:#666">${esc(p.descricao || '')}</div>`;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297;
+  const mL = 15, mR = 15, mT = 15, mB = 18;
+  const cW = pageW - mL - mR; // 180mm
 
-  // Dados do cliente (só o que existe)
-  const cliLinhas = [];
-  if (c?.responsavel) cliLinhas.push(`<div class="via-dado"><span>Responsável</span><b>${esc(c.responsavel)}</b></div>`);
-  if (c?.whatsapp)    cliLinhas.push(`<div class="via-dado"><span>WhatsApp</span><b>${esc(mascaraTelefone(c.whatsapp))}</b></div>`);
-  if (c?.endereco)    cliLinhas.push(`<div class="via-dado via-dado-largo"><span>Endereço</span><b>${esc(c.endereco)}</b></div>`);
-  if (c?.cnpj_cpf) {
-    const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
-    cliLinhas.push(`<div class="via-dado"><span>${c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ'}</span><b>${docFmt}</b></div>`);
-  }
-
-  // Forma de pagamento sem emoji (documento impresso fica mais sóbrio)
   const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
 
-  document.getElementById('via-papel').innerHTML = `
-    <div class="via-cab">
-      <img src="logo.png" alt="KG Agropet">
-      <div>
-        <div class="via-cab-nome">KG AGROPET</div>
-        <div class="via-cab-sub">Glória do Goitá — PE</div>
-      </div>
-      <div class="via-doc-titulo">
-        <b>Via do Pedido</b>
-        <span>Nº ${p.id}</span>
-      </div>
-    </div>
+  // ========== CABEÇALHO (compartilhado entre todas as páginas) ==========
+  const drawCabecalho = (yRef) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(20, 20, 20);
+    doc.text('KG AGROPET', mL, yRef + 5);
 
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Cliente</div>
-      <div class="via-cliente-nome">${esc(p.cliente_nome || c?.nome || '')}</div>
-      <div class="via-dados">${cliLinhas.join('')}</div>
-    </div>
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(90, 90, 90);
+    doc.text('Glória do Goitá — PE', mL, yRef + 10);
 
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Itens do pedido</div>
-      <div style="font-size:9.5px;font-weight:800;color:#444;letter-spacing:.7px;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid #555;display:flex;gap:8px">
-        <div style="flex:0 0 38px;text-align:center">Qtd</div>
-        <div style="flex:1 1 auto;min-width:0">Produto</div>
-        <div style="flex:0 0 auto;text-align:right">Unid./Saco</div>
-        <div style="flex:0 0 70px;text-align:right">Subtotal</div>
-      </div>
-      <div>${itensRows}</div>
-      <div class="via-total" style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:10px;padding-top:8px;border-top:1.5px solid #222">
-        <span class="via-total-label" style="font-size:11px;font-weight:800;color:#222;letter-spacing:.7px;text-transform:uppercase">Total</span>
-        <span class="via-total-valor" style="font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;letter-spacing:-.3px">${moeda(p.valor)}</span>
-      </div>
-    </div>
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(20, 20, 20);
+    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 5, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 90);
+    doc.text(`Nº ${p.id}`, pageW - mR, yRef + 10, { align: 'right' });
 
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Pagamento e prazos</div>
-      <div class="via-dados">
-        <div class="via-dado"><span>Forma de pagamento</span><b>${esc(pagto)}</b></div>
-        <div class="via-dado"><span>Entrega prevista</span><b>${dataBR(p.data_entrega)}</b></div>
-        ${p.status === 'entregue' && p.data_entregue_em ? `<div class="via-dado"><span>Entregue em</span><b>${dataBR(p.data_entregue_em)}</b></div>` : ''}
-        ${p.data_vencimento ? `<div class="via-dado"><span>Vencimento</span><b>${dataBR(p.data_vencimento)}</b></div>` : ''}
-      </div>
-    </div>
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.4);
+    doc.line(mL, yRef + 14, pageW - mR, yRef + 14);
+  };
 
-    ${p.observacao ? `
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Observações</div>
-      <div class="via-linha">${esc(p.observacao)}</div>
-    </div>` : ''}
+  // ========== RODAPÉ (compartilhado) ==========
+  const drawRodape = () => {
+    const pageCount = doc.internal.getNumberOfPages();
+    const cur = doc.internal.getCurrentPageInfo().pageNumber;
+    const y = pageH - mB + 4;
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.2);
+    doc.line(mL, y - 4, pageW - mR, y - 4);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Este documento não substitui documento fiscal.', mL, y);
+    doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
+  };
 
-    <div class="via-aviso-fiscal">Este documento não substitui documento fiscal.</div>`;
+  // ========== CLIENTE ==========
+  const drawCliente = (yRef) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('CLIENTE', mL, yRef);
 
-  // Botão de WhatsApp: só aparece se o cliente tem número
-  const btnZap = document.getElementById('via-btn-whatsapp');
-  const waNum = (c?.whatsapp || '').replace(/\D/g, '');
-  if (waNum) {
-    btnZap.style.display = '';
-    btnZap.onclick = () => enviarPedidoWhatsApp(p.id);
-  } else {
-    btnZap.style.display = 'none';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(20, 20, 20);
+    doc.text(p.cliente_nome || c?.nome || '—', mL, yRef + 6);
+
+    let yLocal = yRef + 12;
+    const colW = (cW - 4) / 2;
+
+    // Responsável | WhatsApp
+    if (c?.responsavel) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text('RESPONSÁVEL', mL, yLocal);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      const txt = doc.splitTextToSize(c.responsavel, colW);
+      doc.text(txt, mL, yLocal + 4);
+    }
+    if (c?.whatsapp) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text('WHATSAPP', mL + colW + 4, yLocal);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.text(mascaraTelefone(c.whatsapp), mL + colW + 4, yLocal + 4);
+    }
+    yLocal += 10;
+
+    // Endereço (largura total, pode quebrar linha)
+    if (c?.endereco) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text('ENDEREÇO', mL, yLocal);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      const endLines = doc.splitTextToSize(c.endereco, cW);
+      doc.text(endLines, mL, yLocal + 4);
+      yLocal += 4 + (endLines.length * 4) + 2;
+    }
+
+    // CNPJ/CPF
+    if (c?.cnpj_cpf) {
+      const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
+      const labelDoc = c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ';
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text(labelDoc, mL, yLocal);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.text(docFmt, mL, yLocal + 4);
+      yLocal += 10;
+    }
+    return yLocal;
+  };
+
+  // ========== TABELA DE ITENS (com auto-paginação via autoTable) ==========
+  const itens = (p.itens && p.itens.length)
+    ? p.itens.map(i => {
+        const d = formatarPrecoItemPedido(i);
+        const precoTexto = [d.textoUnidade, d.textoEmbalagem].filter(Boolean).join('\n');
+        return [
+          String(d.quantidade),
+          d.nome,
+          precoTexto,
+          moeda(d.subtotal),
+        ];
+      })
+    : [['', p.descricao || '—', '', '']];
+
+  // ========== PAGAMENTO E PRAZOS ==========
+  const drawPagamento = (yRef) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('PAGAMENTO E PRAZOS', mL, yRef);
+
+    let yLocal = yRef + 6;
+    const colW = (cW - 4) / 2;
+    const campos = [
+      ['Forma de pagamento', pagto],
+      ['Entrega prevista', dataBR(p.data_entrega)],
+    ];
+    if (p.status === 'entregue' && p.data_entregue_em) campos.push(['Entregue em', dataBR(p.data_entregue_em)]);
+    if (p.data_vencimento) campos.push(['Vencimento', dataBR(p.data_vencimento)]);
+
+    // 2 colunas
+    for (let i = 0; i < campos.length; i += 2) {
+      const [lbl1, val1] = campos[i];
+      const col2 = campos[i + 1];
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text(lbl1.toUpperCase(), mL, yLocal);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.text(String(val1 || '—'), mL, yLocal + 4);
+      if (col2) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+        doc.text(col2[0].toUpperCase(), mL + colW + 4, yLocal);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+        doc.text(String(col2[1] || '—'), mL + colW + 4, yLocal + 4);
+      }
+      yLocal += 10;
+    }
+    return yLocal;
+  };
+
+  // ========== OBSERVAÇÕES ==========
+  const drawObservacoes = (yRef) => {
+    if (!p.observacao) return yRef;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('OBSERVAÇÕES', mL, yRef);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 30, 30);
+    const obsLines = doc.splitTextToSize(p.observacao, cW);
+    doc.text(obsLines, mL, yRef + 5);
+    return yRef + 5 + (obsLines.length * 4) + 2;
+  };
+
+  // ========== MONTAGEM DA PÁGINA ==========
+  // Página 1: cabeçalho + cliente + parte da tabela
+  let y = mT;
+  drawCabecalho(y);
+  y += 18;
+  y = drawCliente(y);
+  y += 4;
+
+  // Título da seção de itens
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text('ITENS DO PEDIDO', mL, y);
+  y += 4;
+
+  // Tabela (autoTable gerencia paginação automaticamente)
+  doc.autoTable({
+    startY: y,
+    head: [['Qtd', 'Produto', 'Unid./Saco', 'Subtotal']],
+    body: itens,
+    margin: { left: mL, right: mR, bottom: mB + 8 },
+    styles: {
+      font: 'helvetica',
+      fontSize: 9,
+      cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
+      lineColor: [220, 220, 220],
+      lineWidth: 0.1,
+      textColor: [40, 40, 40],
+      overflow: 'linebreak',
+      valign: 'middle',
+    },
+    headStyles: {
+      fillColor: [240, 240, 240],
+      textColor: [60, 60, 60],
+      fontStyle: 'bold',
+      fontSize: 8,
+      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 14 },
+      1: { halign: 'left' },              // flexível (produto)
+      2: { halign: 'right', cellWidth: 38 },
+      3: { halign: 'right', cellWidth: 32 },
+    },
+    didDrawPage: (data) => {
+      // Rodapé em todas as páginas
+      drawRodape();
+      // Repetir cabeçalho só nas páginas seguintes (não na primeira)
+      if (data.pageNumber > 1) {
+        drawCabecalho(mT);
+      }
+    },
+  });
+
+  let yAfterTable = doc.lastAutoTable.finalY + 6;
+
+  // TOTAL (sempre logo após a tabela)
+  // Se não cabe, vai pra próxima página
+  if (yAfterTable > pageH - mB - 30) {
+    doc.addPage();
+    yAfterTable = mT + 16;
   }
 
-  document.getElementById('via-overlay').style.display = 'block';
+  // Linha separadora acima do total
+  doc.setDrawColor(40, 40, 40);
+  doc.setLineWidth(0.5);
+  doc.line(pageW - mR - 95, yAfterTable, pageW - mR, yAfterTable);
+  yAfterTable += 6;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+  doc.text('TOTAL', pageW - mR - 35, yAfterTable, { align: 'right' });
+  doc.setFontSize(16);
+  doc.setTextColor(0, 0, 0);
+  doc.text(moeda(p.valor), pageW - mR, yAfterTable, { align: 'right' });
+
+  yAfterTable += 12;
+
+  // Pagamento
+  if (yAfterTable > pageH - mB - 40) {
+    doc.addPage();
+    yAfterTable = mT + 18;
+  }
+  yAfterTable = drawPagamento(yAfterTable);
+
+  // Observações
+  if (p.observacao) {
+    if (yAfterTable > pageH - mB - 30) {
+      doc.addPage();
+      yAfterTable = mT + 18;
+    }
+    yAfterTable = drawObservacoes(yAfterTable);
+  }
+
+  // Gera o blob
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const cliNome = (p.cliente_nome || c?.nome || 'pedido').replace(/[^\w]+/g, '-').toLowerCase();
+  const nomeArquivo = `via-pedido-${p.id}-${cliNome}.pdf`;
+  return { blob, url, nomeArquivo };
+}
+
+// Mostra a via (PDF) na overlay do app. Fallback: abre em nova aba se iframe falhar.
+async function gerarViaPedido(id) {
+  try {
+    const { blob, url, nomeArquivo } = gerarPdfViaPedido(id);
+    showPdfViaOverlay(url, nomeArquivo, blob, id);
+  } catch (e) {
+    console.error('Erro ao gerar PDF da via:', e);
+    alert('Não foi possível gerar o PDF da via: ' + e.message);
+  }
+}
+
+// Abre o overlay mostrando o PDF num iframe. Botões: Compartilhar / Imprimir / Salvar / Fechar
+function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
+  const overlay = document.getElementById('via-overlay');
+  const papel = document.getElementById('via-papel');
+  const btnImprimir = document.getElementById('via-btn-imprimir');
+  const btnZap = document.getElementById('via-btn-whatsapp');
+  const btnSalvar = document.getElementById('via-btn-salvar');
+  const btnFechar = document.querySelector('.via-btn-fechar');
+
+  // Substitui conteúdo da overlay por iframe com PDF
+  papel.innerHTML = `<iframe id="via-pdf-frame" src="${url}" style="width:100%;height:calc(100vh - 70px);border:0;background:#525659" title="${nomeArquivo}"></iframe>`;
+
+  // Botão "Imprimir" agora imprime o PDF (funciona em todos OS — iOS abre AirPrint)
+  btnImprimir.onclick = () => {
+    // Abre em nova aba para impressão nativa
+    const w = window.open(url, '_blank', 'noopener');
+    if (!w) {
+      // Pop-up bloqueado: mostra fallback
+      alert('Permita pop-ups para imprimir, ou use o botão "Salvar" e imprima do app Arquivos.');
+    }
+  };
+  btnImprimir.textContent = '🖨️ Imprimir';
+
+  // Botão "Salvar" — download do PDF
+  if (btnSalvar) {
+    btnSalvar.onclick = () => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nomeArquivo;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    btnSalvar.style.display = '';
+  }
+
+  // Botão "Compartilhar" (iOS — abre share sheet com o PDF)
+  if (btnZap) {
+    btnZap.textContent = '📤 Compartilhar';
+    btnZap.onclick = async () => {
+      try {
+        const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: nomeArquivo,
+            text: 'Via do Pedido - KG Agropet',
+          });
+        } else {
+          // Fallback: WhatsApp com texto (sem PDF)
+          enviarPedidoWhatsApp(pedidoId);
+        }
+      } catch (e) {
+        // Usuário cancelou share ou deu erro; silencioso
+      }
+    };
+    btnZap.style.display = '';
+  }
+
+  // Mostrar overlay
+  overlay.style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function fecharViaPedido() {
-  document.getElementById('via-overlay').style.display = 'none';
+  const overlay = document.getElementById('via-overlay');
+  const papel = document.getElementById('via-papel');
+  // Limpa iframe pra liberar blob URL
+  if (papel) papel.innerHTML = '';
+  if (overlay) overlay.style.display = 'none';
 }
 
 // Envia o resumo do pedido (texto formatado) direto no WhatsApp do cliente
@@ -5052,73 +5319,137 @@ function renderizarRelatorio() {
       </div>`).join('')}`;
 }
 
-// Monta o relatório no "papel" da via e abre para imprimir/salvar PDF
-function imprimirRelatorio() {
-  const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
+// Gera o Blob do PDF do relatório. Retorna { blob, url, nomeArquivo }.
+function gerarPdfRelatorio(ini, fim, label) {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    throw new Error('Biblioteca jsPDF não está carregada.');
+  }
   const pedidos = pedidosDoRelatorio(ini, fim);
   const d = calcularDadosRelatorio(pedidos);
-
   const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login} · Apenas entregues` : 'Pedidos entregues';
 
-  document.getElementById('via-papel').innerHTML = `
-    <div class="via-cab">
-      <img src="logo.png" alt="KG Agropet">
-      <div>
-        <div class="via-cab-nome">KG AGROPET</div>
-        <div class="via-cab-sub">Glória do Goitá — PE</div>
-      </div>
-      <div class="via-doc-titulo">
-        <b>Relatório de Vendas</b>
-        <span>${esc(label)}</span>
-      </div>
-    </div>
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297;
+  const mL = 15, mR = 15, mT = 15, mB = 18;
+  const cW = pageW - mL - mR;
 
-    <div class="via-dados via-contexto">
-      <div class="via-dado"><span>Período</span><b>${esc(label)}</b></div>
-      <div class="via-dado"><span>Escopo</span><b>${esc(escopo)}</b></div>
-    </div>
+  const drawCabecalho = (yRef) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20, 20, 20);
+    doc.text('KG AGROPET', mL, yRef + 5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
+    doc.text('Glória do Goitá — PE', mL, yRef + 10);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.text('RELATÓRIO DE VENDAS', pageW - mR, yRef + 5, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90, 90, 90);
+    doc.text(label, pageW - mR, yRef + 10, { align: 'right' });
+    doc.setDrawColor(40, 40, 40); doc.setLineWidth(0.4);
+    doc.line(mL, yRef + 14, pageW - mR, yRef + 14);
+  };
+  const drawRodape = () => {
+    const pageCount = doc.internal.getNumberOfPages();
+    const cur = doc.internal.getCurrentPageInfo().pageNumber;
+    const y = pageH - mB + 4;
+    doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
+    doc.line(mL, y - 4, pageW - mR, y - 4);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+    doc.text('Este documento não substitui documento fiscal.', mL, y);
+    doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
+  };
 
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Resumo do período</div>
-      <div class="via-resumo">
-        <div class="via-indicador"><span>Total entregue</span><b>${moeda(d.total)}</b></div>
-        <div class="via-indicador"><span>Pedidos entregues</span><b>${d.nPedidos}</b></div>
-        <div class="via-indicador"><span>Recebido</span><b>${moeda(d.recebido)}</b></div>
-        <div class="via-indicador"><span>A receber</span><b>${moeda(d.aReceber)}</b></div>
-      </div>
-    </div>
+  let y = mT;
+  drawCabecalho(y);
+  y += 18;
 
-    ${d.topProdutos.length ? `
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Top produtos</div>
-      <table class="via-tabela via-tabela-ranking">
-        <thead><tr><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead>
-        <tbody>${d.topProdutos.map(t => `
-          <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.qtd}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
-        </tbody>
-      </table>
-    </div>` : ''}
+  // Contexto
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+  doc.text('PERÍODO', mL, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  doc.text(label, mL, y + 4);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+  doc.text('ESCOPO', mL + cW / 2, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  const escopoLines = doc.splitTextToSize(escopo, cW / 2 - 4);
+  doc.text(escopoLines, mL + cW / 2, y + 4);
+  y += 4 + (escopoLines.length * 4) + 6;
 
-    ${d.topClientes.length ? `
-    <div class="via-bloco">
-      <div class="via-bloco-titulo">Top clientes</div>
-      <table class="via-tabela via-tabela-ranking">
-        <thead><tr><th>Cliente</th><th>Pedidos</th><th>Valor</th></tr></thead>
-        <tbody>${d.topClientes.map(t => `
-          <tr><td>${esc(t.nome)}</td><td style="text-align:right">${t.pedidos}</td><td style="text-align:right">${moeda(t.valor)}</td></tr>`).join('')}
-        </tbody>
-      </table>
-    </div>` : ''}
+  // Resumo (4 cards)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+  doc.text('RESUMO DO PERÍODO', mL, y);
+  y += 5;
 
-    <div class="via-aviso-fiscal">Este documento não substitui documento fiscal.</div>`;
+  const cards = [
+    ['Total entregue', moeda(d.total)],
+    ['Pedidos entregues', String(d.nPedidos)],
+    ['Recebido', moeda(d.recebido)],
+    ['A receber', moeda(d.aReceber)],
+  ];
+  const cardW = (cW - 6) / 4;
+  cards.forEach((c, i) => {
+    const cx = mL + i * (cardW + 2);
+    doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.2);
+    doc.rect(cx, y, cardW, 16);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.text(c[1], cx + cardW / 2, y + 7, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+    doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 12, { align: 'center' });
+  });
+  y += 22;
 
-  // Esconde o botão de WhatsApp (só faz sentido na via de pedido)
-  const btnZap = document.getElementById('via-btn-whatsapp');
-  if (btnZap) btnZap.style.display = 'none';
+  // Top produtos
+  if (d.topProdutos.length) {
+    doc.autoTable({
+      startY: y,
+      head: [['Top produtos', 'Qtd', 'Valor']],
+      body: d.topProdutos.map(t => [t.nome, String(t.qtd), moeda(t.valor)]),
+      margin: { left: mL, right: mR, bottom: mB + 8 },
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5, textColor: [40, 40, 40], overflow: 'linebreak' },
+      headStyles: { fillColor: [240, 240, 240], textColor: [60, 60, 60], fontStyle: 'bold', fontSize: 8 },
+      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 35 } },
+      didDrawPage: (data) => {
+        drawRodape();
+        if (data.pageNumber > 1) drawCabecalho(mT);
+      },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
 
-  fecharModal('modal-relatorio');
-  document.getElementById('via-overlay').style.display = 'block';
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  // Top clientes
+  if (d.topClientes.length) {
+    if (y > pageH - mB - 40) { doc.addPage(); y = mT + 18; }
+    doc.autoTable({
+      startY: y,
+      head: [['Top clientes', 'Pedidos', 'Valor']],
+      body: d.topClientes.map(t => [t.nome, String(t.pedidos), moeda(t.valor)]),
+      margin: { left: mL, right: mR, bottom: mB + 8 },
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5, textColor: [40, 40, 40], overflow: 'linebreak' },
+      headStyles: { fillColor: [240, 240, 240], textColor: [60, 60, 60], fontStyle: 'bold', fontSize: 8 },
+      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 } },
+      didDrawPage: (data) => {
+        drawRodape();
+        if (data.pageNumber > 1) drawCabecalho(mT);
+      },
+    });
+  }
+
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const nomeArquivo = `relatorio-${relTipo}-${label.replace(/[^\w]+/g, '-').toLowerCase()}.pdf`;
+  return { blob, url, nomeArquivo };
+}
+
+// Gera PDF do relatório e mostra na overlay
+async function imprimirRelatorio() {
+  try {
+    const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
+    const { blob, url, nomeArquivo } = gerarPdfRelatorio(ini, fim, label);
+    showPdfViaOverlay(url, nomeArquivo, blob, null);
+    fecharModal('modal-relatorio');
+  } catch (e) {
+    console.error('Erro ao gerar PDF do relatório:', e);
+    alert('Não foi possível gerar o PDF do relatório: ' + e.message);
+  }
 }
 
 // ============================================================

@@ -34,8 +34,10 @@ assert.equal(formatar({ nome: 'Produto 0kg', qtd: 1, preco_unit: 25 }).valorPorK
 assert.equal(formatar({ nome: 'Produto 20kg', qtd: 1, preco_unit: 'inválido' }).valorPorKg, null);
 assert.equal(formatar({ nome: 'Produto 20kg', qtd: Number.MAX_VALUE, preco_unit: Number.MAX_VALUE }).subtotal, 0);
 
-assert.equal((app.match(/formatarPrecoItemPedido\(/g) || []).length, 3, 'WhatsApp e PDF devem usar o helper');
-assert.match(app, /colspan="4">\$\{esc\(p\.descricao \|\| ''\)\}/, 'fallback PDF legado removido');
+// Helper usado em pelo menos WhatsApp e PDF
+assert.ok((app.match(/formatarPrecoItemPedido\(/g) || []).length >= 2, 'WhatsApp e PDF devem usar o helper');
+// Fallback do PDF pra pedidos sem `itens`: linha única com descrição
+assert.match(app, /p\.itens && p\.itens\.length[\s\S]{0,600}p\.descricao \|\| '—'/, 'fallback PDF sem itens usa descrição');
 assert.match(app, /: `• \$\{p\.descricao \|\| ''\}`/, 'fallback WhatsApp legado removido');
 
 const inicioPagamento = app.indexOf('function formatarPagamento');

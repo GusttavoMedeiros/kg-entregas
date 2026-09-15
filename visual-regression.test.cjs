@@ -3,6 +3,12 @@ const fs = require('node:fs');
 
 const css = fs.readFileSync('ios-like.css', 'utf8');
 const html = fs.readFileSync('index.html', 'utf8');
+const sw = fs.readFileSync('sw.js', 'utf8');
+const appjs = fs.readFileSync('app.js', 'utf8');
+
+// ============================================================================
+// REGRAS GERAIS DE UI (inalteradas — botões, layout, acessibilidade)
+// ============================================================================
 
 // Regressão observada no iPhone: a regra genérica de .atalho-card não pode
 // apagar o fundo dourado do botão principal.
@@ -31,29 +37,69 @@ assert.match(html, /ios-like\.css\?v=7/);
 assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
 assert.match(css, /@media \(update:slow\)/);
 
-// Regressão do print da via (iOS Safari): o TOTAL e a coluna SUBTOTAL somem
-// se a fonte Cinzel for carregada com truque media="print" onload e as colunas
-// da tabela não tiverem largura explícita. Não voltar atrás.
+// ============================================================================
+// ARQUITETURA: PDF (jsPDF + autoTable), não mais HTML + window.print()
 //
-// Cobertura (geral, vale pra TODOS os pedidos):
-//   - Cinzel não pode usar truque media="print" onload (causa snapshot sem fonte)
-//   - Todas as 4 colunas da tabela de itens com largura explícita em print
-//   - TODO texto Cinzel dentro do papel cai pra Georgia/serif em print
-//   - Cor do texto em print forçada a #111 (evita herdar tema escuro)
+// Por quê: o print preview do Safari (especialmente iOS PWA) ignora @page
+// margin, aplica margens próprias, e corta conteúdo à direita — mesmo com
+// inline styles, table-layout fixed e fonte Arial. Várias tentativas em
+// commits 5fb113f..f331909 não resolveram.
+//
+// Solução adotada (commit atual): gerar PDF A4 vetorial em JavaScript
+// (jsPDF + jspdf-autotable), exibido via iframe no overlay. O Safari
+// apenas VISUALIZA o PDF — não decide mais nada sobre layout.
+// ============================================================================
+
+// Vendored: jsPDF + autoTable devem estar no projeto (não CDN) pro PWA
+// funcionar offline.
+assert.match(html, /<script src="vendor\/jspdf\.umd\.min\.js"><\/script>/);
+assert.match(html, /<script src="vendor\/jspdf-autotable\.min\.js"><\/script>/);
+assert.ok(fs.existsSync('vendor/jspdf.umd.min.js'), 'jspdf vendor file missing');
+assert.ok(fs.existsSync('vendor/jspdf-autotable.min.js'), 'jspdf-autotable vendor file missing');
+
+// SW deve cachear os novos arquivos vendor (pra PWA offline)
+assert.match(sw, /'\.\/vendor\/jspdf\.umd\.min\.js'/);
+assert.match(sw, /'\.\/vendor\/jspdf-autotable\.min\.js'/);
+
+// JS deve usar jsPDF pra gerar a via (não mais HTML inline)
+assert.match(appjs, /function gerarPdfViaPedido/);
+assert.match(appjs, /new jsPDF\(\s*\{\s*unit:\s*'mm',\s*format:\s*'a4'/);
+assert.match(appjs, /doc\.autoTable\(/);
+
+// JS não pode mais montar a via via HTML + innerHTML (a causa raiz do clipping)
+assert.doesNotMatch(appjs, /document\.getElementById\('via-papel'\)\.innerHTML\s*=\s*`<div class="via-cab">/);
+assert.doesNotMatch(appjs, /document\.getElementById\('via-papel'\)\.innerHTML\s*=\s*\`<div class="via-cab">/);
+
+// O overlay agora é um iframe (PDF), não HTML
+assert.match(html, /<div class="via-papel" id="via-papel"><\/div>/);
+assert.match(appjs, /<iframe[^>]+src="\$\{url\}"[^>]*><\/iframe>/);
+
+// Botões de ação: Imprimir / Salvar / Compartilhar / Fechar
+assert.match(html, /id="via-btn-imprimir"/);
+assert.match(html, /id="via-btn-salvar"/);
+assert.match(html, /id="via-btn-whatsapp"/);
+assert.match(html, /class="via-btn via-btn-fechar"/);
+
+// ============================================================
+// REGRESSÃO: garantir que o caminho antigo de HTML+print foi removido
+// ============================================================
+
+// Não pode mais haver @media print tentando diagramar a via (já que agora é PDF)
+assert.doesNotMatch(html, /@media print\s*\{[^}]*@page\s*\{\s*size:\s*A4 portrait/);
+assert.doesNotMatch(html, /table-layout:\s*fixed.*via-tabela-itens/s);
+
+// CSS morto removido (todas essas classes eram do HTML antigo da via)
+assert.doesNotMatch(html, /\.via-cab-nome\s*\{/);
+assert.doesNotMatch(html, /\.via-tabela-itens\s*\{/);
+assert.doesNotMatch(html, /\.via-tabela-ranking\s*\{/);
+assert.doesNotMatch(html, /\.via-indicador b\s*\{/);
+assert.doesNotMatch(html, /\.via-total-valor\s*\{/);
+
+// Truque antigo do Cinzel (media="print" onload) — nunca mais
 assert.doesNotMatch(html, /fonts\.googleapis\.com[^"]*Cinzel[^"]*media="print"/);
 assert.doesNotMatch(html, /this\.media='all'/);
-// Tabela de itens com largura fixa em print
-assert.match(html, /\.via-tabela-itens\s*\{[^}]*table-layout:\s*fixed/s);
-assert.match(html, /\.via-tabela-itens td:first-child[\s\S]{0,200}width:\s*10%/);
-assert.match(html, /\.via-tabela-itens th:nth-child\(2\)[\s\S]{0,200}width:\s*38%/);
-assert.match(html, /\.via-tabela-itens th:nth-child\(3\)[\s\S]{0,200}min-width:\s*32mm/);
-assert.match(html, /\.via-tabela-itens th:nth-child\(4\)[\s\S]{0,200}min-width:\s*30mm/);
-// Fallback de fonte pra TODOS os Cinzel dentro do papel (Arial/sans-serif agora,
-// fonte estreita pra caber mais conteúdo na largura do papel A4)
-assert.match(html, /\.via-papel \.via-cab-nome[\s\S]{0,400}font-family:\s*Arial/s);
-assert.match(html, /\.via-papel \.via-indicador b[\s\S]{0,400}font-family:\s*Arial/s);
-assert.match(html, /\.via-papel \.via-total-valor[\s\S]{0,400}font-family:\s*Arial/s);
-// Cor visível forçada em print
-assert.match(html, /\.via-papel \.via-total-valor[\s\S]{0,400}color:\s*#111\s*!important/s);
 
-console.log('Contraste, largura móvel, movimento e modo econômico validados.');
+// JS não chama mais window.print() da via (agora é window.open no blob URL)
+assert.doesNotMatch(appjs, /<button class="via-btn via-btn-imprimir" onclick="window\.print\(\)">/);
+
+console.log('UI, acessibilidade, PDF-via-pedido e regressão de hacks antigos validados.');

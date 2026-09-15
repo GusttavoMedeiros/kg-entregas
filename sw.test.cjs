@@ -71,30 +71,30 @@ function tokenPara(sub) {
 
 (async () => {
   // Primeiro acesso offline: a versão exata já foi pré-cacheada.
-  cached.set('https://kg-entregas.vercel.app/app.js?v=57', new Response('pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/app.js?v=63', new Response('pre-cache'));
   cached.set('https://kg-entregas.vercel.app/ios-like.css?v=7', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
-  assert.equal(await (await requestApp('?v=57')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=63')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
-  assert.equal((await requestApp('?v=58')).status, 503);
-  assert.equal((await requestApp('?v=57&outra=1')).status, 503);
+  assert.equal((await requestApp('?v=64')).status, 503);
+  assert.equal((await requestApp('?v=63&outra=1')).status, 503);
 
   let acessosRede = 0;
   global.fetch = async () => { acessosRede++; return new Response('nova'); };
-  assert.equal(await (await requestApp('?v=57')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=63')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
   assert.equal(acessosRede, 0, 'Assets versionados em cache não aguardam a rede');
-  assert.equal(await (await requestApp('?v=58')).text(), 'nova');
+  assert.equal(await (await requestApp('?v=64')).text(), 'nova');
   assert.equal(acessosRede, 1, 'Nova versão precisa buscar seus próprios bytes');
 
   // Atualização conserva os dados offline compatíveis e caches de outros apps.
   const removidos = [];
-  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets', 'kg-v31-assets', 'kg-v32-assets', 'kg-v33-assets', 'outro-app'];
+  global.caches.keys = async () => ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v23-data', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets', 'kg-v31-assets', 'kg-v32-assets', 'kg-v33-assets', 'kg-v34-assets', 'kg-v35-assets', 'kg-v36-assets', 'kg-v37-assets', 'kg-v38-assets', 'kg-v39-assets', 'outro-app'];
   global.caches.delete = async key => { removidos.push(key); return true; };
   let ativacao;
   handlers.activate({ waitUntil: promise => { ativacao = promise; } });
   await ativacao;
-  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets', 'kg-v31-assets', 'kg-v32-assets']);
+  assert.deepEqual(removidos.sort(), ['kg-v22-assets', 'kg-v22-data', 'kg-v23-assets', 'kg-v24-assets', 'kg-v25-assets', 'kg-v26-assets', 'kg-v27-assets', 'kg-v28-assets', 'kg-v29-assets', 'kg-v30-assets', 'kg-v31-assets', 'kg-v32-assets', 'kg-v33-assets', 'kg-v34-assets', 'kg-v35-assets', 'kg-v36-assets', 'kg-v37-assets', 'kg-v38-assets', 'kg-v39-assets']);
 
   global.fetch = async () => new Response('versao-nova', { status: 200 });
   assert.equal(await (await requestApp()).text(), 'versao-nova');
@@ -125,10 +125,10 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v33'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v40'/);
   assert.match(sw, /\.\/ios-like\.css\?v=7/);
   assert.match(index, /ios-like\.css\?v=7/);
-  assert.match(index, /app\.js\?v=57/);
+  assert.match(index, /app\.js\?v=63/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');
