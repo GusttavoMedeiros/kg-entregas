@@ -4204,11 +4204,53 @@ function formatarPrecoItemPedido(item) {
 // sobre layout. iOS tem suporte nativo a PDF com Share/Print/Save.
 // ============================================================
 
+// Cache em memória das fontes TTF e da logo (carregadas sob demanda).
+const _viaAssets = {
+  cinzel: null,    // base64 da TTF Cinzel variable
+  nunito: null,    // base64 da TTF Nunito variable
+  logoPng: null,   // base64 da logo KG Agropet
+  promise: null,
+};
+
+// Carrega as fontes TTF + logo PNG do diretório vendor (cached após 1ª vez).
+async function _carregarAssetsVia() {
+  if (_viaAssets.cinzel && _viaAssets.nunito && _viaAssets.logoPng) return;
+  if (_viaAssets.promise) return _viaAssets.promise;
+
+  const toB64 = async (path) => {
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error(`Falha ao carregar ${path}: ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    let bin = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  };
+
+  _viaAssets.promise = (async () => {
+    try {
+      _viaAssets.cinzel   = await toB64('vendor/Cinzel.ttf');
+      _viaAssets.nunito   = await toB64('vendor/Nunito.ttf');
+      _viaAssets.logoPng  = await toB64('logo.png');
+    } catch (e) {
+      console.warn('[via] Falha ao carregar assets — usando fallback Helvetica:', e.message);
+      _viaAssets.cinzel = null;
+      _viaAssets.nunito = null;
+      _viaAssets.logoPng = null;
+    }
+  })();
+
+  return _viaAssets.promise;
+}
+
 // Gera o Blob do PDF da via. Retorna { blob, url, nomeArquivo }.
-function gerarPdfViaPedido(id) {
+async function gerarPdfViaPedido(id) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada. Verifique vendor/jspdf.umd.min.js.');
   }
+
+  // Carrega fontes e logo antes de montar o documento.
+  await _carregarAssetsVia();
 
   const p = todosOsPedidos.find(x => x.id === id);
   if (!p) throw new Error('Pedido não encontrado: ' + id);
@@ -4217,116 +4259,177 @@ function gerarPdfViaPedido(id) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = 210, pageH = 297;
-  const mL = 15, mR = 15, mT = 15, mB = 18;
-  const cW = pageW - mL - mR; // 180mm
+  const mL = 14, mR = 14, mT = 14, mB = 18;
+  const cW = pageW - mL - mR; // 182mm
+
+  // Registra as fontes customizadas (se carregaram). jsPDF usa 'helvetica' como
+  // fallback quando elas não estão disponíveis.
+  const FONT_CINZEL = _viaAssets.cinzel ? 'Cinzel' : 'helvetica';
+  const FONT_NUNITO = _viaAssets.nunito ? 'Nunito' : 'helvetica';
+  if (_viaAssets.cinzel) {
+    doc.addFileToVFS('Cinzel.ttf', _viaAssets.cinzel);
+    doc.addFont('Cinzel.ttf', 'Cinzel', 'normal');
+    doc.addFont('Cinzel.ttf', 'Cinzel', 'bold');
+  }
+  if (_viaAssets.nunito) {
+    doc.addFileToVFS('Nunito.ttf', _viaAssets.nunito);
+    doc.addFont('Nunito.ttf', 'Nunito', 'normal');
+    doc.addFont('Nunito.ttf', 'Nunito', 'bold');
+  }
 
   const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
 
-  // ========== CABEÇALHO (compartilhado entre todas as páginas) ==========
-  const drawCabecalho = (yRef) => {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(20, 20, 20);
-    doc.text('KG AGROPET', mL, yRef + 5);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(90, 90, 90);
-    doc.text('Glória do Goitá — PE', mL, yRef + 10);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(20, 20, 20);
-    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 5, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(90, 90, 90);
-    doc.text(`Nº ${p.id}`, pageW - mR, yRef + 10, { align: 'right' });
-
-    doc.setDrawColor(40, 40, 40);
-    doc.setLineWidth(0.4);
-    doc.line(mL, yRef + 14, pageW - mR, yRef + 14);
+  // ========== CORES DA MARCA ==========
+  const COR = {
+    verdeEscuro:   [13, 34, 24],
+    verdeMedio:    [22, 56, 40],
+    dourado:       [212, 175, 55],
+    douradoClaro:  [232, 200, 100],
+    branco:        [255, 255, 255],
+    cinzaClaro:    [245, 245, 245],
+    cinzaMedio:    [180, 180, 180],
+    cinzaTexto:    [80, 80, 80],
+    preto:         [20, 20, 20],
   };
 
-  // ========== RODAPÉ (compartilhado) ==========
+  // ========== CABEÇALHO (box verde-escuro com logo + nome da empresa) ==========
+  const ALTURA_CABECALHO = 32;
+  const drawCabecalho = (yRef) => {
+    doc.setFillColor(...COR.verdeEscuro);
+    doc.rect(mL, yRef, cW, ALTURA_CABECALHO, 'F');
+
+    doc.setDrawColor(...COR.dourado);
+    doc.setLineWidth(0.6);
+    doc.line(mL, yRef + ALTURA_CABECALHO, mL + cW, yRef + ALTURA_CABECALHO);
+
+    if (_viaAssets.logoPng) {
+      try {
+        doc.addImage(_viaAssets.logoPng, 'PNG', mL + 4, yRef + 5, 22, 22, undefined, 'FAST');
+      } catch (e) { /* ignora erro de imagem */ }
+    }
+
+    doc.setFont(FONT_CINZEL, 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(...COR.branco);
+    doc.text('KG AGROPET', mL + 30, yRef + 13);
+
+    doc.setFont(FONT_NUNITO, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...COR.douradoClaro);
+    doc.text('Glória do Goitá — PE', mL + 30, yRef + 19);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COR.cinzaMedio);
+    doc.text('Agropecuária • Pet Shop • Entregas', mL + 30, yRef + 23.5);
+
+    doc.setFont(FONT_CINZEL, 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...COR.dourado);
+    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 10, { align: 'right' });
+
+    doc.setFont(FONT_NUNITO, 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...COR.cinzaMedio);
+    doc.text(`Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, yRef + 15.5, { align: 'right' });
+
+    if (p.status === 'entregue') {
+      doc.setFont(FONT_NUNITO, 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...COR.dourado);
+      doc.text('ENTREGUE', pageW - mR, yRef + 21, { align: 'right' });
+    } else {
+      doc.setFont(FONT_NUNITO, 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...COR.cinzaMedio);
+      doc.text('PENDENTE', pageW - mR, yRef + 21, { align: 'right' });
+    }
+
+    return yRef + ALTURA_CABECALHO + 6;
+  };
+
+  // ========== RODAPÉ ==========
   const drawRodape = () => {
     const pageCount = doc.internal.getNumberOfPages();
     const cur = doc.internal.getCurrentPageInfo().pageNumber;
     const y = pageH - mB + 4;
-    doc.setDrawColor(180, 180, 180);
+    doc.setDrawColor(...COR.cinzaMedio);
     doc.setLineWidth(0.2);
     doc.line(mL, y - 4, pageW - mR, y - 4);
-    doc.setFont('helvetica', 'normal');
+
+    doc.setFont(FONT_NUNITO, 'normal');
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 120);
     doc.text('Este documento não substitui documento fiscal.', mL, y);
+
+    doc.setTextColor(...COR.cinzaTexto);
     doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
+
+    doc.setTextColor(120, 120, 120);
     doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
   };
 
-  // ========== CLIENTE ==========
+  // ========== BLOCO DO CLIENTE ==========
   const drawCliente = (yRef) => {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(...COR.dourado);
     doc.text('CLIENTE', mL, yRef);
+    doc.setDrawColor(...COR.dourado);
+    doc.setLineWidth(0.4);
+    doc.line(mL, yRef + 1.5, mL + 18, yRef + 1.5);
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(20, 20, 20);
-    doc.text(p.cliente_nome || c?.nome || '—', mL, yRef + 6);
+    doc.setFont(FONT_CINZEL, 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(...COR.preto);
+    doc.text(p.cliente_nome || c?.nome || '—', mL, yRef + 9);
 
-    let yLocal = yRef + 12;
+    let yLocal = yRef + 15;
     const colW = (cW - 4) / 2;
 
-    // Responsável | WhatsApp
     if (c?.responsavel) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
       doc.text('RESPONSÁVEL', mL, yLocal);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
       const txt = doc.splitTextToSize(c.responsavel, colW);
       doc.text(txt, mL, yLocal + 4);
     }
     if (c?.whatsapp) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
       doc.text('WHATSAPP', mL + colW + 4, yLocal);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
       doc.text(mascaraTelefone(c.whatsapp), mL + colW + 4, yLocal + 4);
     }
     yLocal += 10;
 
-    // Endereço (largura total, pode quebrar linha)
     if (c?.endereco) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
       doc.text('ENDEREÇO', mL, yLocal);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
       const endLines = doc.splitTextToSize(c.endereco, cW);
       doc.text(endLines, mL, yLocal + 4);
-      yLocal += 4 + (endLines.length * 4) + 2;
+      yLocal += 4 + (endLines.length * 4.2) + 2;
     }
 
-    // CNPJ/CPF
     if (c?.cnpj_cpf) {
       const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
       const labelDoc = c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ';
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
       doc.text(labelDoc, mL, yLocal);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
       doc.text(docFmt, mL, yLocal + 4);
       yLocal += 10;
     }
     return yLocal;
   };
 
-  // ========== TABELA DE ITENS (com auto-paginação via autoTable) ==========
+  // ========== TABELA DE ITENS ==========
   const itens = (p.itens && p.itens.length)
     ? p.itens.map(i => {
         const d = formatarPrecoItemPedido(i);
-        const precoTexto = [d.textoUnidade, d.textoEmbalagem].filter(Boolean).join('\n');
         return [
           String(d.quantidade),
           d.nome,
-          precoTexto,
+          [d.textoUnidade, d.textoEmbalagem].filter(Boolean).join('\n'),
           moeda(d.subtotal),
         ];
       })
@@ -4334,12 +4437,15 @@ function gerarPdfViaPedido(id) {
 
   // ========== PAGAMENTO E PRAZOS ==========
   const drawPagamento = (yRef) => {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(...COR.dourado);
     doc.text('PAGAMENTO E PRAZOS', mL, yRef);
+    doc.setDrawColor(...COR.dourado);
+    doc.setLineWidth(0.4);
+    doc.line(mL, yRef + 1.5, mL + 38, yRef + 1.5);
 
-    let yLocal = yRef + 6;
+    let yLocal = yRef + 7;
     const colW = (cW - 4) / 2;
     const campos = [
       ['Forma de pagamento', pagto],
@@ -4348,18 +4454,17 @@ function gerarPdfViaPedido(id) {
     if (p.status === 'entregue' && p.data_entregue_em) campos.push(['Entregue em', dataBR(p.data_entregue_em)]);
     if (p.data_vencimento) campos.push(['Vencimento', dataBR(p.data_vencimento)]);
 
-    // 2 colunas
     for (let i = 0; i < campos.length; i += 2) {
       const [lbl1, val1] = campos[i];
       const col2 = campos[i + 1];
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
       doc.text(lbl1.toUpperCase(), mL, yLocal);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
       doc.text(String(val1 || '—'), mL, yLocal + 4);
       if (col2) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+        doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
         doc.text(col2[0].toUpperCase(), mL + colW + 4, yLocal);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+        doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
         doc.text(String(col2[1] || '—'), mL + colW + 4, yLocal + 4);
       }
       yLocal += 10;
@@ -4370,96 +4475,112 @@ function gerarPdfViaPedido(id) {
   // ========== OBSERVAÇÕES ==========
   const drawObservacoes = (yRef) => {
     if (!p.observacao) return yRef;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(...COR.dourado);
     doc.text('OBSERVAÇÕES', mL, yRef);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(30, 30, 30);
+    doc.setDrawColor(...COR.dourado);
+    doc.setLineWidth(0.4);
+    doc.line(mL, yRef + 1.5, mL + 28, yRef + 1.5);
+
+    doc.setFont(FONT_NUNITO, 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COR.preto);
     const obsLines = doc.splitTextToSize(p.observacao, cW);
-    doc.text(obsLines, mL, yRef + 5);
-    return yRef + 5 + (obsLines.length * 4) + 2;
+    doc.text(obsLines, mL, yRef + 6);
+    return yRef + 6 + (obsLines.length * 4.2) + 2;
   };
 
   // ========== MONTAGEM DA PÁGINA ==========
-  // Página 1: cabeçalho + cliente + parte da tabela
   let y = mT;
-  drawCabecalho(y);
-  y += 18;
-  y = drawCliente(y);
-  y += 4;
+  y = drawCabecalho(y);
+  y = drawCliente(y) + 4;
 
-  // Título da seção de itens
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT_CINZEL, 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(80, 80, 80);
+  doc.setTextColor(...COR.dourado);
   doc.text('ITENS DO PEDIDO', mL, y);
-  y += 4;
+  doc.setDrawColor(...COR.dourado);
+  doc.setLineWidth(0.4);
+  doc.line(mL, y + 1.5, mL + 36, y + 1.5);
+  y += 6;
 
-  // Tabela (autoTable gerencia paginação automaticamente)
   doc.autoTable({
     startY: y,
     head: [['Qtd', 'Produto', 'Unid./Saco', 'Subtotal']],
     body: itens,
     margin: { left: mL, right: mR, bottom: mB + 8 },
     styles: {
-      font: 'helvetica',
+      font: FONT_NUNITO,
       fontSize: 9,
-      cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
+      cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
       lineColor: [220, 220, 220],
       lineWidth: 0.1,
-      textColor: [40, 40, 40],
+      textColor: COR.preto,
       overflow: 'linebreak',
       valign: 'middle',
     },
     headStyles: {
-      fillColor: [240, 240, 240],
-      textColor: [60, 60, 60],
+      fillColor: COR.verdeEscuro,
+      textColor: COR.dourado,
       fontStyle: 'bold',
       fontSize: 8,
-      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+      font: FONT_CINZEL,
+    },
+    alternateRowStyles: {
+      fillColor: COR.cinzaClaro,
     },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 14 },
-      1: { halign: 'left' },              // flexível (produto)
-      2: { halign: 'right', cellWidth: 38 },
-      3: { halign: 'right', cellWidth: 32 },
+      0: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
+      1: { halign: 'left', font: FONT_NUNITO },
+      2: { halign: 'right', cellWidth: 38, font: FONT_NUNITO },
+      3: { halign: 'right', cellWidth: 32, fontStyle: 'bold' },
     },
     didDrawPage: (data) => {
-      // Rodapé em todas as páginas
       drawRodape();
-      // Repetir cabeçalho só nas páginas seguintes (não na primeira)
       if (data.pageNumber > 1) {
-        drawCabecalho(mT);
+        // Repete cabeçalho compacto em páginas seguintes
+        doc.setFillColor(...COR.verdeEscuro);
+        doc.rect(mL, mT, cW, 12, 'F');
+        doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(9); doc.setTextColor(...COR.dourado);
+        doc.text('KG AGROPET', mL + 4, mT + 7);
+        doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...COR.branco);
+        doc.text(`Via do Pedido · Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, mT + 7, { align: 'right' });
+        doc.setDrawColor(...COR.dourado); doc.setLineWidth(0.4);
+        doc.line(mL, mT + 12, pageW - mR, mT + 12);
       }
     },
   });
 
-  let yAfterTable = doc.lastAutoTable.finalY + 6;
+  let yAfterTable = doc.lastAutoTable.finalY + 8;
 
-  // TOTAL (sempre logo após a tabela)
-  // Se não cabe, vai pra próxima página
-  if (yAfterTable > pageH - mB - 30) {
+  // TOTAL — box verde-escuro com fonte grande
+  if (yAfterTable > pageH - mB - 28) {
     doc.addPage();
-    yAfterTable = mT + 16;
+    yAfterTable = mT + 18;
   }
 
-  // Linha separadora acima do total
-  doc.setDrawColor(40, 40, 40);
-  doc.setLineWidth(0.5);
-  doc.line(pageW - mR - 95, yAfterTable, pageW - mR, yAfterTable);
-  yAfterTable += 6;
+  const totalBoxH = 18;
+  const totalBoxW = 90;
+  const totalBoxX = pageW - mR - totalBoxW;
+  doc.setFillColor(...COR.verdeEscuro);
+  doc.rect(totalBoxX, yAfterTable, totalBoxW, totalBoxH, 'F');
+  doc.setDrawColor(...COR.dourado);
+  doc.setLineWidth(0.6);
+  doc.rect(totalBoxX, yAfterTable, totalBoxW, totalBoxH, 'S');
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
-  doc.text('TOTAL', pageW - mR - 35, yAfterTable, { align: 'right' });
-  doc.setFontSize(16);
-  doc.setTextColor(0, 0, 0);
-  doc.text(moeda(p.valor), pageW - mR, yAfterTable, { align: 'right' });
+  doc.setFont(FONT_CINZEL, 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...COR.dourado);
+  doc.text('TOTAL DO PEDIDO', totalBoxX + 5, yAfterTable + 5);
 
-  yAfterTable += 12;
+  doc.setFont(FONT_CINZEL, 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(...COR.branco);
+  doc.text(moeda(p.valor), totalBoxX + totalBoxW - 5, yAfterTable + 14, { align: 'right' });
+
+  yAfterTable += totalBoxH + 8;
 
   // Pagamento
   if (yAfterTable > pageH - mB - 40) {
@@ -4485,19 +4606,28 @@ function gerarPdfViaPedido(id) {
   return { blob, url, nomeArquivo };
 }
 
-// Mostra a via (PDF) na overlay do app. Fallback: abre em nova aba se iframe falhar.
+// Mostra a via (PDF) na overlay do app. Renderiza num <canvas> via PDF.js
+// (funciona em qualquer browser/dispositivo, inclusive Safari iOS PWA —
+// iframe com blob URL não funciona lá). Fallback para iframe se PDF.js falhar.
 async function gerarViaPedido(id) {
+  const overlay = document.getElementById('via-overlay');
+  const papel = document.getElementById('via-papel');
+  if (overlay) overlay.style.display = 'block';
+  if (papel) papel.innerHTML = `<div class="via-loading"><div class="via-spinner"></div><div class="via-loading-text">Gerando PDF...</div></div>`;
+  window.scrollTo({ top: 0, behavior: 'instant' });
   try {
-    const { blob, url, nomeArquivo } = gerarPdfViaPedido(id);
-    showPdfViaOverlay(url, nomeArquivo, blob, id);
+    const { blob, url, nomeArquivo } = await gerarPdfViaPedido(id);
+    await showPdfViaOverlay(url, nomeArquivo, blob, id);
   } catch (e) {
     console.error('Erro ao gerar PDF da via:', e);
-    alert('Não foi possível gerar o PDF da via: ' + e.message);
+    if (papel) papel.innerHTML = `<div class="via-erro">❌ ${esc(e.message)}<br><br>Tente reabrir ou atualizar o aplicativo.</div>`;
+    toast('Erro ao gerar PDF: ' + e.message, 'erro');
   }
 }
 
-// Abre o overlay mostrando o PDF num iframe. Botões: Compartilhar / Imprimir / Salvar / Fechar
-function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
+// Renderiza o PDF no canvas via PDF.js. Retorna Promise resolvida quando o
+// canvas está pronto (ou rejeitada se cair no fallback de iframe).
+async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
   const overlay = document.getElementById('via-overlay');
   const papel = document.getElementById('via-papel');
   const btnImprimir = document.getElementById('via-btn-imprimir');
@@ -4505,21 +4635,117 @@ function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
   const btnSalvar = document.getElementById('via-btn-salvar');
   const btnFechar = document.querySelector('.via-btn-fechar');
 
-  // Substitui conteúdo da overlay por iframe com PDF
-  papel.innerHTML = `<iframe id="via-pdf-frame" src="${url}" style="width:100%;height:calc(100vh - 70px);border:0;background:#525659" title="${nomeArquivo}"></iframe>`;
+  // ===== Tenta PDF.js primeiro =====
+  if (window.pdfjsLib) {
+    try {
+      // Configura worker (CDN ou local — tenta o local do vendor)
+      if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+      }
 
-  // Botão "Imprimir" agora imprime o PDF (funciona em todos OS — iOS abre AirPrint)
-  btnImprimir.onclick = () => {
-    // Abre em nova aba para impressão nativa
-    const w = window.open(url, '_blank', 'noopener');
-    if (!w) {
-      // Pop-up bloqueado: mostra fallback
-      alert('Permita pop-ups para imprimir, ou use o botão "Salvar" e imprima do app Arquivos.');
+      papel.innerHTML = `
+        <div class="via-canvas-wrap">
+          <div class="via-loading"><div class="via-spinner"></div><div class="via-loading-text">Renderizando...</div></div>
+          <canvas id="via-pdf-canvas" tabindex="0"></canvas>
+        </div>
+        <div class="via-paginacao">
+          <button class="via-pag-btn" id="via-pag-prev" aria-label="Página anterior">‹</button>
+          <span id="via-pag-info">— / —</span>
+          <button class="via-pag-btn" id="via-pag-next" aria-label="Próxima página">›</button>
+        </div>
+      `;
+
+      const data = await blob.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+      const canvas = papel.querySelector('#via-pdf-canvas');
+      const info = papel.querySelector('#via-pag-info');
+      const prev = papel.querySelector('#via-pag-prev');
+      const next = papel.querySelector('#via-pag-next');
+
+      let pageNum = 1;
+      const renderPage = async (n) => {
+        pageNum = Math.max(1, Math.min(n, pdf.numPages));
+        const page = await pdf.getPage(pageNum);
+        // Calcula scale pra caber na largura do canvas (CSS pixels)
+        const dpr = window.devicePixelRatio || 1;
+        const cssW = papel.clientWidth - 24; /* padding */
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = (cssW / viewport.width) * dpr;
+        const scaledVp = page.getViewport({ scale });
+        canvas.width = scaledVp.width;
+        canvas.height = scaledVp.height;
+        canvas.style.width = (scaledVp.width / dpr) + 'px';
+        canvas.style.height = (scaledVp.height / dpr) + 'px';
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledVp }).promise;
+        info.textContent = `${pageNum} / ${pdf.numPages}`;
+        prev.disabled = pageNum <= 1;
+        next.disabled = pageNum >= pdf.numPages;
+      };
+
+      prev.onclick = () => renderPage(pageNum - 1);
+      next.onclick = () => renderPage(pageNum + 1);
+      // Suporte a seta esquerda/direita no teclado
+      canvas.addEventListener('keydown', (ev) => {
+        if (ev.key === 'ArrowLeft') renderPage(pageNum - 1);
+        else if (ev.key === 'ArrowRight') renderPage(pageNum + 1);
+      });
+
+      await renderPage(1);
+      canvas.focus();
+
+      // Botões de ação
+      btnImprimir.textContent = '🖨️ Imprimir / AirPrint';
+      btnImprimir.onclick = () => {
+        // Abre o blob URL em nova aba — Safari iOS abre o viewer PDF nativo
+        // (que tem botão Compartilhar/AirPrint/Salvar). Funciona melhor que
+        // tentar imprimir o canvas.
+        const w = window.open(url, '_blank', 'noopener');
+        if (!w) {
+          toast('Permita pop-ups para imprimir, ou use "Salvar" e abra do app Arquivos.', 'info');
+        }
+      };
+
+      if (btnSalvar) {
+        btnSalvar.onclick = () => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = nomeArquivo;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+        btnSalvar.style.display = '';
+      }
+
+      if (btnZap) {
+        btnZap.textContent = '📤 Compartilhar';
+        btnZap.onclick = async () => {
+          try {
+            const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: nomeArquivo, text: 'Via do Pedido - KG Agropet' });
+            } else {
+              enviarPedidoWhatsApp(pedidoId);
+            }
+          } catch (e) { /* usuário cancelou */ }
+        };
+        btnZap.style.display = '';
+      }
+
+      return;
+    } catch (e) {
+      console.warn('[via] PDF.js falhou, usando iframe fallback:', e);
+      // Cai no fallback abaixo
     }
-  };
-  btnImprimir.textContent = '🖨️ Imprimir';
+  }
 
-  // Botão "Salvar" — download do PDF
+  // ===== FALLBACK: iframe (só pra browsers antigos ou PDF.js com bug) =====
+  papel.innerHTML = `<iframe id="via-pdf-frame" src="${url}" style="width:100%;height:calc(100vh - 70px);border:0;background:#525659" title="${nomeArquivo}"></iframe>`;
+  btnImprimir.textContent = '🖨️ Imprimir';
+  btnImprimir.onclick = () => {
+    const w = window.open(url, '_blank', 'noopener');
+    if (!w) toast('Permita pop-ups para imprimir, ou use "Salvar".', 'info');
+  };
   if (btnSalvar) {
     btnSalvar.onclick = () => {
       const a = document.createElement('a');
@@ -4531,33 +4757,20 @@ function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
     };
     btnSalvar.style.display = '';
   }
-
-  // Botão "Compartilhar" (iOS — abre share sheet com o PDF)
   if (btnZap) {
     btnZap.textContent = '📤 Compartilhar';
     btnZap.onclick = async () => {
       try {
         const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: nomeArquivo,
-            text: 'Via do Pedido - KG Agropet',
-          });
+          await navigator.share({ files: [file], title: nomeArquivo, text: 'Via do Pedido - KG Agropet' });
         } else {
-          // Fallback: WhatsApp com texto (sem PDF)
           enviarPedidoWhatsApp(pedidoId);
         }
-      } catch (e) {
-        // Usuário cancelou share ou deu erro; silencioso
-      }
+      } catch (e) {}
     };
     btnZap.style.display = '';
   }
-
-  // Mostrar overlay
-  overlay.style.display = 'block';
-  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function fecharViaPedido() {

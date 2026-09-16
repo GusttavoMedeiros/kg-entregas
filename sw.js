@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v40';
+const CACHE_VERSION = 'kg-v41';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -17,7 +17,7 @@ const DATA_CACHE   = 'kg-v23-data';
 const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
-  './app.js?v=63',
+  './app.js?v=64',
   './ios-like.css?v=7',
   './manifest.json',
   './logo.webp',
@@ -26,9 +26,16 @@ const ASSETS_PARA_CACHEAR = [
   './app-icon-192.png',
   './app-icon-512.png',
   './app-icon-maskable-512.png',
-  // jsPDF para geração de PDF A4 real (sem dependência de print preview do Safari)
+  // jsPDF + autoTable: PDF A4 vetorial (sem dependência do print preview do Safari)
   './vendor/jspdf.umd.min.js',
   './vendor/jspdf-autotable.min.js',
+  // PDF.js + worker: render do PDF no canvas (funciona em qualquer browser,
+  // inclusive Safari iOS PWA onde blob URL em iframe falha)
+  './vendor/pdf.min.js',
+  './vendor/pdf.worker.min.js',
+  // Fontes TTF embedded (Cinzel e Nunito, OFL) — identidade visual da KG Agropet
+  './vendor/Cinzel.ttf',
+  './vendor/Nunito.ttf',
 ];
 
 // ============================================================
