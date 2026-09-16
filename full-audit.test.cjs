@@ -120,7 +120,7 @@ test('janelas de relatório e vencimento são iguais em fusos distintos do apare
    trecho('function calcularJanelaRelatorio(', '// Filtra somente pedidos')+
    trecho('function calcularDataVencimento(', '// Regra: admin'))},c);
  const m=c.calcularJanelaRelatorio('mensal',0);assert.equal(m.ini,'2026-12-01');assert.equal(m.fim,'2026-12-31');
- const q=c.calcularJanelaRelatorio('quinzenal',0);assert.equal(q.ini,'2026-12-16');assert.equal(q.fim,'2026-12-31');
+ const q=c.calcularJanelaRelatorio('quinzenal',0);assert.equal(q.ini,'2026-12-17');assert.equal(q.fim,'2026-12-31');
  assert.equal(c.calcularDataVencimento('2026-12-31','boleto',7),'2027-01-07');`;
  for(const TZ of ['UTC','Pacific/Kiritimati','America/Los_Angeles']) execFileSync(process.execPath,['-e',codigo],{env:{...process.env,TZ}});
 });

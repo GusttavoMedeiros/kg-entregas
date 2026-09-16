@@ -4296,6 +4296,22 @@ async function _carregarAssetsVia() {
   return _viaAssets.promise;
 }
 
+function _registrarFontesPdf(doc) {
+  const FONT_CINZEL = _viaAssets.cinzel ? 'Cinzel' : 'helvetica';
+  const FONT_NUNITO = _viaAssets.nunito ? 'Nunito' : 'helvetica';
+  if (_viaAssets.cinzel) {
+    doc.addFileToVFS('Cinzel.ttf', _viaAssets.cinzel);
+    doc.addFont('Cinzel.ttf', 'Cinzel', 'normal');
+    doc.addFont('Cinzel.ttf', 'Cinzel', 'bold');
+  }
+  if (_viaAssets.nunito) {
+    doc.addFileToVFS('Nunito.ttf', _viaAssets.nunito);
+    doc.addFont('Nunito.ttf', 'Nunito', 'normal');
+    doc.addFont('Nunito.ttf', 'Nunito', 'bold');
+  }
+  return { FONT_CINZEL, FONT_NUNITO };
+}
+
 // Gera o Blob do PDF da via. Retorna { blob, url, nomeArquivo }.
 async function gerarPdfViaPedido(id) {
   await _carregarBibliotecasPdf();
@@ -4318,24 +4334,14 @@ async function gerarPdfViaPedido(id) {
 
   // Registra as fontes customizadas (se carregaram). jsPDF usa 'helvetica' como
   // fallback quando elas não estão disponíveis.
-  const FONT_CINZEL = _viaAssets.cinzel ? 'Cinzel' : 'helvetica';
-  const FONT_NUNITO = _viaAssets.nunito ? 'Nunito' : 'helvetica';
-  if (_viaAssets.cinzel) {
-    doc.addFileToVFS('Cinzel.ttf', _viaAssets.cinzel);
-    doc.addFont('Cinzel.ttf', 'Cinzel', 'normal');
-    doc.addFont('Cinzel.ttf', 'Cinzel', 'bold');
-  }
-  if (_viaAssets.nunito) {
-    doc.addFileToVFS('Nunito.ttf', _viaAssets.nunito);
-    doc.addFont('Nunito.ttf', 'Nunito', 'normal');
-    doc.addFont('Nunito.ttf', 'Nunito', 'bold');
-  }
+  const { FONT_CINZEL, FONT_NUNITO } = _registrarFontesPdf(doc);
 
   const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
 
   // ========== CORES DA MARCA ==========
   const COR = {
     verdeEscuro:   [13, 34, 24],
+    verdeTexto:    [25, 66, 42],
     verdeMedio:    [22, 56, 40],
     dourado:       [212, 175, 55],
     douradoClaro:  [232, 200, 100],
@@ -4346,57 +4352,46 @@ async function gerarPdfViaPedido(id) {
     preto:         [20, 20, 20],
   };
 
-  // ========== CABEÇALHO (box verde-escuro com logo + nome da empresa) ==========
-  const ALTURA_CABECALHO = 32;
+  // ========== CABEÇALHO (leve para economizar tinta) ==========
+  const ALTURA_CABECALHO = 25;
   const drawCabecalho = (yRef) => {
-    doc.setFillColor(...COR.verdeEscuro);
-    doc.rect(mL, yRef, cW, ALTURA_CABECALHO, 'F');
-
     doc.setDrawColor(...COR.dourado);
-    doc.setLineWidth(0.6);
+    doc.setLineWidth(0.45);
     doc.line(mL, yRef + ALTURA_CABECALHO, mL + cW, yRef + ALTURA_CABECALHO);
 
     if (_viaAssets.logoPng) {
-      try {
-        doc.addImage(_viaAssets.logoPng, 'PNG', mL + 4, yRef + 5, 22, 22, undefined, 'FAST');
-      } catch (e) { /* ignora erro de imagem */ }
+      try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, yRef + 1, 19, 19, undefined, 'FAST'); }
+      catch (e) { /* ignora erro de imagem */ }
     }
 
     doc.setFont(FONT_CINZEL, 'bold');
-    doc.setFontSize(22);
-    doc.setTextColor(...COR.branco);
-    doc.text('KG AGROPET', mL + 30, yRef + 13);
+    doc.setFontSize(16);
+    doc.setTextColor(...COR.verdeTexto);
+    doc.text('KG AGROPET', mL + 23, yRef + 8);
 
     doc.setFont(FONT_NUNITO, 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...COR.douradoClaro);
-    doc.text('Glória do Goitá — PE', mL + 30, yRef + 19);
-
     doc.setFontSize(7.5);
-    doc.setTextColor(...COR.cinzaMedio);
-    doc.text('Agropecuária • Pet Shop • Entregas', mL + 30, yRef + 23.5);
+    doc.setTextColor(...COR.cinzaTexto);
+    doc.text('Glória do Goitá — PE', mL + 23, yRef + 14);
+
+    doc.setFontSize(7);
+    doc.setTextColor(...COR.cinzaTexto);
+    doc.text('Pedido para conferência e entrega', mL + 23, yRef + 19);
 
     doc.setFont(FONT_CINZEL, 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(...COR.dourado);
-    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 10, { align: 'right' });
+    doc.setFontSize(10.5);
+    doc.setTextColor(...COR.verdeTexto);
+    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 8, { align: 'right' });
 
     doc.setFont(FONT_NUNITO, 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...COR.cinzaMedio);
-    doc.text(`Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, yRef + 15.5, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setTextColor(...COR.cinzaTexto);
+    doc.text(`Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, yRef + 13.5, { align: 'right' });
 
-    if (p.status === 'entregue') {
-      doc.setFont(FONT_NUNITO, 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(...COR.dourado);
-      doc.text('ENTREGUE', pageW - mR, yRef + 21, { align: 'right' });
-    } else {
-      doc.setFont(FONT_NUNITO, 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(...COR.cinzaMedio);
-      doc.text('PENDENTE', pageW - mR, yRef + 21, { align: 'right' });
-    }
+    doc.setFont(FONT_NUNITO, 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(p.status === 'entregue' ? 50 : 110, p.status === 'entregue' ? 100 : 110, p.status === 'entregue' ? 65 : 110);
+    doc.text(p.status === 'entregue' ? 'ENTREGUE' : 'PENDENTE', pageW - mR, yRef + 19, { align: 'right' });
 
     return yRef + ALTURA_CABECALHO + 6;
   };
@@ -4483,7 +4478,7 @@ async function gerarPdfViaPedido(id) {
         return [
           String(d.quantidade),
           d.nome,
-          [d.textoUnidade, d.textoEmbalagem].filter(Boolean).join('\n'),
+          moeda(d.precoUnitario),
           moeda(d.subtotal),
         ];
       })
@@ -4561,45 +4556,44 @@ async function gerarPdfViaPedido(id) {
 
   doc.autoTable({
     startY: y,
-    head: [['Qtd', 'Produto', 'Unid./Saco', 'Subtotal']],
+    head: [['Qtd', 'Produto', 'Unitário', 'Subtotal']],
     body: itens,
     margin: { left: mL, right: mR, bottom: mB + 8 },
     styles: {
       font: FONT_NUNITO,
-      fontSize: 9,
-      cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
-      lineColor: [220, 220, 220],
-      lineWidth: 0.1,
+      fontSize: 8.5,
+      cellPadding: { top: 2.2, bottom: 2.2, left: 3, right: 3 },
+      lineColor: [185, 185, 185],
+      lineWidth: 0.12,
       textColor: COR.preto,
       overflow: 'linebreak',
       valign: 'middle',
     },
     headStyles: {
-      fillColor: COR.verdeEscuro,
-      textColor: COR.dourado,
+      fillColor: [250, 250, 248],
+      textColor: COR.verdeTexto,
       fontStyle: 'bold',
-      fontSize: 8,
-      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+      fontSize: 7.5,
+      cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
       font: FONT_CINZEL,
-    },
-    alternateRowStyles: {
-      fillColor: COR.cinzaClaro,
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
       1: { halign: 'left', font: FONT_NUNITO },
-      2: { halign: 'right', cellWidth: 38, font: FONT_NUNITO },
-      3: { halign: 'right', cellWidth: 32, fontStyle: 'bold' },
+      2: { halign: 'right', cellWidth: 34, font: FONT_NUNITO },
+      3: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
     },
     didDrawPage: (data) => {
       drawRodape();
       if (data.pageNumber > 1) {
-        // Repete cabeçalho compacto em páginas seguintes
-        doc.setFillColor(...COR.verdeEscuro);
-        doc.rect(mL, mT, cW, 12, 'F');
+        // Repete cabeçalho compacto em páginas seguintes, sem bloco de tinta.
+        if (_viaAssets.logoPng) {
+          try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, mT, 10, 10, undefined, 'FAST'); }
+          catch (e) { /* ignora erro de imagem */ }
+        }
         doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(9); doc.setTextColor(...COR.dourado);
-        doc.text('KG AGROPET', mL + 4, mT + 7);
-        doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...COR.branco);
+        doc.text('KG AGROPET', mL + 13, mT + 6.5);
+        doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...COR.verdeTexto);
         doc.text(`Via do Pedido · Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, mT + 7, { align: 'right' });
         doc.setDrawColor(...COR.dourado); doc.setLineWidth(0.4);
         doc.line(mL, mT + 12, pageW - mR, mT + 12);
@@ -4609,30 +4603,28 @@ async function gerarPdfViaPedido(id) {
 
   let yAfterTable = doc.lastAutoTable.finalY + 8;
 
-  // TOTAL — box verde-escuro com fonte grande
+  // TOTAL — destaque apenas com contorno, para gastar pouca tinta.
   if (yAfterTable > pageH - mB - 28) {
     doc.addPage();
     yAfterTable = mT + 18;
   }
 
-  const totalBoxH = 18;
-  const totalBoxW = 90;
+  const totalBoxH = 15;
+  const totalBoxW = 78;
   const totalBoxX = pageW - mR - totalBoxW;
-  doc.setFillColor(...COR.verdeEscuro);
-  doc.rect(totalBoxX, yAfterTable, totalBoxW, totalBoxH, 'F');
   doc.setDrawColor(...COR.dourado);
   doc.setLineWidth(0.6);
   doc.rect(totalBoxX, yAfterTable, totalBoxW, totalBoxH, 'S');
 
   doc.setFont(FONT_CINZEL, 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...COR.dourado);
-  doc.text('TOTAL DO PEDIDO', totalBoxX + 5, yAfterTable + 5);
+  doc.setFontSize(8);
+  doc.setTextColor(...COR.verdeTexto);
+  doc.text('TOTAL DO PEDIDO', totalBoxX + 4, yAfterTable + 5);
 
   doc.setFont(FONT_CINZEL, 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...COR.branco);
-  doc.text(moeda(p.valor), totalBoxX + totalBoxW - 5, yAfterTable + 14, { align: 'right' });
+  doc.setFontSize(15);
+  doc.setTextColor(...COR.verdeTexto);
+  doc.text(moeda(p.valor), totalBoxX + totalBoxW - 4, yAfterTable + 11.5, { align: 'right' });
 
   yAfterTable += totalBoxH + 8;
 
@@ -5528,16 +5520,14 @@ function calcularJanelaRelatorio(tipo, offset) {
   }
 
   if (tipo === 'quinzenal') {
-    // Índice absoluto de quinzena: cada mês tem Q1 (1–15) e Q2 (16–fim)
-    let idx = hoje.getUTCFullYear() * 24 + hoje.getUTCMonth() * 2 + (hoje.getUTCDate() > 15 ? 1 : 0);
-    idx += offset;
-    const ano = Math.floor(idx / 24);
-    const resto = idx % 24;
-    const mes = Math.floor(resto / 2);
-    const metade = resto % 2;
-    const ini = new Date(Date.UTC(ano, mes, metade ? 16 : 1, 12));
-    const fim = metade ? new Date(Date.UTC(ano, mes + 1, 0, 12)) : new Date(Date.UTC(ano, mes, 15, 12));
-    return { ini: fmt(ini), fim: fmt(fim), label: `${metade ? '2ª' : '1ª'} quinzena · ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
+    // Janela móvel de 15 dias. Assim, ao abrir o relatório no começo da
+    // segunda metade do mês, as entregas recém-concluídas continuam visíveis
+    // em vez de cair numa 2ª quinzena vazia (16–fim).
+    const fim = new Date(hoje);
+    fim.setUTCDate(fim.getUTCDate() + Math.trunc(Number(offset) || 0) * 15);
+    const ini = new Date(fim);
+    ini.setUTCDate(fim.getUTCDate() - 14);
+    return { ini: fmt(ini), fim: fmt(fim), label: `Quinzena · ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
   }
 
   // mensal
@@ -5652,6 +5642,7 @@ function renderizarRelatorio() {
 // Gera o Blob do PDF do relatório. Retorna { blob, url, nomeArquivo }.
 async function gerarPdfRelatorio(ini, fim, label) {
   await _carregarBibliotecasPdf();
+  await _carregarAssetsVia();
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
@@ -5661,21 +5652,26 @@ async function gerarPdfRelatorio(ini, fim, label) {
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const { FONT_CINZEL, FONT_NUNITO } = _registrarFontesPdf(doc);
   const pageW = 210, pageH = 297;
   const mL = 15, mR = 15, mT = 15, mB = 18;
   const cW = pageW - mL - mR;
 
   const drawCabecalho = (yRef) => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20, 20, 20);
-    doc.text('KG AGROPET', mL, yRef + 5);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
-    doc.text('Glória do Goitá — PE', mL, yRef + 10);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
-    doc.text('RELATÓRIO DE VENDAS', pageW - mR, yRef + 5, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90, 90, 90);
-    doc.text(label, pageW - mR, yRef + 10, { align: 'right' });
-    doc.setDrawColor(40, 40, 40); doc.setLineWidth(0.4);
-    doc.line(mL, yRef + 14, pageW - mR, yRef + 14);
+    if (_viaAssets.logoPng) {
+      try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, yRef, 19, 19, undefined, 'FAST'); }
+      catch (e) { /* relatório continua sem imagem se o PNG falhar */ }
+    }
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(16); doc.setTextColor(25, 66, 42);
+    doc.text('KG AGROPET', mL + 23, yRef + 8);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 80, 80);
+    doc.text('Glória do Goitá — PE', mL + 23, yRef + 14);
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(12); doc.setTextColor(25, 66, 42);
+    doc.text('RELATÓRIO DE VENDAS', pageW - mR, yRef + 7, { align: 'right' });
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
+    doc.text(label, pageW - mR, yRef + 13, { align: 'right' });
+    doc.setDrawColor(212, 175, 55); doc.setLineWidth(0.45);
+    doc.line(mL, yRef + 21, pageW - mR, yRef + 21);
   };
   const drawRodape = () => {
     const pageCount = doc.internal.getNumberOfPages();
@@ -5683,7 +5679,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
     const y = pageH - mB + 4;
     doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
     doc.line(mL, y - 4, pageW - mR, y - 4);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
     doc.text('Este documento não substitui documento fiscal.', mL, y);
     doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
     doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
@@ -5691,22 +5687,22 @@ async function gerarPdfRelatorio(ini, fim, label) {
 
   let y = mT;
   drawCabecalho(y);
-  y += 18;
+  y += 27;
 
   // Contexto
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+  doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
   doc.text('PERÍODO', mL, y);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   doc.text(label, mL, y + 4);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+  doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
   doc.text('ESCOPO', mL + cW / 2, y);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const escopoLines = doc.splitTextToSize(escopo, cW / 2 - 4);
   doc.text(escopoLines, mL + cW / 2, y + 4);
   y += 4 + (escopoLines.length * 4) + 6;
 
   // Resumo (4 cards)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+  doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(8); doc.setTextColor(25, 66, 42);
   doc.text('RESUMO DO PERÍODO', mL, y);
   y += 5;
 
@@ -5719,11 +5715,13 @@ async function gerarPdfRelatorio(ini, fim, label) {
   const cardW = (cW - 6) / 4;
   cards.forEach((c, i) => {
     const cx = mL + i * (cardW + 2);
-    doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.2);
-    doc.rect(cx, y, cardW, 16);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.setFillColor(250, 250, 248); doc.setDrawColor(205, 205, 200); doc.setLineWidth(0.25);
+    doc.roundedRect(cx, y, cardW, 16, 1.5, 1.5, 'FD');
+    doc.setDrawColor(212, 175, 55); doc.setLineWidth(0.7);
+    doc.line(cx + 2, y + 1.5, cx + cardW - 2, y + 1.5);
+    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(10); doc.setTextColor(25, 66, 42);
     doc.text(c[1], cx + cardW / 2, y + 7, { align: 'center' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 100, 100);
     doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 12, { align: 'center' });
   });
   y += 22;
@@ -5735,8 +5733,8 @@ async function gerarPdfRelatorio(ini, fim, label) {
       head: [['Top produtos', 'Qtd', 'Valor']],
       body: d.topProdutos.map(t => [t.nome, String(t.qtd), moeda(t.valor)]),
       margin: { left: mL, right: mR, bottom: mB + 8 },
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5, textColor: [40, 40, 40], overflow: 'linebreak' },
-      headStyles: { fillColor: [240, 240, 240], textColor: [60, 60, 60], fontStyle: 'bold', fontSize: 8 },
+      styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
+      headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
       columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 35 } },
       didDrawPage: (data) => {
         drawRodape();
@@ -5754,8 +5752,8 @@ async function gerarPdfRelatorio(ini, fim, label) {
       head: [['Top clientes', 'Pedidos', 'Valor']],
       body: d.topClientes.map(t => [t.nome, String(t.pedidos), moeda(t.valor)]),
       margin: { left: mL, right: mR, bottom: mB + 8 },
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5, textColor: [40, 40, 40], overflow: 'linebreak' },
-      headStyles: { fillColor: [240, 240, 240], textColor: [60, 60, 60], fontStyle: 'bold', fontSize: 8 },
+      styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
+      headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
       columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 } },
       didDrawPage: (data) => {
         drawRodape();

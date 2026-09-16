@@ -37,17 +37,17 @@ assert.ok(isTrueType(nunitoHead) || isOpenType(nunitoHead), 'Nunito.ttf não é 
 // ===== 2) index.html mantém o primeiro carregamento leve =====
 const html = fs.readFileSync('index.html', 'utf8');
 assert.doesNotMatch(html, /<script[^>]+vendor\/(?:pdf|jspdf)/, 'PDF não deve bloquear o login');
-assert.match(html, /app\.js\?v=67/, 'app.js?v=67 esperado (versão nova do cache)');
+assert.match(html, /app\.js\?v=68/, 'app.js?v=68 esperado (versão nova do cache)');
 assert.match(html, /id="via-papel"/, 'container #via-papel presente');
 
 // ===== 3) Service Worker registra novos arquivos =====
 const sw = fs.readFileSync('sw.js', 'utf8');
-assert.match(sw, /kg-v44/, 'sw.js deve estar na versão v44');
+assert.match(sw, /kg-v45/, 'sw.js deve estar na versão v45');
 assert.match(sw, /vendor\/pdf\.min\.js/, 'sw.js não cacheia pdf.min.js');
 assert.match(sw, /vendor\/pdf\.worker\.min\.js/, 'sw.js não cacheia pdf.worker.min.js');
 assert.match(sw, /vendor\/Cinzel\.ttf/, 'sw.js não cacheia Cinzel.ttf');
 assert.match(sw, /vendor\/Nunito\.ttf/, 'sw.js não cacheia Nunito.ttf');
-assert.match(sw, /app\.js\?v=67/);
+assert.match(sw, /app\.js\?v=68/);
 
 // ===== 4) app.js: estrutura das funções da via =====
 const app = fs.readFileSync('app.js', 'utf8');
@@ -65,6 +65,12 @@ assert.match(app, /vendor\/Cinzel\.ttf/, 'app.js carrega Cinzel.ttf');
 assert.match(app, /vendor\/Nunito\.ttf/, 'app.js carrega Nunito.ttf');
 assert.match(app, /logo\.png/, 'app.js carrega logo.png');
 
+// O relatório usa a mesma logo e fontes da via, sem uma segunda cópia de asset.
+assert.match(app, /async function gerarPdfRelatorio\(ini, fim, label\)/);
+assert.match(app, /async function gerarPdfRelatorio\(ini, fim, label\)[\s\S]{0,260}await _carregarAssetsVia\(\)/);
+assert.match(app, /doc\.addImage\(_viaAssets\.logoPng, 'PNG'/, 'logo deve aparecer no cabeçalho');
+assert.match(app, /roundedRect\(/, 'cartões do relatório devem ter acabamento leve');
+
 // ===== 6) Registro das fontes no jsPDF =====
 assert.match(app, /doc\.addFileToVFS\(\s*'Cinzel\.ttf'/, 'Cinzel.ttf deve ser registrada via addFileToVFS');
 assert.match(app, /doc\.addFileToVFS\(\s*'Nunito\.ttf'/, 'Nunito.ttf deve ser registrada via addFileToVFS');
@@ -81,6 +87,8 @@ assert.match(app, /new jsPDF\(\s*\{\s*unit:\s*'mm',\s*format:\s*'a4'/);
 // ===== 9) autoTable configurado =====
 assert.match(app, /doc\.autoTable\(/);
 assert.match(app, /head:\s*\[\['Qtd'/);
+assert.match(app, /head:\s*\[\['Qtd', 'Produto', 'Unitário', 'Subtotal'\]\]/);
+assert.match(app, /destaque apenas com contorno/, 'total da via não deve usar bloco de tinta');
 
 // ===== 10) Layout defensivo: splitTextToSize em campos que podem ser longos =====
 assert.match(app, /doc\.splitTextToSize\(c\.endereco, cW\)/);

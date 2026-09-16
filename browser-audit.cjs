@@ -75,12 +75,24 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    await p.locator('.bt-ok').click();await p.waitForFunction(()=>window.confirmacoes.length===2);
    assert.deepEqual(await p.evaluate(()=>window.confirmacoes),[false,true]);
    await p.evaluate(()=>{abrirModalRelatorio();});assert.ok((await p.locator('#relatorio-conteudo').innerText()).length>0);
+   // A quinzena iniciada no dia 16 não pode aparentar estar quebrada por
+   // cair numa metade do mês vazia. O período móvel de 15 dias deve mostrar
+   // uma entrega recente e atualizar o rótulo da aba.
+   await p.evaluate(()=>{
+    todosOsPedidos.push({id:999,cliente_id:1,cliente_nome:'Cliente quinzena',status:'entregue',
+      data_entregue_em:dataHojeBrasil(),valor:1,vendedor:'vendedor',itens:[{nome:'Teste',qtd:1,preco_unit:1}]});
+    mudarTipoRelatorio('quinzenal',document.querySelectorAll('#abas-relatorio .aba')[1]);
+   });
+   assert.match(await p.locator('#rel-periodo-label').innerText(),/Quinzena/);
+   assert.match(await p.locator('#relatorio-conteudo').innerText(),/PEDIDOS ENTREGUES/i);
    await p.evaluate(()=>imprimirRelatorio());await p.waitForSelector('#via-pdf-canvas');
    assert.equal(await p.locator('#via-overlay').evaluate(e=>getComputedStyle(e).display), 'flex');
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
+   await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-report-${perfil}-${largura}.png`)});
    assert.equal(await p.locator('#via-btn-whatsapp').evaluate(e=>getComputedStyle(e).display), 'none');
    await p.evaluate(()=>{fecharViaPedido();gerarViaPedido(1);});await p.waitForSelector('#via-pdf-canvas');
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
+   await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-order-${perfil}-${largura}.png`)});
    await p.waitForFunction(()=>getComputedStyle(document.getElementById('via-btn-whatsapp')).display !== 'none');
    assert.notEqual(await p.locator('#via-btn-whatsapp').evaluate(e=>getComputedStyle(e).display), 'none');
    await p.evaluate(()=>{fecharViaPedido();abrirModalNovoCliente(1);});
