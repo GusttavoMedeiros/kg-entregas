@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
@@ -125,7 +125,7 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v40'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v41'/);
   assert.match(sw, /\.\/ios-like\.css\?v=7/);
   assert.match(index, /ios-like\.css\?v=7/);
   assert.match(index, /app\.js\?v=63/);
@@ -133,3 +133,4 @@ function tokenPara(sub) {
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');
 })();
+
