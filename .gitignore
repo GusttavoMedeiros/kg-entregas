@@ -1,0 +1,4 @@
+# Arquivos temporários de inspeção/debug
+live-index.html
+*.tmp
+*.bak
