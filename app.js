@@ -4746,11 +4746,13 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       const paginacao = papel.querySelector('#via-paginacao');
 
       let pageNum = 1;
+      let renderSeq = 0;
       const renderPage = async (n) => {
         if (!atual()) return;
-        pageNum = Math.max(1, Math.min(n, pdf.numPages));
-        const page = await pdf.getPage(pageNum);
-        if (!atual()) return;
+        const targetPage = Math.max(1, Math.min(n, pdf.numPages));
+        const seq = ++renderSeq;
+        const page = await pdf.getPage(targetPage);
+        if (!atual() || seq !== renderSeq) return;
         // Calcula scale pra caber na largura do canvas (CSS pixels)
         const dpr = window.devicePixelRatio || 1;
         const cssW = papel.clientWidth - 24; /* padding */
@@ -4763,7 +4765,8 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         canvas.style.height = (scaledVp.height / dpr) + 'px';
         canvas.style.display = '';
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledVp }).promise;
-        if (!atual()) return;
+        if (!atual() || seq !== renderSeq) return;
+        pageNum = targetPage;
         // Remove o loading externo (mostrado pelo gerarViaPedido) quando o
         // canvas renderiza a primeira página.
         if (window.__viaLoadingEl) {
