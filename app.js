@@ -4612,14 +4612,21 @@ async function gerarPdfViaPedido(id) {
 async function gerarViaPedido(id) {
   const overlay = document.getElementById('via-overlay');
   const papel = document.getElementById('via-papel');
-  if (overlay) overlay.style.display = 'block';
-  if (papel) papel.innerHTML = `<div class="via-loading"><div class="via-spinner"></div><div class="via-loading-text">Gerando PDF...</div></div>`;
+  if (overlay) overlay.style.display = 'flex';
+  // Loading externo (referenciado depois pelo showPdfViaOverlay pra remover)
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'via-loading';
+  loadingEl.innerHTML = '<div class="via-spinner"></div><div class="via-loading-text">Gerando PDF...</div>';
+  if (papel) { papel.innerHTML = ''; papel.appendChild(loadingEl); }
+  window.__viaLoadingEl = loadingEl;
   window.scrollTo({ top: 0, behavior: 'instant' });
   try {
     const { blob, url, nomeArquivo } = await gerarPdfViaPedido(id);
     await showPdfViaOverlay(url, nomeArquivo, blob, id);
   } catch (e) {
     console.error('Erro ao gerar PDF da via:', e);
+    if (loadingEl) loadingEl.remove();
+    window.__viaLoadingEl = null;
     if (papel) papel.innerHTML = `<div class="via-erro">❌ ${esc(e.message)}<br><br>Tente reabrir ou atualizar o aplicativo.</div>`;
     toast('Erro ao gerar PDF: ' + e.message, 'erro');
   }
@@ -4644,11 +4651,10 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       }
 
       papel.innerHTML = `
-        <div class="via-canvas-wrap">
-          <div class="via-loading"><div class="via-spinner"></div><div class="via-loading-text">Renderizando...</div></div>
-          <canvas id="via-pdf-canvas" tabindex="0"></canvas>
+        <div class="via-canvas-wrap" id="via-canvas-wrap">
+          <canvas id="via-pdf-canvas" tabindex="0" style="display:none"></canvas>
         </div>
-        <div class="via-paginacao">
+        <div class="via-paginacao" id="via-paginacao" style="display:none">
           <button class="via-pag-btn" id="via-pag-prev" aria-label="Página anterior">‹</button>
           <span id="via-pag-info">— / —</span>
           <button class="via-pag-btn" id="via-pag-next" aria-label="Próxima página">›</button>
@@ -4661,6 +4667,7 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       const info = papel.querySelector('#via-pag-info');
       const prev = papel.querySelector('#via-pag-prev');
       const next = papel.querySelector('#via-pag-next');
+      const paginacao = papel.querySelector('#via-paginacao');
 
       let pageNum = 1;
       const renderPage = async (n) => {
@@ -4676,7 +4683,14 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         canvas.height = scaledVp.height;
         canvas.style.width = (scaledVp.width / dpr) + 'px';
         canvas.style.height = (scaledVp.height / dpr) + 'px';
+        canvas.style.display = '';
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledVp }).promise;
+        // Remove o loading externo (mostrado pelo gerarViaPedido) quando o
+        // canvas renderiza a primeira página.
+        if (window.__viaLoadingEl) {
+          window.__viaLoadingEl.remove();
+          window.__viaLoadingEl = null;
+        }
         info.textContent = `${pageNum} / ${pdf.numPages}`;
         prev.disabled = pageNum <= 1;
         next.disabled = pageNum >= pdf.numPages;
@@ -4694,7 +4708,8 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       canvas.focus();
 
       // Botões de ação
-      btnImprimir.textContent = '🖨️ Imprimir / AirPrint';
+      btnImprimir.textContent = '🖨️ Imprimir';
+      btnImprimir.title = 'Abre no visualizador do sistema (AirPrint no iOS, Salvar como PDF no Android/Desktop)';
       btnImprimir.onclick = () => {
         // Abre o blob URL em nova aba — Safari iOS abre o viewer PDF nativo
         // (que tem botão Compartilhar/AirPrint/Salvar). Funciona melhor que
