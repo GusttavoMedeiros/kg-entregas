@@ -4212,6 +4212,57 @@ const _viaAssets = {
   promise: null,
 };
 
+// Estado da renderização atual. A geração e a renderização do PDF são
+// assíncronas; sem um identificador, fechar a overlay durante um await deixa
+// callbacks antigos escrevendo em elementos que já não existem.
+let _viaOverlaySeq = 0;
+let _viaOverlayState = null;
+let _viaFlowToken = 0;
+const _pdfScriptPromises = new Map();
+
+function _carregarScriptPdf(src, pronto) {
+  if (pronto()) return Promise.resolve();
+  if (_pdfScriptPromises.has(src)) return _pdfScriptPromises.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.kgPdfLib = src;
+    script.onload = () => {
+      if (pronto()) resolve();
+      else { script.remove(); reject(new Error(`Biblioteca não inicializou: ${src}`)); }
+    };
+    script.onerror = () => { script.remove(); reject(new Error(`Falha ao carregar ${src}`)); };
+    document.head.appendChild(script);
+  }).catch(err => {
+    _pdfScriptPromises.delete(src);
+    throw err;
+  });
+  _pdfScriptPromises.set(src, promise);
+  return promise;
+}
+
+async function _carregarBibliotecasPdf() {
+  if (window.jspdf?.jsPDF && window.pdfjsLib) return;
+  await _carregarScriptPdf('vendor/jspdf.umd.min.js', () => !!window.jspdf?.jsPDF);
+  await _carregarScriptPdf('vendor/jspdf-autotable.min.js', () => !!window.jspdf?.jsPDF?.API?.autoTable);
+  await _carregarScriptPdf('vendor/pdf.min.js', () => !!window.pdfjsLib);
+  if (!window.jspdf?.jsPDF) throw new Error('Biblioteca jsPDF não está disponível.');
+}
+
+function _liberarViaOverlayState(state) {
+  if (!state) return;
+  state.active = false;
+  try { state.pdf?.destroy?.(); } catch (_) { /* limpeza best-effort */ }
+  if (state.url) {
+    try { URL.revokeObjectURL(state.url); } catch (_) { /* URL pode já ter sido revogada */ }
+  }
+}
+
+function _viaOverlayAtual(state) {
+  return _viaOverlayState === state && state.active;
+}
+
 // Carrega as fontes TTF + logo PNG do diretório vendor (cached após 1ª vez).
 async function _carregarAssetsVia() {
   if (_viaAssets.cinzel && _viaAssets.nunito && _viaAssets.logoPng) return;
@@ -4237,6 +4288,8 @@ async function _carregarAssetsVia() {
       _viaAssets.cinzel = null;
       _viaAssets.nunito = null;
       _viaAssets.logoPng = null;
+      // Permite uma nova tentativa em caso de falha transitória de rede.
+      _viaAssets.promise = null;
     }
   })();
 
@@ -4245,6 +4298,7 @@ async function _carregarAssetsVia() {
 
 // Gera o Blob do PDF da via. Retorna { blob, url, nomeArquivo }.
 async function gerarPdfViaPedido(id) {
+  await _carregarBibliotecasPdf();
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada. Verifique vendor/jspdf.umd.min.js.');
   }
@@ -4610,6 +4664,7 @@ async function gerarPdfViaPedido(id) {
 // (funciona em qualquer browser/dispositivo, inclusive Safari iOS PWA —
 // iframe com blob URL não funciona lá). Fallback para iframe se PDF.js falhar.
 async function gerarViaPedido(id) {
+  const flowToken = ++_viaFlowToken;
   const overlay = document.getElementById('via-overlay');
   const papel = document.getElementById('via-papel');
   if (overlay) overlay.style.display = 'flex';
@@ -4622,8 +4677,13 @@ async function gerarViaPedido(id) {
   window.scrollTo({ top: 0, behavior: 'instant' });
   try {
     const { blob, url, nomeArquivo } = await gerarPdfViaPedido(id);
+    if (flowToken !== _viaFlowToken) {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      return;
+    }
     await showPdfViaOverlay(url, nomeArquivo, blob, id);
   } catch (e) {
+    if (flowToken !== _viaFlowToken) return;
     console.error('Erro ao gerar PDF da via:', e);
     if (loadingEl) loadingEl.remove();
     window.__viaLoadingEl = null;
@@ -4641,6 +4701,20 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
   const btnZap = document.getElementById('via-btn-whatsapp');
   const btnSalvar = document.getElementById('via-btn-salvar');
   const btnFechar = document.querySelector('.via-btn-fechar');
+
+  // Também abre a overlay quando o chamador é um relatório (o fluxo de
+  // pedido já a abria antes de iniciar a geração).
+  if (overlay) overlay.style.display = 'flex';
+  if (btnZap) btnZap.style.display = 'none';
+  const state = { id: ++_viaOverlaySeq, url, pdf: null, active: true };
+  _liberarViaOverlayState(_viaOverlayState);
+  _viaOverlayState = state;
+  const atual = () => _viaOverlayAtual(state);
+  if (!papel) {
+    _liberarViaOverlayState(state);
+    if (_viaOverlayState === state) _viaOverlayState = null;
+    return;
+  }
 
   // ===== Tenta PDF.js primeiro =====
   if (window.pdfjsLib) {
@@ -4663,6 +4737,8 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
 
       const data = await blob.arrayBuffer();
       const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+      if (!atual()) { try { pdf.destroy?.(); } catch (_) {} return; }
+      state.pdf = pdf;
       const canvas = papel.querySelector('#via-pdf-canvas');
       const info = papel.querySelector('#via-pag-info');
       const prev = papel.querySelector('#via-pag-prev');
@@ -4671,8 +4747,10 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
 
       let pageNum = 1;
       const renderPage = async (n) => {
+        if (!atual()) return;
         pageNum = Math.max(1, Math.min(n, pdf.numPages));
         const page = await pdf.getPage(pageNum);
+        if (!atual()) return;
         // Calcula scale pra caber na largura do canvas (CSS pixels)
         const dpr = window.devicePixelRatio || 1;
         const cssW = papel.clientWidth - 24; /* padding */
@@ -4685,6 +4763,7 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         canvas.style.height = (scaledVp.height / dpr) + 'px';
         canvas.style.display = '';
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledVp }).promise;
+        if (!atual()) return;
         // Remove o loading externo (mostrado pelo gerarViaPedido) quando o
         // canvas renderiza a primeira página.
         if (window.__viaLoadingEl) {
@@ -4696,21 +4775,24 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         next.disabled = pageNum >= pdf.numPages;
       };
 
-      prev.onclick = () => renderPage(pageNum - 1);
-      next.onclick = () => renderPage(pageNum + 1);
+      prev.onclick = () => { if (atual()) renderPage(pageNum - 1); };
+      next.onclick = () => { if (atual()) renderPage(pageNum + 1); };
       // Suporte a seta esquerda/direita no teclado
       canvas.addEventListener('keydown', (ev) => {
+        if (!atual()) return;
         if (ev.key === 'ArrowLeft') renderPage(pageNum - 1);
         else if (ev.key === 'ArrowRight') renderPage(pageNum + 1);
       });
 
       await renderPage(1);
+      if (!atual()) return;
       canvas.focus();
 
       // Botões de ação
       btnImprimir.textContent = '🖨️ Imprimir';
       btnImprimir.title = 'Abre no visualizador do sistema (AirPrint no iOS, Salvar como PDF no Android/Desktop)';
       btnImprimir.onclick = () => {
+        if (!atual()) return;
         // Abre o blob URL em nova aba — Safari iOS abre o viewer PDF nativo
         // (que tem botão Compartilhar/AirPrint/Salvar). Funciona melhor que
         // tentar imprimir o canvas.
@@ -4722,6 +4804,7 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
 
       if (btnSalvar) {
         btnSalvar.onclick = () => {
+          if (!atual()) return;
           const a = document.createElement('a');
           a.href = url;
           a.download = nomeArquivo;
@@ -4732,9 +4815,10 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         btnSalvar.style.display = '';
       }
 
-      if (btnZap) {
+      if (btnZap && pedidoId != null) {
         btnZap.textContent = '📤 Compartilhar';
         btnZap.onclick = async () => {
+          if (!atual()) return;
           try {
             const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -4745,6 +4829,10 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
           } catch (e) { /* usuário cancelou */ }
         };
         btnZap.style.display = '';
+      } else if (btnZap) {
+        // Relatórios não possuem um pedido/cliente para o fallback do
+        // WhatsApp. Ocultar evita um botão que não executa nenhuma ação.
+        btnZap.style.display = 'none';
       }
 
       return;
@@ -4754,15 +4842,19 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
     }
   }
 
+  if (!atual()) return;
+
   // ===== FALLBACK: iframe (só pra browsers antigos ou PDF.js com bug) =====
   papel.innerHTML = `<iframe id="via-pdf-frame" src="${url}" style="width:100%;height:calc(100vh - 70px);border:0;background:#525659" title="${nomeArquivo}"></iframe>`;
   btnImprimir.textContent = '🖨️ Imprimir';
   btnImprimir.onclick = () => {
+    if (!atual()) return;
     const w = window.open(url, '_blank', 'noopener');
     if (!w) toast('Permita pop-ups para imprimir, ou use "Salvar".', 'info');
   };
   if (btnSalvar) {
     btnSalvar.onclick = () => {
+      if (!atual()) return;
       const a = document.createElement('a');
       a.href = url;
       a.download = nomeArquivo;
@@ -4772,9 +4864,10 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
     };
     btnSalvar.style.display = '';
   }
-  if (btnZap) {
+  if (btnZap && pedidoId != null) {
     btnZap.textContent = '📤 Compartilhar';
     btnZap.onclick = async () => {
+      if (!atual()) return;
       try {
         const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -4785,13 +4878,19 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       } catch (e) {}
     };
     btnZap.style.display = '';
+  } else if (btnZap) {
+    btnZap.style.display = 'none';
   }
 }
 
 function fecharViaPedido() {
   const overlay = document.getElementById('via-overlay');
   const papel = document.getElementById('via-papel');
-  // Limpa iframe pra liberar blob URL
+  _viaFlowToken++;
+  _liberarViaOverlayState(_viaOverlayState);
+  _viaOverlayState = null;
+  window.__viaLoadingEl = null;
+  // Limpa iframe/canvas antes de revogar a URL para liberar recursos.
   if (papel) papel.innerHTML = '';
   if (overlay) overlay.style.display = 'none';
 }
@@ -5349,7 +5448,7 @@ window.addEventListener('appinstalled', () => {
 
   function checar() {
     // Não mostra o botão se um modal ou a via estiver aberto
-    const viaAberta = document.getElementById('via-overlay')?.style.display === 'block';
+    const viaAberta = document.getElementById('via-overlay')?.style.display !== 'none';
     const modalAberto = !!document.querySelector('.modal-overlay.aberto');
     if (viaAberta || modalAberto) {
       if (visivel) { visivel = false; btn.classList.remove('visivel'); }
@@ -5548,7 +5647,8 @@ function renderizarRelatorio() {
 }
 
 // Gera o Blob do PDF do relatório. Retorna { blob, url, nomeArquivo }.
-function gerarPdfRelatorio(ini, fim, label) {
+async function gerarPdfRelatorio(ini, fim, label) {
+  await _carregarBibliotecasPdf();
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
@@ -5669,13 +5769,30 @@ function gerarPdfRelatorio(ini, fim, label) {
 
 // Gera PDF do relatório e mostra na overlay
 async function imprimirRelatorio() {
+  const flowToken = ++_viaFlowToken;
+  const overlay = document.getElementById('via-overlay');
+  const papel = document.getElementById('via-papel');
+  if (overlay) overlay.style.display = 'flex';
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'via-loading';
+  loadingEl.innerHTML = '<div class="via-spinner"></div><div class="via-loading-text">Gerando relatório...</div>';
+  if (papel) { papel.innerHTML = ''; papel.appendChild(loadingEl); }
+  window.__viaLoadingEl = loadingEl;
   try {
     const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
-    const { blob, url, nomeArquivo } = gerarPdfRelatorio(ini, fim, label);
-    showPdfViaOverlay(url, nomeArquivo, blob, null);
+    const { blob, url, nomeArquivo } = await gerarPdfRelatorio(ini, fim, label);
+    if (flowToken !== _viaFlowToken) {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      return;
+    }
+    await showPdfViaOverlay(url, nomeArquivo, blob, null);
     fecharModal('modal-relatorio');
   } catch (e) {
+    if (flowToken !== _viaFlowToken) return;
     console.error('Erro ao gerar PDF do relatório:', e);
+    if (loadingEl) loadingEl.remove();
+    window.__viaLoadingEl = null;
+    if (papel) papel.innerHTML = `<div class="via-erro">❌ ${esc(e.message)}<br><br>Tente novamente ou atualize o aplicativo.</div>`;
     alert('Não foi possível gerar o PDF do relatório: ' + e.message);
   }
 }

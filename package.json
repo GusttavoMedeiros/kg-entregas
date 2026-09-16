@@ -1,0 +1,14 @@
+{
+  "name": "kg-entregas",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Aplicativo KG Entregas",
+  "scripts": {
+    "test": "node --test *.test.cjs",
+    "test:browser": "node browser-audit.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14",
+    "playwright": "1.55.0"
+  }
+}

@@ -2,3 +2,4 @@
 live-index.html
 *.tmp
 *.bak
+node_modules/

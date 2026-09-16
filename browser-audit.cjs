@@ -75,8 +75,14 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    await p.locator('.bt-ok').click();await p.waitForFunction(()=>window.confirmacoes.length===2);
    assert.deepEqual(await p.evaluate(()=>window.confirmacoes),[false,true]);
    await p.evaluate(()=>{abrirModalRelatorio();});assert.ok((await p.locator('#relatorio-conteudo').innerText()).length>0);
-   await p.evaluate(()=>imprimirRelatorio());assert.match(await p.locator('#via-papel').innerText(),/Relatório de Vendas/i);
-   await p.evaluate(()=>{fecharViaPedido();gerarViaPedido(1);});assert.match(await p.locator('#via-papel').innerText(),/80,00/);
+   await p.evaluate(()=>imprimirRelatorio());await p.waitForSelector('#via-pdf-canvas');
+   assert.equal(await p.locator('#via-overlay').evaluate(e=>getComputedStyle(e).display), 'flex');
+   assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
+   assert.equal(await p.locator('#via-btn-whatsapp').evaluate(e=>getComputedStyle(e).display), 'none');
+   await p.evaluate(()=>{fecharViaPedido();gerarViaPedido(1);});await p.waitForSelector('#via-pdf-canvas');
+   assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
+   await p.waitForFunction(()=>getComputedStyle(document.getElementById('via-btn-whatsapp')).display !== 'none');
+   assert.notEqual(await p.locator('#via-btn-whatsapp').evaluate(e=>getComputedStyle(e).display), 'none');
    await p.evaluate(()=>{fecharViaPedido();abrirModalNovoCliente(1);});
    await p.locator('#cliente-nome').fill('Cliente atualizado');await p.locator('button[onclick="salvarCliente()"]').click();
    await p.waitForFunction(()=>!salvando&&!document.getElementById('modal-cliente').classList.contains('aberto'));

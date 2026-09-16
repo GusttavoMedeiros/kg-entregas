@@ -51,9 +51,9 @@ assert.match(css, /@media \(update:slow\)/);
 // ============================================================================
 
 // Vendored: jsPDF + autoTable devem estar no projeto (não CDN) pro PWA
-// funcionar offline.
-assert.match(html, /<script src="vendor\/jspdf\.umd\.min\.js"><\/script>/);
-assert.match(html, /<script src="vendor\/jspdf-autotable\.min\.js"><\/script>/);
+// funcionar offline, mas são carregados sob demanda para não bloquear o login.
+assert.doesNotMatch(html, /<script[^>]+vendor\/(?:pdf|jspdf)/);
+assert.match(appjs, /_carregarBibliotecasPdf/);
 assert.ok(fs.existsSync('vendor/jspdf.umd.min.js'), 'jspdf vendor file missing');
 assert.ok(fs.existsSync('vendor/jspdf-autotable.min.js'), 'jspdf-autotable vendor file missing');
 

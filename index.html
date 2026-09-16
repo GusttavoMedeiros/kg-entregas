@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=63" as="script">
+<link rel="preload" href="app.js?v=65" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -2171,11 +2171,8 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   </div>
 </div>
 
-<!-- jsPDF + autoTable: geração de PDF A4 vetorial para a Via do Pedido.
-     Vendored local pra funcionar offline (PWA sem rede após primeiro acesso). -->
-<script src="vendor/jspdf.umd.min.js"></script>
-<script src="vendor/jspdf-autotable.min.js"></script>
-<script src="vendor/pdf.min.js"></script>
-<script src="app.js?v=64"></script>
+<!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
+     relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
+<script src="app.js?v=65"></script>
 </body>
 </html>

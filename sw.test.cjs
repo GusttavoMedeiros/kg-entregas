@@ -71,20 +71,20 @@ function tokenPara(sub) {
 
 (async () => {
   // Primeiro acesso offline: a versão exata já foi pré-cacheada.
-  cached.set('https://kg-entregas.vercel.app/app.js?v=63', new Response('pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/app.js?v=65', new Response('pre-cache'));
   cached.set('https://kg-entregas.vercel.app/ios-like.css?v=7', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
-  assert.equal(await (await requestApp('?v=63')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=65')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
-  assert.equal((await requestApp('?v=64')).status, 503);
-  assert.equal((await requestApp('?v=63&outra=1')).status, 503);
+  assert.equal((await requestApp('?v=66')).status, 503);
+  assert.equal((await requestApp('?v=65&outra=1')).status, 503);
 
   let acessosRede = 0;
   global.fetch = async () => { acessosRede++; return new Response('nova'); };
-  assert.equal(await (await requestApp('?v=63')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=65')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
   assert.equal(acessosRede, 0, 'Assets versionados em cache não aguardam a rede');
-  assert.equal(await (await requestApp('?v=64')).text(), 'nova');
+  assert.equal(await (await requestApp('?v=66')).text(), 'nova');
   assert.equal(acessosRede, 1, 'Nova versão precisa buscar seus próprios bytes');
 
   // Atualização conserva os dados offline compatíveis e caches de outros apps.
@@ -125,10 +125,10 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v41'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v42'/);
   assert.match(sw, /\.\/ios-like\.css\?v=7/);
   assert.match(index, /ios-like\.css\?v=7/);
-  assert.match(index, /app\.js\?v=63/);
+  assert.match(index, /app\.js\?v=65/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /reg\.update\(\)/);
   console.log('Atualização forçada e fallback offline validados.');

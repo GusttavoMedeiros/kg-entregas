@@ -34,22 +34,20 @@ const isOpenType = (b) => b[0] === 0x4F && b[1] === 0x54 && b[2] === 0x54 && b[3
 assert.ok(isTrueType(cinzelHead) || isOpenType(cinzelHead), 'Cinzel.ttf não é TTF/OTF válido');
 assert.ok(isTrueType(nunitoHead) || isOpenType(nunitoHead), 'Nunito.ttf não é TTF/OTF válido');
 
-// ===== 2) index.html carrega PDF.js + jsPDF =====
+// ===== 2) index.html mantém o primeiro carregamento leve =====
 const html = fs.readFileSync('index.html', 'utf8');
-assert.match(html, /vendor\/pdf\.min\.js/, 'PDF.js não está incluído no index.html');
-assert.match(html, /vendor\/jspdf\.umd\.min\.js/);
-assert.match(html, /vendor\/jspdf-autotable\.min\.js/);
-assert.match(html, /app\.js\?v=64/, 'app.js?v=64 esperado (versão nova do cache)');
+assert.doesNotMatch(html, /<script[^>]+vendor\/(?:pdf|jspdf)/, 'PDF não deve bloquear o login');
+assert.match(html, /app\.js\?v=65/, 'app.js?v=65 esperado (versão nova do cache)');
 assert.match(html, /id="via-papel"/, 'container #via-papel presente');
 
 // ===== 3) Service Worker registra novos arquivos =====
 const sw = fs.readFileSync('sw.js', 'utf8');
-assert.match(sw, /kg-v41/, 'sw.js deve estar na versão v41');
+assert.match(sw, /kg-v42/, 'sw.js deve estar na versão v42');
 assert.match(sw, /vendor\/pdf\.min\.js/, 'sw.js não cacheia pdf.min.js');
 assert.match(sw, /vendor\/pdf\.worker\.min\.js/, 'sw.js não cacheia pdf.worker.min.js');
 assert.match(sw, /vendor\/Cinzel\.ttf/, 'sw.js não cacheia Cinzel.ttf');
 assert.match(sw, /vendor\/Nunito\.ttf/, 'sw.js não cacheia Nunito.ttf');
-assert.match(sw, /app\.js\?v=64/);
+assert.match(sw, /app\.js\?v=65/);
 
 // ===== 4) app.js: estrutura das funções da via =====
 const app = fs.readFileSync('app.js', 'utf8');
@@ -61,6 +59,8 @@ assert.match(app, /async function showPdfViaOverlay/, 'showPdfViaOverlay deve se
 
 // ===== 5) Carregamento de assets (fontes + logo) =====
 assert.match(app, /_carregarAssetsVia/, 'cache de assets da via (_carregarAssetsVia) deve existir');
+assert.match(app, /_carregarBibliotecasPdf/, 'bibliotecas PDF devem ser carregadas sob demanda');
+assert.match(app, /_carregarScriptPdf\('vendor\/pdf\.min\.js'/, 'PDF.js deve ser lazy-loaded');
 assert.match(app, /vendor\/Cinzel\.ttf/, 'app.js carrega Cinzel.ttf');
 assert.match(app, /vendor\/Nunito\.ttf/, 'app.js carrega Nunito.ttf');
 assert.match(app, /logo\.png/, 'app.js carrega logo.png');
