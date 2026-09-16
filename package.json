@@ -9,6 +9,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.14",
-    "playwright": "1.55.0"
+    "playwright": "1.63.0"
   }
 }
