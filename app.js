@@ -1456,16 +1456,90 @@ const TITULOS = {
   'meus-pedidos':'Meus Pedidos', 'inicio-vendedor':'Início',
 };
 
+// Estado visual da navegação móvel. A barra acompanha a intenção de rolagem
+// com um pequeno limiar para não piscar durante movimentos de poucos pixels.
+let navScrollRaf = 0;
+let navUltimoScrollY = 0;
+let navScrollInicializado = false;
+let navOculta = false;
+
+function posicionarIndicadorNav(id, animar = true) {
+  const nav = document.getElementById('nav-bottom');
+  const indicador = nav?.querySelector('.nav-indicator');
+  const btn = id ? document.getElementById(`nav-${id}`) : nav?.querySelector('.nav-item.ativo');
+  if (!nav || !indicador || !btn) return;
+
+  const navRect = nav.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  const x = Math.max(0, btnRect.left - navRect.left);
+  indicador.style.setProperty('--nav-indicator-x', `${x}px`);
+  indicador.style.setProperty('--nav-indicator-w', `${btnRect.width}px`);
+  indicador.style.setProperty('--nav-indicator-h', `${btnRect.height}px`);
+
+  if (animar) nav.classList.add('nav-indicator-ready');
+  else {
+    nav.classList.remove('nav-indicator-ready');
+    requestAnimationFrame(() => {
+      if (nav.isConnected) nav.classList.add('nav-indicator-ready');
+    });
+  }
+}
+
+function reposicionarIndicadorNav() {
+  const nav = document.getElementById('nav-bottom');
+  if (window.matchMedia('(min-width: 900px)').matches) {
+    nav?.classList.remove('nav-recolhida');
+    navOculta = false;
+    return;
+  }
+  const ativo = document.querySelector('#nav-bottom .nav-item.ativo');
+  if (ativo) posicionarIndicadorNav(ativo.id.replace(/^nav-/, ''), false);
+}
+
+function atualizarVisibilidadeNav() {
+  navScrollRaf = 0;
+  const nav = document.getElementById('nav-bottom');
+  if (!nav || window.matchMedia('(min-width: 900px)').matches) return;
+
+  const y = Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+  if (!navScrollInicializado) {
+    navUltimoScrollY = y;
+    navScrollInicializado = true;
+    return;
+  }
+
+  const delta = y - navUltimoScrollY;
+  navUltimoScrollY = y;
+  if (y <= 8 || delta <= -8) navOculta = false;
+  else if (delta >= 8 && y > 40) navOculta = true;
+  nav.classList.toggle('nav-recolhida', navOculta);
+}
+
+function agendarAtualizacaoNav() {
+  if (navScrollRaf) return;
+  navScrollRaf = requestAnimationFrame(atualizarVisibilidadeNav);
+}
+
+function resetarVisibilidadeNav() {
+  const nav = document.getElementById('nav-bottom');
+  navOculta = false;
+  navScrollInicializado = false;
+  if (nav) nav.classList.remove('nav-recolhida');
+  agendarAtualizacaoNav();
+}
+
+window.addEventListener('scroll', agendarAtualizacaoNav, { passive: true });
+
 function configurarNav() {
   const p = usuario.perfil;
   const itens = NAV[p] || NAV.entregador;
   const inicial = itens[0].id;
   const nav = document.getElementById('nav-bottom');
-  nav.innerHTML = itens.map(i => `
+  nav.innerHTML = `<span class="nav-indicator" aria-hidden="true"></span>${itens.map(i => `
     <button class="nav-item ${i.id===inicial?'ativo':''}" onclick="navegarPara('${i.id}')" id="nav-${i.id}">
       <span class="nav-icon">${i.icone}</span>
       <span class="nav-label">${esc(i.label)}</span>
-    </button>`).join('');
+    </button>`).join('')}`;
 
   // Esconde telas que o perfil não usa
   const telasVisiveis = new Set(itens.map(i => i.tela));
@@ -1489,6 +1563,8 @@ function configurarNav() {
   const elInicial = document.getElementById(telaInicial);
   if (elInicial) elInicial.classList.add('ativa');
   document.getElementById('header-titulo').textContent = TITULOS[inicial] || '';
+  resetarVisibilidadeNav();
+  posicionarIndicadorNav(inicial, false);
 }
 
 function navegarPara(id) {
@@ -1508,6 +1584,7 @@ function navegarPara(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('ativo'));
   const btn = document.getElementById(`nav-${id}`);
   if (btn) btn.classList.add('ativo');
+  posicionarIndicadorNav(id);
 
   if (id==='clientes')     renderizarClientes(todosOsClientes);
   if (id==='financeiro')   renderizarFinanceiro(filtroFinanceiro);
@@ -1517,6 +1594,8 @@ function navegarPara(id) {
   if (id==='dashboard')    renderizarDashboard();
   if (id==='inicio-vendedor') renderizarInicioVendedor();
 }
+
+window.addEventListener('resize', reposicionarIndicadorNav, { passive: true });
 
 // ============================================================
 // CARREGAR DADOS

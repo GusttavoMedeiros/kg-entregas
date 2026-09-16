@@ -54,7 +54,28 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   await p.goto(`http://127.0.0.1:${server.address().port}`);
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
+  if(largura<900){
+   await p.evaluate(()=>{document.body.style.minHeight='2000px';document.documentElement.scrollTop=0;document.body.scrollTop=0;window.scrollTo(0,0);window.dispatchEvent(new Event('scroll'));});
+   await p.waitForFunction(()=>!document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
+   await pause(50);
+   await p.evaluate(()=>{document.documentElement.scrollTop=180;document.body.scrollTop=180;window.scrollTo(0,180);window.dispatchEvent(new Event('scroll'));});
+   await p.waitForFunction(()=>document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
+   await p.evaluate(()=>{document.documentElement.scrollTop=60;document.body.scrollTop=60;window.scrollTo(0,60);window.dispatchEvent(new Event('scroll'));});
+   await p.waitForFunction(()=>!document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
+  }
   const ids=await p.locator('#nav-bottom button').evaluateAll(es=>es.map(e=>e.id));
+  if(largura<900){
+   assert.equal(await p.locator('#nav-bottom .nav-indicator').count(),1);
+   if(ids.length>1){
+    const x0=await p.locator('.nav-indicator').evaluate(e=>e.style.getPropertyValue('--nav-indicator-x'));
+    await p.locator('#'+ids[1]).click();
+    await p.waitForFunction(id=>document.querySelector('.nav-item.ativo')?.id===id,ids[1]);
+    const x1=await p.locator('.nav-indicator').evaluate(e=>e.style.getPropertyValue('--nav-indicator-x'));
+    assert.notEqual(x0,x1);
+   }
+  }else{
+   assert.equal(await p.locator('#nav-bottom .nav-indicator').evaluate(e=>getComputedStyle(e).display),'none');
+  }
   for(const id of ids){await p.locator('#'+id).click();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
   if(perfil!=='entregador'){
    await p.evaluate(()=>abrirModalNovoPedido(1));

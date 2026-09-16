@@ -41,6 +41,11 @@ assert.match(html, /styles\/visual-polish\.css\?v=1/);
 assert.match(tokens, /--kg-motion-ease/);
 assert.match(polish, /kgModalSheet/);
 assert.match(polish, /prefers-reduced-motion: reduce/);
+assert.match(polish, /nav-bottom\.nav-recolhida/);
+assert.match(polish, /\.nav-indicator\s*\{/);
+assert.match(appjs, /function atualizarVisibilidadeNav\(\)/);
+assert.match(appjs, /requestAnimationFrame\(atualizarVisibilidadeNav\)/);
+assert.match(appjs, /function posicionarIndicadorNav\(id, animar = true\)/);
 assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
 assert.match(css, /@media \(update:slow\)/);
 
