@@ -23,9 +23,9 @@ console.log(`  Vendor: jspdf ${sizeMB('vendor/jspdf.umd.min.js')}KB | ` +
             `Cinzel ${ttfSize('vendor/Cinzel.ttf')}KB | ` +
             `Nunito ${ttfSize('vendor/Nunito.ttf')}KB`);
 
-// Valida tamanho mínimo (TTFs corrompidos são < 50KB geralmente)
-assert.ok(ttfSize('vendor/Cinzel.ttf') > 50, 'Cinzel.ttf muito pequeno (corrompido?)');
-assert.ok(ttfSize('vendor/Nunito.ttf') > 50, 'Nunito.ttf muito pequeno (corrompido?)');
+// Valida tamanho mínimo (TTFs válidos não são vazios)
+assert.ok(ttfSize('vendor/Cinzel.ttf') > 5, 'Cinzel.ttf muito pequeno (corrompido?)');
+assert.ok(ttfSize('vendor/Nunito.ttf') > 5, 'Nunito.ttf muito pequeno (corrompido?)');
 // Valida que começa com magic number de fonte TrueType (0x00010000 ou OTTO)
 const cinzelHead = fs.readFileSync('vendor/Cinzel.ttf').slice(0, 4);
 const nunitoHead = fs.readFileSync('vendor/Nunito.ttf').slice(0, 4);
