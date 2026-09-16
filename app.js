@@ -5114,128 +5114,115 @@ document.addEventListener('keydown', e => {
 });
 
 // ============================================================
-// SERVICE WORKER + DETECÇÃO OFFLINE + INSTALAR PWA
+// SERVICE WORKER + ATUALIZAÇÃO AUTOMÁTICA + DETECÇÃO OFFLINE
 // ============================================================
 
-let atualizandoAplicativo = false;
-async function atualizarAplicativo() {
-  if (atualizandoAplicativo) return;
-  const botao = document.getElementById('btn-atualizar-app');
-  const status = document.getElementById('status-atualizar-app');
-  if (!navigator.onLine) {
-    if (status) {
-      status.textContent = 'Sem internet. Conecte-se e tente novamente.';
-      status.className = 'status-atualizar-login erro';
-    }
-    return;
-  }
+let registroServiceWorker = null;
+let atualizacaoPendente = false;
+let atualizacaoAplicando = false;
+let atualizacaoAvisada = false;
+let verificacaoAtualizacaoTimer = null;
+const INTERVALO_VERIFICACAO_SW = 5 * 60 * 1000;
 
-  atualizandoAplicativo = true;
-  const acessoInicial = geracaoAcesso;
-  const ctrl = new AbortController();
-  const tempoLimite = setTimeout(() => ctrl.abort(), 15000);
-  if (botao) {
-    botao.disabled = true;
-    botao.textContent = '⏳ Verificando atualização…';
-  }
-  if (status) {
-    status.textContent = 'Buscando os arquivos mais recentes…';
-    status.className = 'status-atualizar-login';
-  }
-
-  try {
-    // Esta leitura sem cache confirma a conexão e evita recarregar uma cópia
-    // antiga do HTML. Os caches de dados e a fila offline não são removidos.
-    const versao = Date.now();
-    const resposta = await fetch(`./index.html?atualizar=${versao}`, {
-      cache:'no-store', headers:{ 'Cache-Control':'no-cache' },
-      signal:ctrl.signal,
-    });
-    if (!resposta.ok) throw new Error(`Servidor respondeu ${resposta.status}`);
-    if (resposta.headers?.get('x-from-cache') === '1') throw new Error('Sem confirmação da rede');
-    await resposta.text();
-
-    if ('serviceWorker' in navigator) {
-      await Promise.race([
-        (async () => {
-          const registro = await navigator.serviceWorker.getRegistration()
-            || await navigator.serviceWorker.register('sw.js', { updateViaCache:'none' });
-          await registro.update();
-          if (registro.waiting) registro.waiting.postMessage({ type:'SKIP_WAITING' });
-        })(),
-        new Promise((_, reject) => {
-          if (ctrl.signal.aborted) reject(new Error('Tempo esgotado'));
-          else ctrl.signal.addEventListener('abort', () => reject(new Error('Tempo esgotado')), { once:true });
-        }),
-      ]);
-    }
-    if (geracaoAcesso !== acessoInicial || ctrl.signal.aborted) throw new Error('Atualização interrompida');
-
-    if (status) {
-      status.textContent = 'Aplicativo atualizado. Reabrindo…';
-      status.className = 'status-atualizar-login ok';
-    }
-    setTimeout(() => {
-      if (geracaoAcesso !== acessoInicial) {
-        atualizandoAplicativo = false;
-        if (botao) { botao.disabled = false; botao.textContent = '↻ Atualizar aplicativo'; }
-        return;
-      }
-      const destino = new URL(location.href);
-      destino.searchParams.set('atualizado', String(versao));
-      location.replace(destino.toString());
-    }, 300);
-  } catch (e) {
-    console.warn('Atualização manual falhou:', e);
-    if (status) {
-      status.textContent = 'Não foi possível atualizar. Verifique a conexão e tente novamente.';
-      status.className = 'status-atualizar-login erro';
-    }
-    atualizandoAplicativo = false;
-    if (botao) {
-      botao.disabled = false;
-      botao.textContent = '↻ Atualizar aplicativo';
-    }
-  } finally {
-    clearTimeout(tempoLimite);
-  }
+function formularioLoginEmUso() {
+  if (usuario) return false;
+  const usuarioInput = document.getElementById('input-usuario');
+  const senhaInput = document.getElementById('input-senha');
+  const ativo = document.activeElement;
+  return Boolean(
+    usuarioInput?.value || senhaInput?.value ||
+    ativo === usuarioInput || ativo === senhaInput
+  );
 }
 
-// ============================================================
-// REGISTRO AUTOMÁTICO DO SERVICE WORKER
-// ============================================================
+function appOcupadoParaAtualizacao() {
+  const confirmacaoAberta = document.getElementById('confirmar-overlay')?.classList.contains('aberto');
+  return formularioDeDadosAberto() || confirmacaoAberta || carregandoDados || salvando || sincronizandoDados || _processandoFila || formularioLoginEmUso();
+}
 
-// Registra o Service Worker (silencioso em caso de erro)
+function aplicarAtualizacaoSeSegura() {
+  if (!atualizacaoPendente || atualizacaoAplicando || appOcupadoParaAtualizacao()) return;
+  atualizacaoAplicando = true;
+  atualizacaoPendente = false;
+  if (verificacaoAtualizacaoTimer) {
+    clearInterval(verificacaoAtualizacaoTimer);
+    verificacaoAtualizacaoTimer = null;
+  }
+  // Dá tempo para o novo Service Worker concluir a troca antes de recarregar.
+  setTimeout(() => {
+    if (appOcupadoParaAtualizacao()) {
+      atualizacaoAplicando = false;
+      atualizacaoPendente = true;
+      iniciarVerificacaoAtualizacaoPendente();
+      return;
+    }
+    location.reload();
+  }, 180);
+}
+
+function iniciarVerificacaoAtualizacaoPendente() {
+  if (verificacaoAtualizacaoTimer) return;
+  verificacaoAtualizacaoTimer = setInterval(() => {
+    if (!atualizacaoPendente) {
+      clearInterval(verificacaoAtualizacaoTimer);
+      verificacaoAtualizacaoTimer = null;
+      return;
+    }
+    aplicarAtualizacaoSeSegura();
+  }, 1500);
+}
+
+function agendarAtualizacaoAutomatica() {
+  atualizacaoPendente = true;
+  if (appOcupadoParaAtualizacao()) {
+    if (usuario && !atualizacaoAvisada) {
+      atualizacaoAvisada = true;
+      toast('Nova versão pronta. Ela será aplicada quando terminar a ação atual.');
+    }
+    iniciarVerificacaoAtualizacaoPendente();
+    return;
+  }
+  aplicarAtualizacaoSeSegura();
+}
+
+function verificarAtualizacaoServiceWorker() {
+  if (!registroServiceWorker || !navigator.onLine) return;
+  registroServiceWorker.update().catch(() => {});
+}
+
+// Registra e verifica o Service Worker em segundo plano. A atualização é
+// aplicada sozinha quando a tela está livre; rascunhos e gravações ficam intactos.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // A primeira troca instala o SW e não precisa recarregar. Depois dela,
+    // cada nova troca de controlador representa uma versão nova do app.
+    let controladorAnterior = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
-      // Assume também uma atualização que já terminou de instalar.
+      registroServiceWorker = reg;
       if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
 
-      // Quando uma nova versão do SW estiver instalada, ativa imediatamente
       reg.addEventListener('updatefound', () => {
         const novo = reg.installing;
         if (!novo) return;
         novo.addEventListener('statechange', () => {
           if (novo.state === 'installed' && navigator.serviceWorker.controller) {
-            // Nova versão disponível — ativa silenciosamente
             novo.postMessage({ type: 'SKIP_WAITING' });
           }
         });
       });
 
-      // Verifica a versão em toda abertura, sem esperar o intervalo do navegador.
-      reg.update().catch(() => {});
+      verificarAtualizacaoServiceWorker();
+      setInterval(() => {
+        if (!document.hidden) verificarAtualizacaoServiceWorker();
+      }, INTERVALO_VERIFICACAO_SW);
     }).catch(err => console.warn('SW falhou ao registrar:', err));
 
-    // A atualização passa a valer na próxima abertura. Recarregar aqui pode
-    // destruir um pedido em edição ou interromper uma gravação em andamento.
-    const tinhaControlador = !!navigator.serviceWorker.controller;
-    let avisouAtualizacao = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!tinhaControlador || avisouAtualizacao) return;
-      avisouAtualizacao = true;
-      toast('Atualização disponível. Conclua o que está fazendo e reabra o app para usar a nova versão.');
+      if (!controladorAnterior) {
+        controladorAnterior = true;
+        return; // primeira instalação não precisa recarregar
+      }
+      agendarAtualizacaoAutomatica();
     });
   });
 }

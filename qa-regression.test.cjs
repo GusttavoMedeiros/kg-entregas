@@ -5,23 +5,6 @@ const vm = require('node:vm');
 const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const trecho = (inicio, fim) => app.slice(app.indexOf(inicio), app.indexOf(fim, app.indexOf(inicio)));
 
-test('Atualização e primeira instalação preservam o formulário aberto', async () => {
-  for (const controller of [null, {}]) {
-    const eventos = {}; let reloads = 0;
-    const c = {
-      navigator: { serviceWorker: { controller,
-        register: async () => ({ addEventListener() {}, update: async () => {} }),
-        addEventListener: (n, f) => { eventos[n] = f; },
-      } },
-      window: { addEventListener: (n, f) => { eventos[n] = f; }, location: { reload: () => reloads++ } },
-      toast() {}, console,
-    };
-    vm.runInNewContext(trecho('// REGISTRO AUTOMÁTICO DO SERVICE WORKER', '// DETECÇÃO DE STATUS ONLINE/OFFLINE'), c);
-    eventos.load(); eventos.controllerchange();
-    assert.equal(reloads, 0, 'Não pode destruir rascunho durante controllerchange');
-  }
-});
-
 function authContext() {
   const timers = new Map(); let sequencia = 0;
   const c = {

@@ -3,84 +3,100 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const app = fs.readFileSync('app.js','utf8').replace(/\r\n/g,'\n');
-const inicio = app.indexOf('let atualizandoAplicativo = false;');
-const fim = app.indexOf('// REGISTRO AUTOMÁTICO DO SERVICE WORKER', inicio);
-const codigo = app.slice(inicio, fim) + '\nthis.atualizarAplicativo=atualizarAplicativo;';
+const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
+const html = fs.readFileSync('index.html', 'utf8').replace(/\r\n/g, '\n');
+const inicio = app.indexOf('// SERVICE WORKER + ATUALIZAÇÃO AUTOMÁTICA + DETECÇÃO OFFLINE');
+const fim = app.indexOf('// ============================================================\n// DETECÇÃO DE STATUS ONLINE/OFFLINE', inicio);
+const codigo = app.slice(inicio, fim);
 
-function contexto({ online=true, fetchImpl } = {}) {
-  const botao = { disabled:false, textContent:'↻ Atualizar aplicativo' };
-  const status = { textContent:'', className:'status-atualizar-login' };
+function contexto({ controller = {}, ocupado = false, login = null } = {}) {
+  const eventos = {};
+  let recarregamentos = 0;
+  let intervalo = null;
   const registro = {
-    waiting:{ postMessage:m => { registro.mensagem=m; } },
-    update:async()=>{ registro.atualizou=true; },
+    waiting: { postMessage: mensagem => { registro.mensagem = mensagem; } },
+    installing: null,
+    update: async () => { registro.atualizou = true; },
+    addEventListener: (nome, fn) => { registro.eventos = registro.eventos || {}; registro.eventos[nome] = fn; },
   };
+  const usuarioInput = { value: '' };
+  const senhaInput = { value: '' };
   const c = {
-    geracaoAcesso:0, AbortController, clearTimeout(){},
-    document:{ getElementById:id => id === 'btn-atualizar-app' ? botao : status },
-    navigator:{
-      onLine:online,
-      serviceWorker:{
-        getRegistration:async()=>registro,
-        register:async()=>registro,
+    usuario: login,
+    salvando: false,
+    sincronizandoDados: false,
+    carregandoDados: false,
+    _processandoFila: false,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        controller,
+        register: async () => registro,
+        addEventListener: (nome, fn) => { eventos[nome] = fn; },
       },
     },
-    fetch:fetchImpl || (async()=>({ok:true,status:200,text:async()=>''})),
-    location:{ href:'https://kg-entregas.test/', replace:url=>{ c.destino=url; } },
-    setTimeout:(fn,ms)=>{ if(ms===300) fn(); else c.abortar=fn; return 1; },
-    URL, Date, console:{ warn(){} },
+    window: { addEventListener: (nome, fn) => { eventos[nome] = fn; } },
+    document: {
+      hidden: false,
+      activeElement: null,
+      getElementById: id => id === 'input-usuario' ? usuarioInput : id === 'input-senha' ? senhaInput : null,
+    },
+    formularioDeDadosAberto: () => ocupado,
+    toast: mensagem => { c.toastMensagem = mensagem; },
+    setInterval: (fn) => { intervalo = fn; return 1; },
+    clearInterval: () => { intervalo = null; },
+    setTimeout: fn => { fn(); return 1; },
+    location: { reload: () => { recarregamentos++; } },
+    console: { warn() {} },
   };
-  vm.runInNewContext(codigo,c);
-  return { c, botao, status, registro };
+  vm.runInNewContext(codigo, c);
+  return { c, eventos, registro, usuarioInput, senhaInput, get recarregamentos() { return recarregamentos; }, dispararIntervalo: () => intervalo?.() };
 }
 
-test('botão força consulta sem cache, atualiza o SW e preserva dados locais', async () => {
-  let liberar; let chamadas=0; let opcoes;
-  const { c, botao, status, registro } = contexto({
-    fetchImpl:(_url,o)=>{ chamadas++;opcoes=o;return new Promise(resolve=>{liberar=resolve;}); },
-  });
-  const primeira = c.atualizarAplicativo();
-  const segunda = c.atualizarAplicativo();
-  assert.equal(chamadas,1);
-  assert.equal(botao.disabled,true);
-  liberar({ok:true,status:200,text:async()=>''});
-  await Promise.all([primeira,segunda]);
-  assert.equal(opcoes.cache,'no-store');
-  assert.equal(registro.atualizou,true);
-  assert.equal(registro.mensagem.type,'SKIP_WAITING');
-  assert.match(c.destino,/atualizado=\d+/);
-  assert.match(status.className,/\bok\b/);
-  assert.doesNotMatch(codigo,/caches\.delete|localStorage\.(?:clear|removeItem)/);
+test('login não exibe mais botão manual de atualização', () => {
+  assert.doesNotMatch(html, /btn-atualizar-app|Atualizar aplicativo/);
+  assert.doesNotMatch(app, /async function atualizarAplicativo/);
 });
 
-test('sem internet informa o usuário sem tentar atualizar', async () => {
-  let chamou=false;
-  const { c, botao, status } = contexto({online:false,fetchImpl:async()=>{chamou=true;}});
-  await c.atualizarAplicativo();
-  assert.equal(chamou,false);
-  assert.equal(botao.disabled,false);
-  assert.match(status.textContent,/Sem internet/);
-  assert.match(status.className,/\berro\b/);
+test('Service Worker verifica e aplica atualização automaticamente quando a tela está livre', async () => {
+  const ctx = contexto({ controller: {} });
+  ctx.eventos.load();
+  await Promise.resolve();
+  assert.equal(ctx.registro.atualizou, true);
+  assert.equal(JSON.stringify(ctx.registro.mensagem), JSON.stringify({ type: 'SKIP_WAITING' }));
+  ctx.eventos.controllerchange();
+  assert.equal(ctx.recarregamentos, 1);
 });
 
-test('falha de rede libera o botão para uma nova tentativa', async () => {
-  const { c, botao, status } = contexto({fetchImpl:async()=>{throw new Error('rede');}});
-  await c.atualizarAplicativo();
-  assert.equal(botao.disabled,false);
-  assert.match(botao.textContent,/Atualizar aplicativo/);
-  assert.match(status.textContent,/Não foi possível atualizar/);
+test('atualização automática aguarda formulário aberto e continua depois', async () => {
+  const ctx = contexto({ controller: {}, ocupado: true, login: { login: 'admin' } });
+  ctx.eventos.load();
+  await Promise.resolve();
+  ctx.eventos.controllerchange();
+  assert.equal(ctx.recarregamentos, 0);
+  ctx.c.formularioDeDadosAberto = () => false;
+  ctx.dispararIntervalo();
+  assert.equal(ctx.recarregamentos, 1);
 });
 
-test('atualização com Service Worker travado termina e libera nova tentativa',async()=>{
-  const {c,botao,registro}=contexto();
-  registro.update=()=>new Promise(()=>{});
-  const p=c.atualizarAplicativo();await new Promise(setImmediate);c.abortar();await p;
-  assert.equal(botao.disabled,false);assert.equal(c.destino,undefined);
+test('atualização automática não apaga credenciais que estão sendo digitadas', async () => {
+  const ctx = contexto({ controller: {} });
+  ctx.senhaInput.value = 'rascunho';
+  ctx.eventos.load();
+  await Promise.resolve();
+  ctx.eventos.controllerchange();
+  assert.equal(ctx.recarregamentos, 0);
+  ctx.senhaInput.value = '';
+  ctx.dispararIntervalo();
+  assert.equal(ctx.recarregamentos, 1);
 });
 
-test('login durante atualização impede recarga que apagaria o formulário aberto',async()=>{
-  let liberar;const {c,botao}=contexto({fetchImpl:()=>new Promise(r=>liberar=r)});
-  const p=c.atualizarAplicativo();c.geracaoAcesso++;
-  liberar({ok:true,status:200,text:async()=>''});await p;
-  assert.equal(c.destino,undefined);assert.equal(botao.disabled,false);
+test('primeira instalação não recarrega a tela', async () => {
+  const ctx = contexto({ controller: null });
+  ctx.eventos.load();
+  await Promise.resolve();
+  ctx.eventos.controllerchange();
+  assert.equal(ctx.recarregamentos, 0);
+  ctx.eventos.controllerchange();
+  assert.equal(ctx.recarregamentos, 1);
 });
