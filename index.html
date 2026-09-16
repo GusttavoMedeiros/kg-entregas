@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=69" as="script">
+<link rel="preload" href="app.js?v=70" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -1468,7 +1468,9 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
 
 </style>
+<link rel="stylesheet" href="styles/design-tokens.css?v=1">
 <link rel="stylesheet" href="ios-like.css?v=7">
+<link rel="stylesheet" href="styles/visual-polish.css?v=1">
 </head>
 <body>
 
@@ -1528,7 +1530,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     </div>
     <input type="hidden" id="input-usuario">
     <div class="campo"><label>Senha</label>
-    <input type="password" id="input-senha" placeholder="••••••••" autocomplete="current-password"></div>
+      <input type="password" id="input-senha" placeholder="••••••••" autocomplete="current-password"></div>
     <button class="btn-primario" onclick="fazerLogin()">Entrar</button>
     <p class="erro-login" id="erro-login">Toque no seu perfil e digite a senha</p>
   </div>
@@ -2167,6 +2169,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=69"></script>
+<script src="app.js?v=70"></script>
 </body>
 </html>

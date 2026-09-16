@@ -5,7 +5,8 @@
   "description": "Aplicativo KG Entregas",
   "scripts": {
     "test": "node --test *.test.cjs",
-    "test:browser": "node browser-audit.cjs"
+    "test:browser": "node browser-audit.cjs",
+    "test:all": "npm test && npm run test:browser"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.14",

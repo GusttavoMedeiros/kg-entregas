@@ -5,6 +5,8 @@ const css = fs.readFileSync('ios-like.css', 'utf8');
 const html = fs.readFileSync('index.html', 'utf8');
 const sw = fs.readFileSync('sw.js', 'utf8');
 const appjs = fs.readFileSync('app.js', 'utf8');
+const tokens = fs.readFileSync('styles/design-tokens.css', 'utf8');
+const polish = fs.readFileSync('styles/visual-polish.css', 'utf8');
 
 // ============================================================================
 // REGRAS GERAIS DE UI (inalteradas — botões, layout, acessibilidade)
@@ -34,6 +36,11 @@ assert.match(css, /#tela-login\s*\{[^}]*overflow-y:auto/s);
 assert.match(css, /max-height:700px[\s\S]*#tela-login[\s\S]*justify-content:flex-start/);
 assert.match(css, /@supports \(content-visibility:auto\)[\s\S]*contain-intrinsic-size:auto 172px/);
 assert.match(html, /ios-like\.css\?v=7/);
+assert.match(html, /styles\/design-tokens\.css\?v=1/);
+assert.match(html, /styles\/visual-polish\.css\?v=1/);
+assert.match(tokens, /--kg-motion-ease/);
+assert.match(polish, /kgModalSheet/);
+assert.match(polish, /prefers-reduced-motion: reduce/);
 assert.match(css, /\.stagger-in:nth-child\(n\+7\) \{ animation:none; \}/);
 assert.match(css, /@media \(update:slow\)/);
 
@@ -60,6 +67,8 @@ assert.ok(fs.existsSync('vendor/jspdf-autotable.min.js'), 'jspdf-autotable vendo
 // SW deve cachear os novos arquivos vendor (pra PWA offline)
 assert.match(sw, /'\.\/vendor\/jspdf\.umd\.min\.js'/);
 assert.match(sw, /'\.\/vendor\/jspdf-autotable\.min\.js'/);
+assert.match(sw, /'\.\/styles\/design-tokens\.css\?v=1'/);
+assert.match(sw, /'\.\/styles\/visual-polish\.css\?v=1'/);
 
 // JS deve usar jsPDF pra gerar a via (não mais HTML inline)
 assert.match(appjs, /function gerarPdfViaPedido/);

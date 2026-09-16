@@ -1,0 +1,14 @@
+/* KG Agropet — tokens compartilhados pela camada visual. */
+:root {
+  --kg-motion-ease: cubic-bezier(.25,.1,.25,1);
+  --kg-motion-ease-emphasis: cubic-bezier(.2,0,0,1);
+  --kg-motion-fast: 140ms;
+  --kg-motion-base: 240ms;
+  --kg-motion-slow: 360ms;
+  --kg-surface-elevated: linear-gradient(145deg,rgba(29,67,49,.95),rgba(9,28,18,.98));
+  --kg-surface-quiet: rgba(8,28,18,.72);
+  --kg-border-subtle: rgba(255,255,255,.10);
+  --kg-border-gold: rgba(239,190,48,.30);
+  --kg-focus-ring: 0 0 0 4px rgba(239,190,48,.16);
+  --kg-shadow-elevated: 0 16px 40px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.045);
+}

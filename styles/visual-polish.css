@@ -1,0 +1,100 @@
+/* Refinamento visual incremental. Não contém regras de negócio. */
+
+button, a, input, select, textarea { outline-offset: 3px; }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgba(239,190,48,.85);
+  box-shadow: var(--kg-focus-ring);
+}
+
+.header, .nav-bottom, .card-login, .modal-sheet,
+.card-resumo, .atalho-card, .card-grafico, .card-ranking,
+.item-card, .item-cliente-card, .item-produto-card, .card-financeiro {
+  border-color: var(--kg-border-subtle);
+}
+
+.card-login, .modal-sheet {
+  background: var(--kg-surface-elevated);
+  box-shadow: var(--kg-shadow-elevated);
+}
+
+.card-resumo, .atalho-card, .card-grafico, .card-ranking,
+.item-card, .item-cliente-card, .item-produto-card, .card-financeiro {
+  transition:
+    transform var(--kg-motion-base) var(--kg-motion-ease),
+    box-shadow var(--kg-motion-base) var(--kg-motion-ease),
+    border-color var(--kg-motion-base) var(--kg-motion-ease);
+}
+
+.btn-primario, .btn-secundario, .btn-perigo, .btn-entregar,
+.btn-obs, .btn-sm, .btn-azul, .btn-zona-perigo, .btn-ver-mais,
+.rel-nav-btn, .nav-item, .perfil-login-btn {
+  transition:
+    transform var(--kg-motion-fast) var(--kg-motion-ease),
+    filter var(--kg-motion-base) var(--kg-motion-ease),
+    background-color var(--kg-motion-base) var(--kg-motion-ease),
+    border-color var(--kg-motion-base) var(--kg-motion-ease);
+}
+
+.btn-primario:active, .btn-secundario:active, .btn-perigo:active,
+.btn-entregar:active, .btn-obs:active, .btn-sm:active, .btn-azul:active,
+.btn-zona-perigo:active, .btn-ver-mais:active, .rel-nav-btn:active,
+.perfil-login-btn:active { transform: scale(.975); }
+
+@media (hover:hover) and (pointer:fine) {
+  .card-resumo:hover, .atalho-card:hover, .item-card:hover,
+  .item-cliente-card:hover, .item-produto-card:hover, .card-financeiro:hover {
+    transform: translateY(-3px);
+    border-color: var(--kg-border-gold);
+    box-shadow: 0 18px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .btn-primario:hover, .btn-secundario:hover, .btn-ver-mais:hover { filter: brightness(1.045); }
+}
+
+/* Entrada premium: curta, direcional e com stagger pequeno. */
+@keyframes kgScreenEnter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes kgCardEnter {
+  from { opacity: 0; transform: translateY(9px) scale(.994); }
+  to { opacity: 1; transform: none; }
+}
+.tela.ativa { animation: kgScreenEnter var(--kg-motion-base) var(--kg-motion-ease-emphasis) both; }
+.tela.entrada .stagger-in:nth-child(-n+6) {
+  animation: kgCardEnter var(--kg-motion-base) var(--kg-motion-ease-emphasis) both;
+}
+.tela.entrada .stagger-in:nth-child(1) { animation-delay: 20ms; }
+.tela.entrada .stagger-in:nth-child(2) { animation-delay: 52ms; }
+.tela.entrada .stagger-in:nth-child(3) { animation-delay: 84ms; }
+.tela.entrada .stagger-in:nth-child(4) { animation-delay: 116ms; }
+.tela.entrada .stagger-in:nth-child(5) { animation-delay: 148ms; }
+.tela.entrada .stagger-in:nth-child(6) { animation-delay: 180ms; }
+
+@keyframes kgModalBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes kgModalSheet {
+  from { opacity: .72; transform: translateY(20px) scale(.992); }
+  to { opacity: 1; transform: none; }
+}
+.modal-overlay.aberto { animation: kgModalBackdrop 220ms var(--kg-motion-ease) both; }
+.modal-overlay.aberto .modal-sheet { animation: kgModalSheet var(--kg-motion-slow) var(--kg-motion-ease-emphasis) both; }
+
+/* Modo econômico e acessibilidade desativam movimento e composição extra. */
+@media (prefers-reduced-motion: reduce), (update: slow) {
+  .tela.ativa, .tela.entrada .stagger-in:nth-child(-n+6),
+  .modal-overlay.aberto, .modal-overlay.aberto .modal-sheet { animation: none !important; }
+  button:active, .card-resumo:hover, .atalho-card:hover, .item-card:hover,
+  .item-cliente-card:hover, .item-produto-card:hover, .card-financeiro:hover {
+    transform: none !important;
+  }
+}
+
+html.modo-economico .tela.ativa,
+html.modo-economico .tela.entrada .stagger-in:nth-child(-n+6),
+html.modo-economico .modal-overlay.aberto,
+html.modo-economico .modal-overlay.aberto .modal-sheet {
+  animation: none;
+}
