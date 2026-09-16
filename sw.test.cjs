@@ -71,17 +71,17 @@ function tokenPara(sub) {
 
 (async () => {
   // Primeiro acesso offline: a versão exata já foi pré-cacheada.
-  cached.set('https://kg-entregas.vercel.app/app.js?v=71', new Response('pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/app.js?v=72', new Response('pre-cache'));
   cached.set('https://kg-entregas.vercel.app/ios-like.css?v=7', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
-  assert.equal(await (await requestApp('?v=71')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=72')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
   assert.equal((await requestApp('?v=70')).status, 503);
   assert.equal((await requestApp('?v=70&outra=1')).status, 503);
 
   let acessosRede = 0;
   global.fetch = async () => { acessosRede++; return new Response('nova'); };
-  assert.equal(await (await requestApp('?v=71')).text(), 'pre-cache');
+  assert.equal(await (await requestApp('?v=72')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=7')).text(), 'estilo-pre-cache');
   assert.equal(acessosRede, 0, 'Assets versionados em cache não aguardam a rede');
   assert.equal(await (await requestApp('?v=70')).text(), 'nova');
@@ -125,12 +125,12 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v48'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v49'/);
   assert.match(sw, /\.\/ios-like\.css\?v=7/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=1/);
   assert.match(sw, /\.\/styles\/visual-polish\.css\?v=1/);
   assert.match(index, /ios-like\.css\?v=7/);
-  assert.match(index, /app\.js\?v=71/);
+  assert.match(index, /app\.js\?v=72/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /registroServiceWorker\.update\(\)/);
   console.log('Atualização automática e fallback offline validados.');

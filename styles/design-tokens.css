@@ -5,6 +5,9 @@
   --kg-motion-fast: 140ms;
   --kg-motion-base: 240ms;
   --kg-motion-slow: 360ms;
+  --kg-motion-screen: 320ms;
+  --kg-motion-nav: 420ms;
+  --kg-motion-nav-ease: cubic-bezier(.22,1,.36,1);
   --kg-surface-elevated: linear-gradient(145deg,rgba(29,67,49,.95),rgba(9,28,18,.98));
   --kg-surface-quiet: rgba(8,28,18,.72);
   --kg-border-subtle: rgba(255,255,255,.10);

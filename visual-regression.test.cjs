@@ -39,6 +39,8 @@ assert.match(html, /ios-like\.css\?v=7/);
 assert.match(html, /styles\/design-tokens\.css\?v=1/);
 assert.match(html, /styles\/visual-polish\.css\?v=1/);
 assert.match(tokens, /--kg-motion-ease/);
+assert.match(tokens, /--kg-motion-screen/);
+assert.match(tokens, /--kg-motion-nav/);
 assert.match(polish, /kgModalSheet/);
 assert.match(polish, /prefers-reduced-motion: reduce/);
 assert.match(polish, /nav-bottom\.nav-recolhida/);

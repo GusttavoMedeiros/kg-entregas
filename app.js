@@ -1462,6 +1462,7 @@ let navScrollRaf = 0;
 let navUltimoScrollY = 0;
 let navScrollInicializado = false;
 let navOculta = false;
+let navDeltaAcumulado = 0;
 
 function posicionarIndicadorNav(id, animar = true) {
   const nav = document.getElementById('nav-bottom');
@@ -1510,8 +1511,21 @@ function atualizarVisibilidadeNav() {
 
   const delta = y - navUltimoScrollY;
   navUltimoScrollY = y;
-  if (y <= 8 || delta <= -8) navOculta = false;
-  else if (delta >= 8 && y > 40) navOculta = true;
+  if (Math.abs(delta) < 1) return;
+  if (navDeltaAcumulado && Math.sign(delta) !== Math.sign(navDeltaAcumulado)) {
+    navDeltaAcumulado = 0;
+  }
+  navDeltaAcumulado += delta;
+  if (y <= 8) {
+    navDeltaAcumulado = 0;
+    navOculta = false;
+  } else if (navDeltaAcumulado <= -18) {
+    navDeltaAcumulado = 0;
+    navOculta = false;
+  } else if (navDeltaAcumulado >= 18 && y > 56) {
+    navDeltaAcumulado = 0;
+    navOculta = true;
+  }
   nav.classList.toggle('nav-recolhida', navOculta);
 }
 
@@ -1523,6 +1537,7 @@ function agendarAtualizacaoNav() {
 function resetarVisibilidadeNav() {
   const nav = document.getElementById('nav-bottom');
   navOculta = false;
+  navDeltaAcumulado = 0;
   navScrollInicializado = false;
   if (nav) nav.classList.remove('nav-recolhida');
   agendarAtualizacaoNav();
@@ -1573,12 +1588,23 @@ function navegarPara(id) {
   const item = itens.find(i => i.id===id);
   if (!item) return;
 
+  const ativoAnterior = document.querySelector('#nav-bottom .nav-item.ativo');
+  const indiceAnterior = itens.findIndex(i => `nav-${i.id}` === ativoAnterior?.id);
+  const indiceNovo = itens.findIndex(i => i.id === id);
+  const deslocamentoTela = indiceAnterior >= 0 && indiceNovo !== indiceAnterior
+    ? (indiceNovo > indiceAnterior ? '12px' : '-12px')
+    : '0px';
+
   // Reset completo ao trocar de aba: limpa buscas + filtros + scroll
   resetarBuscasEFiltros();
 
   document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
   const el = document.getElementById(item.tela);
-  if (el) { el.style.display=''; el.classList.add('ativa'); }
+  if (el) {
+    el.style.setProperty('--kg-screen-shift', deslocamentoTela);
+    el.style.display='';
+    el.classList.add('ativa');
+  }
   animarEntradaTela(el);
   document.getElementById('header-titulo').textContent = TITULOS[id] || '';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('ativo'));

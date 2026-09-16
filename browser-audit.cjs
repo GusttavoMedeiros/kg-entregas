@@ -72,6 +72,10 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     await p.waitForFunction(id=>document.querySelector('.nav-item.ativo')?.id===id,ids[1]);
     const x1=await p.locator('.nav-indicator').evaluate(e=>e.style.getPropertyValue('--nav-indicator-x'));
     assert.notEqual(x0,x1);
+    assert.equal(await p.locator('.tela.ativa').evaluate(e=>e.style.getPropertyValue('--kg-screen-shift')),'12px');
+    await p.locator('#'+ids[0]).click();
+    await p.waitForFunction(id=>document.querySelector('.nav-item.ativo')?.id===id,ids[0]);
+    assert.equal(await p.locator('.tela.ativa').evaluate(e=>e.style.getPropertyValue('--kg-screen-shift')),'-12px');
    }
   }else{
    assert.equal(await p.locator('#nav-bottom .nav-indicator').evaluate(e=>getComputedStyle(e).display),'none');
