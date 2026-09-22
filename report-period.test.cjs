@@ -8,34 +8,37 @@ const fim = app.indexOf('// Filtra somente pedidos', inicio);
 assert.ok(inicio >= 0 && fim > inicio, 'função de janela não encontrada');
 
 const OriginalDate = Date;
-class DataFixa extends OriginalDate {
-  constructor(...args) {
-    super(...(args.length ? args : ['2026-09-16T12:00:00Z']));
+function janela(hojeISO, tipo, offset) {
+  class DataFixa extends OriginalDate {
+    constructor(...args) { super(...(args.length ? args : [hojeISO])); }
+  }
+  const contexto = { Date: DataFixa, fmt: d => d.toISOString().slice(0, 10), dataBR: d => d };
+  vm.runInNewContext(app.slice(inicio, fim), contexto);
+  return JSON.parse(JSON.stringify(contexto.calcularJanelaRelatorio(tipo, offset)));
+}
+
+// Quinzenas fixas: o período não depende do dia em que o relatório é aberto.
+assert.deepEqual(janela('2026-09-16T12:00:00Z', 'quinzenal', 0),
+  { ini: '2026-09-16', fim: '2026-09-30', label: 'Quinzena 2026-09-16 — 2026-09-30' });
+assert.deepEqual(janela('2026-09-29T12:00:00Z', 'quinzenal', 0),
+  { ini: '2026-09-16', fim: '2026-09-30', label: 'Quinzena 2026-09-16 — 2026-09-30' });
+assert.deepEqual(janela('2026-09-16T12:00:00Z', 'quinzenal', -1),
+  { ini: '2026-09-01', fim: '2026-09-15', label: 'Quinzena 2026-09-01 — 2026-09-15' });
+assert.deepEqual(janela('2026-01-05T12:00:00Z', 'quinzenal', -1),
+  { ini: '2025-12-16', fim: '2025-12-31', label: 'Quinzena 2025-12-16 — 2025-12-31' });
+assert.equal(janela('2026-03-20T12:00:00Z', 'quinzenal', -2).fim, '2026-02-28');
+
+// Navegando para trás, cada período começa no dia seguinte ao fim do anterior:
+// nenhum dia fica de fora e nenhum é contado duas vezes.
+for (const tipo of ['semanal', 'quinzenal', 'mensal']) {
+  let atual = janela('2026-09-22T12:00:00Z', tipo, 0);
+  for (let o = -1; o >= -30; o--) {
+    const anterior = janela('2026-09-22T12:00:00Z', tipo, o);
+    const diff = (new OriginalDate(atual.ini) - new OriginalDate(anterior.fim)) / 86400000;
+    assert.equal(diff, 1, `${tipo} offset ${o}: lacuna ou sobreposição`);
+    assert.ok(anterior.ini <= anterior.fim);
+    atual = anterior;
   }
 }
-const contexto = {
-  Date: DataFixa,
-  fmt: d => d.toISOString().slice(0, 10),
-  dataBR: d => d,
-};
-vm.runInNewContext(app.slice(inicio, fim), contexto);
 
-const atual = contexto.calcularJanelaRelatorio('quinzenal', 0);
-assert.deepEqual(JSON.parse(JSON.stringify(atual)), {
-  ini: '2026-09-02',
-  fim: '2026-09-16',
-  label: 'Quinzena · 2026-09-02 — 2026-09-16',
-});
-
-const anterior = contexto.calcularJanelaRelatorio('quinzenal', -1);
-assert.deepEqual(JSON.parse(JSON.stringify(anterior)), {
-  ini: '2026-08-18',
-  fim: '2026-09-01',
-  label: 'Quinzena · 2026-08-18 — 2026-09-01',
-});
-
-// As janelas são contíguas, sem sobreposição nem dia perdido.
-const diff = (new OriginalDate(anterior.fim) - new OriginalDate(atual.ini)) / 86400000;
-assert.equal(diff, -1);
-
-console.log('Janela quinzenal móvel inclui os últimos 15 dias e navega sem lacunas.');
+console.log('Períodos fixos do calendário, contíguos, sem lacuna nem sobreposição.');
