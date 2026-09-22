@@ -17,7 +17,7 @@ const DATA_CACHE   = 'kg-v23-data';
 const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
-  './app.js?v=72',
+  './app.js?v=73',
   './styles/design-tokens.css?v=1',
   './ios-like.css?v=7',
   './styles/visual-polish.css?v=1',
