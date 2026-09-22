@@ -1647,6 +1647,15 @@ async function listarTodos(tabela, select='*') {
   }
 }
 
+function normalizarPedidos(dados) {
+  return (dados || []).map(p => ({
+    ...p,
+    cliente_nome: p.clientes?.nome || '–',
+    itens: p.itens_pedido || [],
+    descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
+  }));
+}
+
 async function carregarListas() {
   const resultados = await Promise.all([
     listarTodos('pedidos','*,clientes(nome),itens_pedido(*)'),
@@ -1687,12 +1696,7 @@ async function carregarTudo() {
     }
     todosOsClientes = resCli.dados || [];
     todosOsProdutos = resProd.dados || [];
-    todosOsPedidos = (resPed.dados || []).map(p => ({
-      ...p,
-      cliente_nome: p.clientes?.nome || '–',
-      itens: p.itens_pedido || [],
-      descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
-    }));
+    todosOsPedidos = normalizarPedidos(resPed.dados);
     aplicarFilaOffline(todosOsPedidos);
   }
   animarEntradaTela(document.querySelector('.tela.ativa'));
@@ -1768,12 +1772,7 @@ async function sincronizarDados() {
     }
 
     // Detecta se algo mudou (comparando hash completo dos pedidos)
-    const novosPedidos = (resPed.dados || []).map(p => ({
-      ...p,
-      cliente_nome: p.clientes?.nome || '–',
-      itens: p.itens_pedido || [],
-      descricao: (p.itens_pedido || []).map(i => `${i.qtd}x ${i.nome}`).join(', ') || p.descricao || '',
-    }));
+    const novosPedidos = normalizarPedidos(resPed.dados);
 
     aplicarFilaOffline(novosPedidos);
 
@@ -5565,21 +5564,63 @@ window.addEventListener('appinstalled', () => {
 
 // ============================================================
 // RELATÓRIOS — semanal, quinzenal e mensal (admin e vendedor)
+// O relatório é usado para acertar a comissão, então TODO pedido entregue no
+// período aparece, um por linha, e soma no total. Os "top 5" são apenas
+// complemento, nunca a única listagem.
 // Admin vê todos os pedidos; vendedor vê apenas os dele.
 // Base do período: data real da entrega, com fallback para pedidos antigos.
 // ============================================================
 let relTipo = 'semanal';   // 'semanal' | 'quinzenal' | 'mensal'
 let relOffset = 0;         // 0 = período atual, -1 = anterior...
 
+// Pedidos buscados no servidor no momento em que o relatório é aberto/impresso.
+// A lista em memória pode estar parada se a sincronização automática falhou
+// (sem internet, sessão expirada); para a comissão isso não é aceitável.
+let relFonte = { pedidos: null, atualizadoEm: null, erro: null, carregando: false };
+let relToken = 0;
+
+async function buscarPedidosRelatorio() {
+  if (MODO_DEMO) return { ok: true, pedidos: todosOsPedidos };
+  const loginInicial = usuario?.login;
+  const res = await listarTodos('pedidos', '*,clientes(nome),itens_pedido(*)');
+  if (!usuario || usuario.login !== loginInicial) return { ok: false, erro: 'A sessão foi alterada.' };
+  if (!res.ok) return { ok: false, erro: res.erro || 'Falha ao consultar o servidor.' };
+  const pedidos = normalizarPedidos(res.dados);
+  aplicarFilaOffline(pedidos);
+  return { ok: true, pedidos };
+}
+
+async function atualizarFonteRelatorio() {
+  const token = ++relToken;
+  relFonte = { ...relFonte, carregando: true };
+  renderizarRelatorio();
+  let r;
+  try { r = await buscarPedidosRelatorio(); }
+  catch (e) { r = { ok: false, erro: e.message }; }
+  if (token !== relToken) return relFonte;
+  relFonte = r.ok
+    ? { pedidos: r.pedidos, atualizadoEm: new Date(), erro: null, carregando: false }
+    : { pedidos: null, atualizadoEm: null, erro: r.erro, carregando: false };
+  renderizarRelatorio();
+  return relFonte;
+}
+
+// Sem confirmação do servidor, usa o que está em memória (com aviso na tela e no PDF).
+function pedidosBaseRelatorio() {
+  return relFonte.pedidos || todosOsPedidos;
+}
+
 function abrirModalRelatorio() {
   relTipo = 'semanal';
   relOffset = 0;
+  relFonte = { pedidos: null, atualizadoEm: null, erro: null, carregando: true };
   // Reseta abas visuais para a primeira
   document.querySelectorAll('#abas-relatorio .aba').forEach((b, i) => {
     b.classList.toggle('ativa', i === 0);
   });
   renderizarRelatorio();
   abrirModal('modal-relatorio');
+  atualizarFonteRelatorio();
 }
 
 function mudarTipoRelatorio(tipo, btn) {
@@ -5597,9 +5638,13 @@ function navegarPeriodoRelatorio(delta) {
   renderizarRelatorio();
 }
 
-// Calcula a janela [ini, fim] (strings YYYY-MM-DD) + label legível
+// Calcula a janela [ini, fim] (strings YYYY-MM-DD) + label legível.
+// Todos os períodos são FIXOS no calendário: o mesmo período sempre cobre os
+// mesmos dias, não importa quando o relatório é aberto. Assim os acertos de
+// comissão encaixam um no outro, sem dia esquecido nem contado duas vezes.
 function calcularJanelaRelatorio(tipo, offset) {
   const hoje = new Date(fmt(new Date()) + 'T12:00:00Z');
+  offset = Math.trunc(Number(offset) || 0);
 
   if (tipo === 'semanal') {
     // Semana de segunda a domingo
@@ -5612,14 +5657,18 @@ function calcularJanelaRelatorio(tipo, offset) {
   }
 
   if (tipo === 'quinzenal') {
-    // Janela móvel de 15 dias. Assim, ao abrir o relatório no começo da
-    // segunda metade do mês, as entregas recém-concluídas continuam visíveis
-    // em vez de cair numa 2ª quinzena vazia (16–fim).
-    const fim = new Date(hoje);
-    fim.setUTCDate(fim.getUTCDate() + Math.trunc(Number(offset) || 0) * 15);
-    const ini = new Date(fim);
-    ini.setUTCDate(fim.getUTCDate() - 14);
-    return { ini: fmt(ini), fim: fmt(fim), label: `Quinzena · ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
+    // 1ª quinzena = dias 1 a 15; 2ª quinzena = dia 16 até o último dia do mês.
+    // (Uma janela móvel de "últimos 15 dias" dependia do dia da consulta e
+    // deixava entregas de fora entre um acerto e o seguinte.)
+    let idx = hoje.getUTCFullYear() * 24 + hoje.getUTCMonth() * 2 + (hoje.getUTCDate() > 15 ? 1 : 0);
+    idx += offset;
+    const ano = Math.floor(idx / 24);
+    const resto = idx - ano * 24;
+    const mes = Math.floor(resto / 2);
+    const metade = resto % 2;
+    const ini = new Date(Date.UTC(ano, mes, metade ? 16 : 1, 12));
+    const fim = metade ? new Date(Date.UTC(ano, mes + 1, 0, 12)) : new Date(Date.UTC(ano, mes, 15, 12));
+    return { ini: fmt(ini), fim: fmt(fim), label: `Quinzena ${dataBR(fmt(ini))} — ${dataBR(fmt(fim))}` };
   }
 
   // mensal
@@ -5633,22 +5682,56 @@ function calcularJanelaRelatorio(tipo, offset) {
 }
 
 // Filtra somente pedidos entregues do período (e do vendedor, se for o perfil dele)
-function pedidosDoRelatorio(ini, fim) {
-  return todosOsPedidos.filter(p => {
+function pedidosDoRelatorio(ini, fim, pedidos = todosOsPedidos) {
+  return pedidos.filter(p => {
     if (p.status !== 'entregue') return false;
     const data = dataRealEntrega(p);
     if (!data) return false;
     if (data < ini || data > fim) return false;
     if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
     return true;
-  });
+  }).sort((a, b) => ordenarPedidosRelatorio(a, b, dataRealEntrega));
+}
+
+// Pedidos com entrega prevista até o fim do período que ainda NÃO foram
+// marcados como entregues. Não entram no total, mas aparecem em destaque:
+// uma entrega esquecida de marcar não pode sumir do acerto da comissão.
+function pendentesDoRelatorio(fim, pedidos = todosOsPedidos) {
+  return pedidos.filter(p => {
+    if (p.status === 'entregue') return false;
+    if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
+    return !p.data_entrega || p.data_entrega <= fim;
+  }).sort((a, b) => ordenarPedidosRelatorio(a, b, p => p.data_entrega));
+}
+
+function ordenarPedidosRelatorio(a, b, data) {
+  const da = data(a) || '', db = data(b) || '';
+  if (da !== db) return da < db ? -1 : 1;
+  return (Number(a.id) || 0) - (Number(b.id) || 0);
 }
 
 // Agrega os números e tops do período
 function calcularDadosRelatorio(pedidos) {
-  const total     = pedidos.reduce((s,p) => s + (Number(p.valor)||0), 0);
-  const recebido  = pedidos.filter(p => foiPago(p)).reduce((s,p) => s + (Number(p.valor)||0), 0);
-  const aReceber  = total - recebido;
+  // Soma em centavos para o total bater exatamente com a soma das linhas.
+  const centavos = v => Math.round((Number(v) || 0) * 100);
+  const somar = lista => lista.reduce((s, p) => s + centavos(p.valor), 0) / 100;
+  const total     = somar(pedidos);
+  const recebido  = somar(pedidos.filter(p => foiPago(p)));
+  const aReceber  = (Math.round(total * 100) - Math.round(recebido * 100)) / 100;
+
+  // Por vendedor (base da comissão)
+  const porVend = Object.create(null);
+  pedidos.forEach(p => {
+    const v = p.vendedor || '';
+    if (!porVend[v]) porVend[v] = { nPedidos: 0, total: 0, recebido: 0 };
+    porVend[v].nPedidos += 1;
+    porVend[v].total    += centavos(p.valor);
+    if (foiPago(p)) porVend[v].recebido += centavos(p.valor);
+  });
+  const porVendedor = Object.entries(porVend)
+    .map(([vendedor, d]) => ({ vendedor, nPedidos: d.nPedidos, total: d.total / 100,
+      recebido: d.recebido / 100, aReceber: (d.total - d.recebido) / 100 }))
+    .sort((a, b) => b.total - a.total);
 
   // Top produtos (por valor) a partir dos itens
   const porProduto = Object.create(null);
@@ -5674,7 +5757,29 @@ function calcularDadosRelatorio(pedidos) {
     .map(([nome, d]) => ({ nome, ...d }))
     .sort((a,b) => b.valor - a.valor).slice(0, 5);
 
-  return { total, recebido, aReceber, nPedidos: pedidos.length, topProdutos, topClientes };
+  return { total, recebido, aReceber, nPedidos: pedidos.length, porVendedor, topProdutos, topClientes };
+}
+
+function nomeVendedorRelatorio(v) {
+  if (v === 'admin') return 'Admin (Kleber)';
+  if (v === 'vendedor') return 'Vendedor';
+  return v || 'Sem vendedor';
+}
+
+function situacaoPagamentoRelatorio(p) {
+  if (foiPago(p)) return 'Pago';
+  if (p.status_pagamento === 'recusado') return 'Recusado';
+  return 'A receber';
+}
+
+function textoFonteRelatorio() {
+  if (relFonte.carregando) return { classe: '', texto: 'Conferindo com o servidor…' };
+  if (relFonte.erro) return { classe: 'erro', texto: 'Não foi possível conferir com o servidor. Os números abaixo são os salvos neste aparelho e podem estar incompletos. Não use para acertar comissão.' };
+  if (relFonte.atualizadoEm) {
+    const h = relFonte.atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return { classe: 'ok', texto: `Dados conferidos com o servidor às ${h}.` };
+  }
+  return { classe: '', texto: '' };
 }
 
 function renderizarRelatorio() {
@@ -5685,16 +5790,38 @@ function renderizarRelatorio() {
   const btnProx = document.getElementById('rel-nav-proximo');
   if (btnProx) btnProx.disabled = (relOffset >= 0);
 
-  const pedidos = pedidosDoRelatorio(ini, fim);
+  const base = pedidosBaseRelatorio();
+  const pedidos = pedidosDoRelatorio(ini, fim, base);
+  const pendentes = pendentesDoRelatorio(fim, base);
   const d = calcularDadosRelatorio(pedidos);
   const el = document.getElementById('relatorio-conteudo');
+  const admin = usuario.perfil === 'admin';
+
+  const fonte = textoFonteRelatorio();
+  const htmlFonte = fonte.texto ? `
+    <div class="rel-status ${fonte.classe}">${esc(fonte.texto)}${relFonte.erro
+      ? ' <button type="button" class="btn-azul" onclick="atualizarFonteRelatorio()">Tentar novamente</button>' : ''}</div>` : '';
+
+  const htmlPendentes = pendentes.length ? `
+    <div class="rel-alerta">
+      <div class="rel-alerta-titulo">⚠ ${pendentes.length} pedido(s) ainda não marcado(s) como entregue(s)</div>
+      <div class="rel-alerta-texto">Previstos para até ${esc(dataBR(fim))}. <b>Não estão somados no total.</b> Se já foram entregues, marque a entrega para entrarem no relatório.</div>
+      ${pendentes.map(p => `
+        <div class="rel-item">
+          <span class="rel-item-extra">${esc(p.data_entrega ? dataBR(p.data_entrega) : 'sem data')}</span>
+          <span class="rel-item-nome">#${esc(p.id)} · ${esc(p.cliente_nome || 'Cliente')}${admin ? ` · ${esc(nomeVendedorRelatorio(p.vendedor))}` : ''}</span>
+          <span class="rel-item-valor">${moeda(p.valor)}</span>
+        </div>`).join('')}
+    </div>` : '';
 
   if (!pedidos.length) {
-    el.innerHTML = `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
+    el.innerHTML = htmlFonte + htmlPendentes +
+      `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
     return;
   }
 
   el.innerHTML = `
+    ${htmlFonte}
     <div class="rel-cards">
       <div class="rel-card">
         <div class="rel-card-valor">${moeda(d.total)}</div>
@@ -5714,7 +5841,33 @@ function renderizarRelatorio() {
       </div>
     </div>
 
-    <div class="rel-lista-titulo">🏆 Top produtos</div>
+    ${htmlPendentes}
+
+    ${admin ? `
+    <div class="rel-lista-titulo">👤 Por vendedor</div>
+    ${d.porVendedor.map(v => `
+      <div class="rel-item">
+        <span class="rel-item-nome">${esc(nomeVendedorRelatorio(v.vendedor))}</span>
+        <span class="rel-item-extra">${v.nPedidos} ped.</span>
+        <span class="rel-item-valor">${moeda(v.total)}</span>
+      </div>`).join('')}` : ''}
+
+    <div class="rel-lista-titulo">📋 Todos os pedidos entregues (${d.nPedidos})</div>
+    ${pedidos.map(p => `
+      <div class="rel-pedido">
+        <div class="rel-item">
+          <span class="rel-item-extra">${esc(dataBR(dataRealEntrega(p)))}</span>
+          <span class="rel-item-nome">#${esc(p.id)} · ${esc(p.cliente_nome || 'Cliente')}</span>
+          <span class="rel-item-valor">${moeda(p.valor)}</span>
+        </div>
+        <div class="rel-pedido-sub">${admin ? `${esc(nomeVendedorRelatorio(p.vendedor))} · ` : ''}${esc(situacaoPagamentoRelatorio(p))}</div>
+      </div>`).join('')}
+    <div class="rel-item rel-total">
+      <span class="rel-item-nome">Total (${d.nPedidos} pedidos)</span>
+      <span class="rel-item-valor">${moeda(d.total)}</span>
+    </div>
+
+    <div class="rel-lista-titulo">🏆 Top 5 produtos</div>
     ${d.topProdutos.map(t => `
       <div class="rel-item">
         <span class="rel-item-nome">${esc(t.nome)}</span>
@@ -5722,7 +5875,7 @@ function renderizarRelatorio() {
         <span class="rel-item-valor">${moeda(t.valor)}</span>
       </div>`).join('') || '<div class="rel-vazio">Sem itens detalhados</div>'}
 
-    <div class="rel-lista-titulo">🏪 Top clientes</div>
+    <div class="rel-lista-titulo">🏪 Top 5 clientes</div>
     ${d.topClientes.map(t => `
       <div class="rel-item">
         <span class="rel-item-nome">${esc(t.nome)}</span>
@@ -5738,9 +5891,15 @@ async function gerarPdfRelatorio(ini, fim, label) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
-  const pedidos = pedidosDoRelatorio(ini, fim);
+  const base = pedidosBaseRelatorio();
+  const pedidos = pedidosDoRelatorio(ini, fim, base);
+  const pendentes = pendentesDoRelatorio(fim, base);
   const d = calcularDadosRelatorio(pedidos);
-  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login} · Apenas entregues` : 'Pedidos entregues';
+  const admin = usuario.perfil === 'admin';
+  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login} — apenas entregues` : 'Pedidos entregues — todos os vendedores';
+  // As fontes embutidas não têm alguns símbolos (#, ·, ª, –); sem esta troca
+  // eles somem do PDF.
+  const seguro = t => String(t ?? '').replace(/·/g, '—').replace(/–/g, '-').replace(/ª/g, 'a').replace(/#/g, 'Nº ');
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -5748,6 +5907,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
   const pageW = 210, pageH = 297;
   const mL = 15, mR = 15, mT = 15, mB = 18;
   const cW = pageW - mL - mR;
+  const topoContinuacao = mT + 27; // abaixo do cabeçalho repetido nas páginas seguintes
 
   const drawCabecalho = (yRef) => {
     if (_viaAssets.logoPng) {
@@ -5761,23 +5921,46 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(12); doc.setTextColor(25, 66, 42);
     doc.text('RELATÓRIO DE VENDAS', pageW - mR, yRef + 7, { align: 'right' });
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
-    doc.text(label, pageW - mR, yRef + 13, { align: 'right' });
+    doc.text(seguro(label), pageW - mR, yRef + 13, { align: 'right' });
     doc.setDrawColor(212, 175, 55); doc.setLineWidth(0.45);
     doc.line(mL, yRef + 21, pageW - mR, yRef + 21);
   };
-  const drawRodape = () => {
-    const pageCount = doc.internal.getNumberOfPages();
-    const cur = doc.internal.getCurrentPageInfo().pageNumber;
+  const drawRodape = (pagina, totalPaginas) => {
     const y = pageH - mB + 4;
     doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
     doc.line(mL, y - 4, pageW - mR, y - 4);
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
     doc.text('Este documento não substitui documento fiscal.', mL, y);
-    doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
+    doc.text(`Página ${pagina} de ${totalPaginas}`, pageW - mR, y, { align: 'right' });
     doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
   };
-
+  const estiloTabela = {
+    margin: { left: mL, right: mR, top: topoContinuacao, bottom: mB + 8 },
+    styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
+    headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
+    footStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_NUNITO, fontStyle: 'bold', fontSize: 9 },
+  };
   let y = mT;
+  const garantirEspaco = (altura) => {
+    if (y + altura > pageH - mB - 8) { doc.addPage(); y = topoContinuacao; }
+  };
+  const tabela = (opcoes) => {
+    garantirEspaco(20);
+    const limpar = linhas => linhas?.map(l => l.map(c => (c && typeof c === 'object') ? { ...c, content: seguro(c.content) } : seguro(c)));
+    const direita = Object.entries(opcoes.columnStyles || {}).filter(([, e]) => e.halign === 'right').map(([i]) => Number(i));
+    doc.autoTable({ ...estiloTabela, startY: y, showFoot: 'lastPage', ...opcoes,
+      head: limpar(opcoes.head), body: limpar(opcoes.body), foot: limpar(opcoes.foot),
+      // columnStyles não vale para cabeçalho/rodapé; alinha os valores à direita.
+      didParseCell: data => { if (data.section !== 'body' && direita.includes(data.column.index)) data.cell.styles.halign = 'right'; } });
+    y = doc.lastAutoTable.finalY + 8;
+  };
+  const titulo = (texto, cor = [25, 66, 42]) => {
+    garantirEspaco(24);
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(8); doc.setTextColor(...cor);
+    doc.text(texto, mL, y);
+    y += 3;
+  };
+
   drawCabecalho(y);
   y += 27;
 
@@ -5785,13 +5968,27 @@ async function gerarPdfRelatorio(ini, fim, label) {
   doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
   doc.text('PERÍODO', mL, y);
   doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text(label, mL, y + 4);
+  doc.text(seguro(label), mL, y + 4);
   doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
   doc.text('ESCOPO', mL + cW / 2, y);
   doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  const escopoLines = doc.splitTextToSize(escopo, cW / 2 - 4);
+  const escopoLines = doc.splitTextToSize(seguro(escopo), cW / 2 - 4);
   doc.text(escopoLines, mL + cW / 2, y + 4);
-  y += 4 + (escopoLines.length * 4) + 6;
+  y += 4 + (escopoLines.length * 4) + 2;
+  doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+  doc.text(`Datas de ${dataBR(ini)} a ${dataBR(fim)}, pela data em que a entrega foi concluída.`, mL, y + 2);
+  y += 7;
+
+  // Aviso quando não foi possível confirmar com o servidor
+  if (relFonte.erro || !relFonte.atualizadoEm) {
+    const aviso = doc.splitTextToSize('ATENÇÃO: este relatório foi gerado SEM conferir com o servidor e pode estar incompleto. Não use para acertar comissão; gere novamente com internet.', cW - 6);
+    const h = aviso.length * 4 + 4;
+    doc.setFillColor(253, 236, 234); doc.setDrawColor(192, 57, 43); doc.setLineWidth(0.4);
+    doc.roundedRect(mL, y, cW, h, 1.5, 1.5, 'FD');
+    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(8.5); doc.setTextColor(150, 30, 20);
+    doc.text(aviso, mL + 3, y + 5);
+    y += h + 5;
+  }
 
   // Resumo (4 cards)
   doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(8); doc.setTextColor(25, 66, 42);
@@ -5818,40 +6015,69 @@ async function gerarPdfRelatorio(ini, fim, label) {
   });
   y += 22;
 
-  // Top produtos
-  if (d.topProdutos.length) {
-    doc.autoTable({
-      startY: y,
-      head: [['Top produtos', 'Qtd', 'Valor']],
-      body: d.topProdutos.map(t => [t.nome, String(t.qtd), moeda(t.valor)]),
-      margin: { left: mL, right: mR, bottom: mB + 8 },
-      styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
-      headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
-      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 35 } },
-      didDrawPage: (data) => {
-        drawRodape();
-        if (data.pageNumber > 1) drawCabecalho(mT);
-      },
+  // Pedidos não marcados como entregues: alerta logo após o resumo
+  if (pendentes.length) {
+    titulo(`ATENÇÃO: ${pendentes.length} PEDIDO(S) AINDA NÃO MARCADO(S) COMO ENTREGUE(S) — FORA DO TOTAL`, [170, 40, 30]);
+    tabela({
+      head: [['Previsto', 'Pedido', 'Cliente', ...(admin ? ['Vendedor'] : []), 'Valor']],
+      body: pendentes.map(p => [p.data_entrega ? dataBR(p.data_entrega) : 'sem data', String(p.id),
+        p.cliente_nome || 'Cliente', ...(admin ? [nomeVendedorRelatorio(p.vendedor)] : []), moeda(p.valor)]),
+      headStyles: { ...estiloTabela.headStyles, fillColor: [253, 236, 234], textColor: [150, 30, 20] },
+      columnStyles: admin
+        ? { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 32 }, 4: { halign: 'right', cellWidth: 28 } }
+        : { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { halign: 'right', cellWidth: 28 } },
     });
-    y = doc.lastAutoTable.finalY + 8;
   }
 
-  // Top clientes
-  if (d.topClientes.length) {
-    if (y > pageH - mB - 40) { doc.addPage(); y = mT + 18; }
-    doc.autoTable({
-      startY: y,
-      head: [['Top clientes', 'Pedidos', 'Valor']],
-      body: d.topClientes.map(t => [t.nome, String(t.pedidos), moeda(t.valor)]),
-      margin: { left: mL, right: mR, bottom: mB + 8 },
-      styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
-      headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
-      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 } },
-      didDrawPage: (data) => {
-        drawRodape();
-        if (data.pageNumber > 1) drawCabecalho(mT);
-      },
+  // Por vendedor (admin): base do acerto de comissão
+  if (admin && d.porVendedor.length) {
+    tabela({
+      head: [['Por vendedor', 'Pedidos', 'Recebido', 'A receber', 'Total']],
+      body: d.porVendedor.map(v => [nomeVendedorRelatorio(v.vendedor), String(v.nPedidos), moeda(v.recebido), moeda(v.aReceber), moeda(v.total)]),
+      foot: [['Total', String(d.nPedidos), moeda(d.recebido), moeda(d.aReceber), moeda(d.total)]],
+      columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 30 }, 4: { halign: 'right', cellWidth: 32 } },
     });
+  }
+
+  // Lista completa: um pedido por linha
+  if (pedidos.length) {
+    tabela({
+      head: [['Entrega', 'Pedido', 'Cliente', ...(admin ? ['Vendedor'] : []), 'Pagamento', 'Valor']],
+      body: pedidos.map(p => [dataBR(dataRealEntrega(p)), String(p.id), p.cliente_nome || 'Cliente',
+        ...(admin ? [nomeVendedorRelatorio(p.vendedor)] : []), situacaoPagamentoRelatorio(p), moeda(p.valor)]),
+      foot: [[{ content: `Total: ${d.nPedidos} pedido(s) entregue(s)`, colSpan: admin ? 5 : 4 }, moeda(d.total)]],
+      columnStyles: admin
+        ? { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 30 }, 4: { cellWidth: 22 }, 5: { halign: 'right', cellWidth: 28 } }
+        : { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 24 }, 4: { halign: 'right', cellWidth: 28 } },
+    });
+  } else {
+    garantirEspaco(10);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+    doc.text('Nenhum pedido entregue neste período.', mL, y);
+    y += 10;
+  }
+
+  if (d.topProdutos.length) {
+    tabela({
+      head: [['Top 5 produtos', 'Qtd', 'Valor']],
+      body: d.topProdutos.map(t => [t.nome, String(t.qtd), moeda(t.valor)]),
+      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 35 } },
+    });
+  }
+  if (d.topClientes.length) {
+    tabela({
+      head: [['Top 5 clientes', 'Pedidos', 'Valor']],
+      body: d.topClientes.map(t => [t.nome, String(t.pedidos), moeda(t.valor)]),
+      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 } },
+    });
+  }
+
+  // Cabeçalho e rodapé no fim, quando o total de páginas já é conhecido.
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    if (i > 1) drawCabecalho(mT);
+    drawRodape(i, totalPaginas);
   }
 
   const blob = doc.output('blob');
@@ -5872,6 +6098,9 @@ async function imprimirRelatorio() {
   if (papel) { papel.innerHTML = ''; papel.appendChild(loadingEl); }
   window.__viaLoadingEl = loadingEl;
   try {
+    // Confere de novo com o servidor: o PDF é o documento do acerto.
+    await atualizarFonteRelatorio();
+    if (flowToken !== _viaFlowToken) return;
     const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
     const { blob, url, nomeArquivo } = await gerarPdfRelatorio(ini, fim, label);
     if (flowToken !== _viaFlowToken) {

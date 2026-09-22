@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=72" as="script">
+<link rel="preload" href="app.js?v=73" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -586,6 +586,19 @@ body.offline #app{padding-top:54px}
 .rel-item-valor{font-weight:700;color:var(--o1);white-space:nowrap}
 .rel-item-extra{font-size:11px;color:var(--c3);white-space:nowrap}
 .rel-vazio{text-align:center;padding:18px;color:var(--c3);font-size:13px}
+.rel-status{font-size:11.5px;color:var(--c3);margin:-6px 0 12px;text-align:center}
+.rel-status.ok{color:#7ec850}
+.rel-status.erro{color:#ffb4a8;background:rgba(192,57,43,.14);border:1px solid rgba(192,57,43,.45);
+  border-radius:var(--r);padding:9px 10px;text-align:left;margin-top:0}
+.rel-status.erro .btn-azul{margin-top:8px;display:block}
+.rel-alerta{background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.5);border-radius:var(--r);
+  padding:10px 11px;margin:0 0 14px}
+.rel-alerta-titulo{font-size:12.5px;font-weight:800;color:#ffb4a8}
+.rel-alerta-texto{font-size:11.5px;color:var(--c2,var(--c1));margin:4px 0 6px;line-height:1.4}
+.rel-pedido{border-bottom:1px dashed rgba(200,150,12,.1);padding:2px 0 5px}
+.rel-pedido .rel-item{border-bottom:none;padding-bottom:1px}
+.rel-pedido-sub{font-size:10.5px;color:var(--c3);padding-left:2px}
+.rel-item.rel-total{border-top:1px solid var(--ol);border-bottom:none;font-weight:800;margin-top:4px}
 
 /* ========== BOTÃO "VER MAIS" DO CATÁLOGO ========== */
 .btn-ver-mais{width:100%;margin:6px 0 10px;padding:14px;
@@ -2169,6 +2182,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=72"></script>
+<script src="app.js?v=73"></script>
 </body>
 </html>
