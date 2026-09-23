@@ -52,3 +52,9 @@ milho 60kg, outro pelo de 30kg). O relatório passou a ser organizado assim:
 - PDF no computador não fica mais achatado (a folha era espremida na altura
   da tela). Vale também para a via do pedido.
 - Nomes com `& ' + ! ? "` e outros símbolos saem inteiros no PDF.
+
+## Simplificação (23/09/2026)
+
+A pedido, a seção **Por cliente** saiu da tela e do PDF. O relatório tem agora
+só o resumo, os **pedidos sem baixa de entrega** e os **produtos entregues**
+(total de unidades de cada produto). Para voltar com a seção, ver o PR #13.

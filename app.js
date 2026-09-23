@@ -5713,8 +5713,8 @@ function ordenarPedidosRelatorio(a, b, data) {
 }
 
 // Agrega os números do período. A comissão é paga por unidade de cada
-// produto, então o centro do relatório é "quanto de cada produto foi entregue,
-// para cada cliente". Produtos saem dos próprios itens dos pedidos: um produto
+// produto, então o centro do relatório é "quanto de cada produto foi
+// entregue". Produtos saem dos próprios itens dos pedidos: um produto
 // cadastrado hoje aparece sozinho assim que for entregue, sem lista fixa.
 function calcularDadosRelatorio(pedidos, catalogo = []) {
   // Soma em centavos para o total bater exatamente com a soma das linhas.
@@ -5730,16 +5730,7 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
   const ordemNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' });
 
   const porProduto = new Map();
-  const porCliente = new Map();
   pedidos.forEach(p => {
-    const chaveCli = p.cliente_id != null ? `id:${p.cliente_id}` : `nome:${p.cliente_nome || 'Cliente'}`;
-    if (!porCliente.has(chaveCli)) {
-      porCliente.set(chaveCli, { nome: p.cliente_nome || 'Cliente', totalC: 0, pedidos: [], itens: new Map() });
-    }
-    const cli = porCliente.get(chaveCli);
-    cli.totalC += centavos(p.valor);
-    cli.pedidos.push({ id: p.id, data: dataRealEntrega(p) });
-
     (p.itens || []).forEach(i => {
       const chave = chaveProduto(i);
       const nome = nomeProduto(i);
@@ -5748,21 +5739,15 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
       if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0 });
       const prod = porProduto.get(chave);
       prod.qtd += qtd; prod.valorC += valorC;
-      if (!cli.itens.has(chave)) cli.itens.set(chave, { nome, qtd: 0 });
-      cli.itens.get(chave).qtd += qtd;
     });
   });
 
   const produtos = [...porProduto.values()]
     .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100 }))
     .sort(ordemNome);
-  const clientes = [...porCliente.values()]
-    .map(c => ({ nome: c.nome, total: c.totalC / 100, pedidos: c.pedidos,
-      itens: [...c.itens.values()].sort(ordemNome) }))
-    .sort(ordemNome);
 
   return { total: totalC / 100, recebido: recebidoC / 100, aReceber: (totalC - recebidoC) / 100,
-    nPedidos: pedidos.length, produtos, clientes };
+    nPedidos: pedidos.length, produtos };
 }
 
 function dataRealEntregaCurta(d) {
@@ -5874,23 +5859,6 @@ function renderizarRelatorio() {
           <span class="rel-linha-nome">${esc(p.nome)}</span>
           <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un</span>
         </div>`).join('') || '<div class="rel-vazio">Pedidos sem itens detalhados</div>'}
-    </div>
-
-    <div class="rel-secao">
-      <div class="rel-secao-titulo">Por cliente <span>${d.clientes.length}</span></div>
-      ${d.clientes.map(c => `
-        <details class="rel-cliente">
-          <summary>
-            <span class="rel-linha-nome">${esc(c.nome)}</span>
-            <span class="rel-linha-valor">${moeda(c.total)}</span>
-          </summary>
-          ${c.itens.map(i => `
-            <div class="rel-linha rel-sub">
-              <span class="rel-linha-nome">${esc(i.nome)}</span>
-              <span class="rel-linha-qtd">${qtdTexto(i.qtd)} un</span>
-            </div>`).join('')}
-          <div class="rel-pedidos-ref">Pedidos: ${c.pedidos.map(p => `nº ${esc(p.id)} (${esc(dataRealEntregaCurta(p.data))})`).join(', ')}</div>
-        </details>`).join('')}
     </div>`;
 }
 
@@ -5959,7 +5927,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
     if (y + altura > pageH - mB - 8) { doc.addPage(); y = topoContinuacao; }
   };
   const tabela = (opcoes) => {
-    garantirEspaco(opcoes.alturaMinima ?? 20);
+    garantirEspaco(20);
     const direita = Object.entries(opcoes.columnStyles || {}).filter(([, e]) => e.halign === 'right').map(([i]) => Number(i));
     doc.autoTable({ ...estiloTabela, startY: y, showFoot: 'lastPage', ...opcoes,
       didParseCell: data => {
@@ -5975,7 +5943,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
         const yl = data.cell.y + data.cell.height;
         doc.line(mL, yl, pageW - mR, yl);
       }) });
-    y = doc.lastAutoTable.finalY + (opcoes.espacoDepois ?? 9);
+    y = doc.lastAutoTable.finalY + 9;
   };
   const tituloSecao = (texto, cor = VERDE) => {
     garantirEspaco(26);
@@ -6041,50 +6009,12 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.text('Nenhum pedido entregue neste período.', mL, y);
     y += 10;
   } else {
-    // 1) Total de cada produto no período
+    // Total de cada produto no período (base da comissão por unidade)
     tituloSecao('Produtos entregues');
     tabela({
       head: [['Produto', 'Quantidade']],
       body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`]),
       columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
-    });
-
-    // 2) Cada cliente com a quantidade de cada produto. Um bloco por cliente,
-    // sem partir entre páginas (a não ser que sozinho passe de uma página).
-    tituloSecao('Por cliente');
-    const pad = (t, b, l = 2) => ({ top: t, bottom: b, left: l, right: 2 });
-    d.clientes.forEach((c, n) => {
-      const refs = c.pedidos.map(p => `${p.id} (${dataRealEntregaCurta(p.data)})`).join(', ');
-      const altura = 12 + c.itens.length * 5.6;
-      if (altura < pageH - topoContinuacao - mB - 10) garantirEspaco(altura);
-      else garantirEspaco(30);
-      if (n > 0 && y > topoContinuacao) {
-        doc.setDrawColor(215, 215, 210); doc.setLineWidth(0.2);
-        doc.line(mL, y, pageW - mR, y);
-      }
-      tabela({
-        alturaMinima: 0,
-        espacoDepois: 1,
-        body: [
-          [{ content: c.nome, styles: { fontStyle: 'bold', textColor: VERDE, fontSize: 10, cellPadding: pad(3, 0.3) } },
-           { content: moeda(c.total), styles: { halign: 'right', textColor: VERDE, fontSize: 10, cellPadding: pad(3, 0.3) } }],
-          [{ content: `Pedidos nº ${refs}`, colSpan: 2, styles: { fontSize: 7.5, textColor: CINZA, cellPadding: pad(0, 1.6) } }],
-          ...c.itens.map(i => [
-            { content: i.nome, styles: { cellPadding: pad(1.2, 1.2, 7) } },
-            { content: `${qtdTexto(i.qtd)} un`, styles: { halign: 'right', cellPadding: pad(1.2, 1.2) } },
-          ]),
-        ],
-        columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
-        didDrawCell: () => {},
-      });
-    });
-    y += 3;
-    tabela({
-      alturaMinima: 12,
-      body: [[`${d.clientes.length} cliente(s) — ${d.nPedidos} pedido(s)`, moeda(d.total)]],
-      styles: { ...estiloTabela.styles, fontSize: 9.5, textColor: VERDE, fillColor: [240, 244, 240] },
-      columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
-      didDrawCell: () => {},
     });
   }
 
