@@ -34,3 +34,21 @@ entregue pode ficar de fora.
 
 Testes: `report-completeness.test.cjs` e `report-period.test.cjs`.
 Nenhuma alteração no banco de dados.
+
+## Redesenho (23/09/2026)
+
+A comissão é paga **por unidade de cada produto** (ex.: um valor por saco de
+milho 60kg, outro pelo de 30kg). O relatório passou a ser organizado assim:
+
+- **Produtos entregues:** total de unidades de cada produto no período.
+- **Por cliente:** cada cliente com a quantidade de cada produto (somando todos
+  os pedidos dele) e os números dos pedidos, para conferência.
+- **Filtro de vendedor** (admin): Todos / Admin / Vendedor. O PDF sai só do
+  vendedor escolhido, pronto para o acerto.
+- Produtos saem dos próprios itens entregues: **produto novo aparece sozinho**,
+  e produto renomeado soma junto usando o nome atual do catálogo.
+- Resumo reduzido a três números (entregue, pedidos, a receber). Saíram os
+  "top 5" e a lista pedido a pedido.
+- PDF no computador não fica mais achatado (a folha era espremida na altura
+  da tela). Vale também para a via do pedido.
+- Nomes com `& ' + ! ? "` e outros símbolos saem inteiros no PDF.

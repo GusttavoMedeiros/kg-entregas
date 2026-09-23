@@ -4851,7 +4851,7 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
         if (!atual() || seq !== renderSeq) return;
         // Calcula scale pra caber na largura do canvas (CSS pixels)
         const dpr = window.devicePixelRatio || 1;
-        const cssW = papel.clientWidth - 24; /* padding */
+        const cssW = Math.min(papel.clientWidth - 24, 900); /* padding; no computador não passa de 900px */
         const viewport = page.getViewport({ scale: 1 });
         const scale = (cssW / viewport.width) * dpr;
         const scaledVp = page.getViewport({ scale });
@@ -5572,6 +5572,7 @@ window.addEventListener('appinstalled', () => {
 // ============================================================
 let relTipo = 'semanal';   // 'semanal' | 'quinzenal' | 'mensal'
 let relOffset = 0;         // 0 = período atual, -1 = anterior...
+let relVendedor = '';      // admin: '' = todos, ou o login do vendedor
 
 // Pedidos buscados no servidor no momento em que o relatório é aberto/impresso.
 // A lista em memória pode estar parada se a sincronização automática falhou
@@ -5613,6 +5614,7 @@ function pedidosBaseRelatorio() {
 function abrirModalRelatorio() {
   relTipo = 'semanal';
   relOffset = 0;
+  relVendedor = '';
   relFonte = { pedidos: null, atualizadoEm: null, erro: null, carregando: true };
   // Reseta abas visuais para a primeira
   document.querySelectorAll('#abas-relatorio .aba').forEach((b, i) => {
@@ -5710,54 +5712,61 @@ function ordenarPedidosRelatorio(a, b, data) {
   return (Number(a.id) || 0) - (Number(b.id) || 0);
 }
 
-// Agrega os números e tops do período
-function calcularDadosRelatorio(pedidos) {
+// Agrega os números do período. A comissão é paga por unidade de cada
+// produto, então o centro do relatório é "quanto de cada produto foi entregue,
+// para cada cliente". Produtos saem dos próprios itens dos pedidos: um produto
+// cadastrado hoje aparece sozinho assim que for entregue, sem lista fixa.
+function calcularDadosRelatorio(pedidos, catalogo = []) {
   // Soma em centavos para o total bater exatamente com a soma das linhas.
   const centavos = v => Math.round((Number(v) || 0) * 100);
-  const somar = lista => lista.reduce((s, p) => s + centavos(p.valor), 0) / 100;
-  const total     = somar(pedidos);
-  const recebido  = somar(pedidos.filter(p => foiPago(p)));
-  const aReceber  = (Math.round(total * 100) - Math.round(recebido * 100)) / 100;
+  const totalC    = pedidos.reduce((s, p) => s + centavos(p.valor), 0);
+  const recebidoC = pedidos.filter(p => foiPago(p)).reduce((s, p) => s + centavos(p.valor), 0);
 
-  // Por vendedor (base da comissão)
-  const porVend = Object.create(null);
+  // Nome atual do catálogo (produto renomeado continua somando junto).
+  const nomeCatalogo = new Map(catalogo.map(p => [Number(p.id), p.nome]));
+  const chaveProduto = i => (i.produto_id != null && i.produto_id !== '')
+    ? `id:${i.produto_id}` : `nome:${i.nome || i.produto_nome || 'Produto'}`;
+  const nomeProduto = i => nomeCatalogo.get(Number(i.produto_id)) || i.nome || i.produto_nome || 'Produto';
+  const ordemNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' });
+
+  const porProduto = new Map();
+  const porCliente = new Map();
   pedidos.forEach(p => {
-    const v = p.vendedor || '';
-    if (!porVend[v]) porVend[v] = { nPedidos: 0, total: 0, recebido: 0 };
-    porVend[v].nPedidos += 1;
-    porVend[v].total    += centavos(p.valor);
-    if (foiPago(p)) porVend[v].recebido += centavos(p.valor);
+    const chaveCli = p.cliente_id != null ? `id:${p.cliente_id}` : `nome:${p.cliente_nome || 'Cliente'}`;
+    if (!porCliente.has(chaveCli)) {
+      porCliente.set(chaveCli, { nome: p.cliente_nome || 'Cliente', totalC: 0, pedidos: [], itens: new Map() });
+    }
+    const cli = porCliente.get(chaveCli);
+    cli.totalC += centavos(p.valor);
+    cli.pedidos.push({ id: p.id, data: dataRealEntrega(p) });
+
+    (p.itens || []).forEach(i => {
+      const chave = chaveProduto(i);
+      const nome = nomeProduto(i);
+      const qtd = Number(i.qtd) || 0;
+      const valorC = Math.round((Number(i.preco_unit) || 0) * qtd * 100);
+      if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0 });
+      const prod = porProduto.get(chave);
+      prod.qtd += qtd; prod.valorC += valorC;
+      if (!cli.itens.has(chave)) cli.itens.set(chave, { nome, qtd: 0 });
+      cli.itens.get(chave).qtd += qtd;
+    });
   });
-  const porVendedor = Object.entries(porVend)
-    .map(([vendedor, d]) => ({ vendedor, nPedidos: d.nPedidos, total: d.total / 100,
-      recebido: d.recebido / 100, aReceber: (d.total - d.recebido) / 100 }))
-    .sort((a, b) => b.total - a.total);
 
-  // Top produtos (por valor) a partir dos itens
-  const porProduto = Object.create(null);
-  pedidos.forEach(p => (p.itens||[]).forEach(i => {
-    const nome = i.nome || i.produto_nome || 'Produto';
-    if (!porProduto[nome]) porProduto[nome] = { valor: 0, qtd: 0 };
-    porProduto[nome].valor += (Number(i.preco_unit)||0) * (Number(i.qtd)||0);
-    porProduto[nome].qtd   += Number(i.qtd)||0;
-  }));
-  const topProdutos = Object.entries(porProduto)
-    .map(([nome, d]) => ({ nome, ...d }))
-    .sort((a,b) => b.valor - a.valor).slice(0, 5);
+  const produtos = [...porProduto.values()]
+    .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100 }))
+    .sort(ordemNome);
+  const clientes = [...porCliente.values()]
+    .map(c => ({ nome: c.nome, total: c.totalC / 100, pedidos: c.pedidos,
+      itens: [...c.itens.values()].sort(ordemNome) }))
+    .sort(ordemNome);
 
-  // Top clientes (por valor)
-  const porCliente = Object.create(null);
-  pedidos.forEach(p => {
-    const nome = p.cliente_nome || 'Cliente';
-    if (!porCliente[nome]) porCliente[nome] = { valor: 0, pedidos: 0 };
-    porCliente[nome].valor   += Number(p.valor)||0;
-    porCliente[nome].pedidos += 1;
-  });
-  const topClientes = Object.entries(porCliente)
-    .map(([nome, d]) => ({ nome, ...d }))
-    .sort((a,b) => b.valor - a.valor).slice(0, 5);
+  return { total: totalC / 100, recebido: recebidoC / 100, aReceber: (totalC - recebidoC) / 100,
+    nPedidos: pedidos.length, produtos, clientes };
+}
 
-  return { total, recebido, aReceber, nPedidos: pedidos.length, porVendedor, topProdutos, topClientes };
+function dataRealEntregaCurta(d) {
+  return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '';
 }
 
 function nomeVendedorRelatorio(v) {
@@ -5766,10 +5775,8 @@ function nomeVendedorRelatorio(v) {
   return v || 'Sem vendedor';
 }
 
-function situacaoPagamentoRelatorio(p) {
-  if (foiPago(p)) return 'Pago';
-  if (p.status_pagamento === 'recusado') return 'Recusado';
-  return 'A receber';
+function qtdTexto(q) {
+  return Number.isInteger(q) ? String(q) : String(Math.round(q * 100) / 100).replace('.', ',');
 }
 
 function textoFonteRelatorio() {
@@ -5777,23 +5784,44 @@ function textoFonteRelatorio() {
   if (relFonte.erro) return { classe: 'erro', texto: 'Não foi possível conferir com o servidor. Os números abaixo são os salvos neste aparelho e podem estar incompletos. Não use para acertar comissão.' };
   if (relFonte.atualizadoEm) {
     const h = relFonte.atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    return { classe: 'ok', texto: `Dados conferidos com o servidor às ${h}.` };
+    return { classe: 'ok', texto: `Conferido com o servidor às ${h}` };
   }
   return { classe: '', texto: '' };
 }
 
-function renderizarRelatorio() {
+// Admin escolhe de qual vendedor é o relatório (o acerto é por vendedor).
+function filtrarVendedorRelatorio(lista) {
+  if (usuario.perfil !== 'admin' || !relVendedor) return lista;
+  return lista.filter(p => (p.vendedor || '') === relVendedor);
+}
+
+function mudarVendedorRelatorio(v) {
+  relVendedor = v;
+  renderizarRelatorio();
+}
+
+// Tudo que o relatório mostra, na tela e no PDF, sai daqui.
+function montarRelatorio() {
   const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
+  const base = pedidosBaseRelatorio();
+  const entreguesTodos = pedidosDoRelatorio(ini, fim, base);
+  const pedidos = filtrarVendedorRelatorio(entreguesTodos);
+  const pendentes = filtrarVendedorRelatorio(pendentesDoRelatorio(fim, base));
+  const d = calcularDadosRelatorio(pedidos, typeof todosOsProdutos !== 'undefined' ? todosOsProdutos : []);
+  // Vendedores do período, para os botões de filtro do admin.
+  const vendedores = [...new Set(entreguesTodos.map(p => p.vendedor).filter(Boolean))]
+    .sort((a, b) => nomeVendedorRelatorio(a).localeCompare(nomeVendedorRelatorio(b), 'pt-BR'));
+  return { ini, fim, label, pedidos, pendentes, d, vendedores };
+}
+
+function renderizarRelatorio() {
+  const { fim, label, pedidos, pendentes, d, vendedores } = montarRelatorio();
   document.getElementById('rel-periodo-label').textContent = label;
 
   // Desabilita seta "próximo" quando já está no período atual
   const btnProx = document.getElementById('rel-nav-proximo');
   if (btnProx) btnProx.disabled = (relOffset >= 0);
 
-  const base = pedidosBaseRelatorio();
-  const pedidos = pedidosDoRelatorio(ini, fim, base);
-  const pendentes = pendentesDoRelatorio(fim, base);
-  const d = calcularDadosRelatorio(pedidos);
   const el = document.getElementById('relatorio-conteudo');
   const admin = usuario.perfil === 'admin';
 
@@ -5802,86 +5830,68 @@ function renderizarRelatorio() {
     <div class="rel-status ${fonte.classe}">${esc(fonte.texto)}${relFonte.erro
       ? ' <button type="button" class="btn-azul" onclick="atualizarFonteRelatorio()">Tentar novamente</button>' : ''}</div>` : '';
 
-  const htmlPendentes = pendentes.length ? `
-    <div class="rel-alerta">
-      <div class="rel-alerta-titulo">⚠ ${pendentes.length} pedido(s) ainda não marcado(s) como entregue(s)</div>
-      <div class="rel-alerta-texto">Previstos para até ${esc(dataBR(fim))}. <b>Não estão somados no total.</b> Se já foram entregues, marque a entrega para entrarem no relatório.</div>
-      ${pendentes.map(p => `
-        <div class="rel-item">
-          <span class="rel-item-extra">${esc(p.data_entrega ? dataBR(p.data_entrega) : 'sem data')}</span>
-          <span class="rel-item-nome">#${esc(p.id)} · ${esc(p.cliente_nome || 'Cliente')}${admin ? ` · ${esc(nomeVendedorRelatorio(p.vendedor))}` : ''}</span>
-          <span class="rel-item-valor">${moeda(p.valor)}</span>
-        </div>`).join('')}
+  const opcoesVendedor = admin && (vendedores.length > 1 || relVendedor) ? `
+    <div class="rel-filtro" role="group" aria-label="Vendedor">
+      ${['', ...vendedores].map(v => `
+        <button type="button" class="rel-chip${v === relVendedor ? ' ativa' : ''}"
+          onclick="mudarVendedorRelatorio(${esc(JSON.stringify(v))})">${esc(v === '' ? 'Todos' : nomeVendedorRelatorio(v))}</button>`).join('')}
     </div>` : '';
 
+  const htmlPendentes = pendentes.length ? `
+    <details class="rel-alerta">
+      <summary><b>⚠ ${pendentes.length} pedido(s) sem baixa de entrega</b><span>fora do total · ver</span></summary>
+      <div class="rel-alerta-texto">Previstos até ${esc(dataBR(fim))}. Se já foram entregues, marque a entrega para entrarem no relatório.</div>
+      ${pendentes.map(p => `
+        <div class="rel-linha">
+          <span class="rel-linha-nome">${esc(p.cliente_nome || 'Cliente')} <small>nº ${esc(p.id)} · ${esc(p.data_entrega ? dataRealEntregaCurta(p.data_entrega) : 'sem data')}</small></span>
+          <span class="rel-linha-valor">${moeda(p.valor)}</span>
+        </div>`).join('')}
+    </details>` : '';
+
+  const htmlResumo = `
+    <div class="rel-resumo">
+      <div><b>${moeda(d.total)}</b><span>Entregue</span></div>
+      <div><b>${d.nPedidos}</b><span>Pedidos</span></div>
+      <div class="${d.aReceber > 0 ? 'rel-laranja' : ''}"><b>${moeda(d.aReceber)}</b><span>A receber</span></div>
+    </div>`;
+
   if (!pedidos.length) {
-    el.innerHTML = htmlFonte + htmlPendentes +
+    el.innerHTML = htmlFonte + opcoesVendedor + htmlPendentes +
       `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
     return;
   }
 
   el.innerHTML = `
     ${htmlFonte}
-    <div class="rel-cards">
-      <div class="rel-card">
-        <div class="rel-card-valor">${moeda(d.total)}</div>
-        <div class="rel-card-label">Total entregue</div>
-      </div>
-      <div class="rel-card">
-        <div class="rel-card-valor">${d.nPedidos}</div>
-        <div class="rel-card-label">Pedidos entregues</div>
-      </div>
-      <div class="rel-card rel-verde">
-        <div class="rel-card-valor">${moeda(d.recebido)}</div>
-        <div class="rel-card-label">Recebido</div>
-      </div>
-      <div class="rel-card rel-laranja">
-        <div class="rel-card-valor">${moeda(d.aReceber)}</div>
-        <div class="rel-card-label">A receber</div>
-      </div>
-    </div>
-
+    ${opcoesVendedor}
+    ${htmlResumo}
     ${htmlPendentes}
 
-    ${admin ? `
-    <div class="rel-lista-titulo">👤 Por vendedor</div>
-    ${d.porVendedor.map(v => `
-      <div class="rel-item">
-        <span class="rel-item-nome">${esc(nomeVendedorRelatorio(v.vendedor))}</span>
-        <span class="rel-item-extra">${v.nPedidos} ped.</span>
-        <span class="rel-item-valor">${moeda(v.total)}</span>
-      </div>`).join('')}` : ''}
-
-    <div class="rel-lista-titulo">📋 Todos os pedidos entregues (${d.nPedidos})</div>
-    ${pedidos.map(p => `
-      <div class="rel-pedido">
-        <div class="rel-item">
-          <span class="rel-item-extra">${esc(dataBR(dataRealEntrega(p)))}</span>
-          <span class="rel-item-nome">#${esc(p.id)} · ${esc(p.cliente_nome || 'Cliente')}</span>
-          <span class="rel-item-valor">${moeda(p.valor)}</span>
-        </div>
-        <div class="rel-pedido-sub">${admin ? `${esc(nomeVendedorRelatorio(p.vendedor))} · ` : ''}${esc(situacaoPagamentoRelatorio(p))}</div>
-      </div>`).join('')}
-    <div class="rel-item rel-total">
-      <span class="rel-item-nome">Total (${d.nPedidos} pedidos)</span>
-      <span class="rel-item-valor">${moeda(d.total)}</span>
+    <div class="rel-secao">
+      <div class="rel-secao-titulo">Produtos entregues <span>${d.produtos.length}</span></div>
+      ${d.produtos.map(p => `
+        <div class="rel-linha">
+          <span class="rel-linha-nome">${esc(p.nome)}</span>
+          <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un</span>
+        </div>`).join('') || '<div class="rel-vazio">Pedidos sem itens detalhados</div>'}
     </div>
 
-    <div class="rel-lista-titulo">🏆 Top 5 produtos</div>
-    ${d.topProdutos.map(t => `
-      <div class="rel-item">
-        <span class="rel-item-nome">${esc(t.nome)}</span>
-        <span class="rel-item-extra">${t.qtd}un</span>
-        <span class="rel-item-valor">${moeda(t.valor)}</span>
-      </div>`).join('') || '<div class="rel-vazio">Sem itens detalhados</div>'}
-
-    <div class="rel-lista-titulo">🏪 Top 5 clientes</div>
-    ${d.topClientes.map(t => `
-      <div class="rel-item">
-        <span class="rel-item-nome">${esc(t.nome)}</span>
-        <span class="rel-item-extra">${t.pedidos} ped.</span>
-        <span class="rel-item-valor">${moeda(t.valor)}</span>
-      </div>`).join('')}`;
+    <div class="rel-secao">
+      <div class="rel-secao-titulo">Por cliente <span>${d.clientes.length}</span></div>
+      ${d.clientes.map(c => `
+        <details class="rel-cliente">
+          <summary>
+            <span class="rel-linha-nome">${esc(c.nome)}</span>
+            <span class="rel-linha-valor">${moeda(c.total)}</span>
+          </summary>
+          ${c.itens.map(i => `
+            <div class="rel-linha rel-sub">
+              <span class="rel-linha-nome">${esc(i.nome)}</span>
+              <span class="rel-linha-qtd">${qtdTexto(i.qtd)} un</span>
+            </div>`).join('')}
+          <div class="rel-pedidos-ref">Pedidos: ${c.pedidos.map(p => `nº ${esc(p.id)} (${esc(dataRealEntregaCurta(p.data))})`).join(', ')}</div>
+        </details>`).join('')}
+    </div>`;
 }
 
 // Gera o Blob do PDF do relatório. Retorna { blob, url, nomeArquivo }.
@@ -5891,35 +5901,37 @@ async function gerarPdfRelatorio(ini, fim, label) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
-  const base = pedidosBaseRelatorio();
-  const pedidos = pedidosDoRelatorio(ini, fim, base);
-  const pendentes = pendentesDoRelatorio(fim, base);
-  const d = calcularDadosRelatorio(pedidos);
-  const admin = usuario.perfil === 'admin';
-  const escopo = usuario.perfil === 'vendedor' ? `Vendedor: ${usuario.nome || usuario.login} — apenas entregues` : 'Pedidos entregues — todos os vendedores';
-  // As fontes embutidas não têm alguns símbolos (#, ·, ª, –); sem esta troca
-  // eles somem do PDF.
+  const { pendentes, d } = montarRelatorio();
+  const escopo = usuario.perfil === 'vendedor'
+    ? `Vendedor: ${usuario.nome || usuario.login}`
+    : (relVendedor ? `Vendedor: ${nomeVendedorRelatorio(relVendedor)}` : 'Todos os vendedores');
+  // As fontes embutidas (recortadas) não têm vários símbolos: & ' + ! ? " % # · ª
+  // e outros somem do PDF. Textos fixos trocam o símbolo; nas tabelas, a célula
+  // com um desses símbolos usa a Helvetica, para o nome do cliente sair inteiro.
   const seguro = t => String(t ?? '').replace(/·/g, '—').replace(/–/g, '-').replace(/ª/g, 'a').replace(/#/g, 'Nº ');
+  const FORA_DA_FONTE = /[!"#%&'*+;<=>?@[\\\]^_`{|}~ÄÈÎÖÜäèîöüª·–“”‘’…]/;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const { FONT_CINZEL, FONT_NUNITO } = _registrarFontesPdf(doc);
+  const fontesEmbutidas = FONT_NUNITO !== 'helvetica';
   const pageW = 210, pageH = 297;
   const mL = 15, mR = 15, mT = 15, mB = 18;
   const cW = pageW - mL - mR;
   const topoContinuacao = mT + 27; // abaixo do cabeçalho repetido nas páginas seguintes
+  const VERDE = [25, 66, 42], CINZA = [110, 110, 110];
 
   const drawCabecalho = (yRef) => {
     if (_viaAssets.logoPng) {
       try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, yRef, 19, 19, undefined, 'FAST'); }
       catch (e) { /* relatório continua sem imagem se o PNG falhar */ }
     }
-    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(16); doc.setTextColor(25, 66, 42);
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(16); doc.setTextColor(...VERDE);
     doc.text('KG AGROPET', mL + 23, yRef + 8);
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 80, 80);
     doc.text('Glória do Goitá — PE', mL + 23, yRef + 14);
-    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(12); doc.setTextColor(25, 66, 42);
-    doc.text('RELATÓRIO DE VENDAS', pageW - mR, yRef + 7, { align: 'right' });
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(12); doc.setTextColor(...VERDE);
+    doc.text('RELATÓRIO DE ENTREGAS', pageW - mR, yRef + 7, { align: 'right' });
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
     doc.text(seguro(label), pageW - mR, yRef + 13, { align: 'right' });
     doc.setDrawColor(212, 175, 55); doc.setLineWidth(0.45);
@@ -5927,57 +5939,60 @@ async function gerarPdfRelatorio(ini, fim, label) {
   };
   const drawRodape = (pagina, totalPaginas) => {
     const y = pageH - mB + 4;
-    doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
+    doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
     doc.line(mL, y - 4, pageW - mR, y - 4);
-    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
     doc.text('Este documento não substitui documento fiscal.', mL, y);
     doc.text(`Página ${pagina} de ${totalPaginas}`, pageW - mR, y, { align: 'right' });
     doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
   };
+  // Tabelas sem grade: só uma linha fina entre as linhas, visual limpo.
   const estiloTabela = {
+    theme: 'plain',
     margin: { left: mL, right: mR, top: topoContinuacao, bottom: mB + 8 },
-    styles: { font: FONT_NUNITO, fontSize: 8.5, cellPadding: 2.2, textColor: [40, 40, 40], overflow: 'linebreak', lineColor: [205, 205, 200], lineWidth: 0.12 },
-    headStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5 },
-    footStyles: { fillColor: [232, 240, 234], textColor: [25, 66, 42], font: FONT_NUNITO, fontStyle: 'bold', fontSize: 9 },
+    styles: { font: FONT_NUNITO, fontSize: 9, cellPadding: { top: 1.8, bottom: 1.8, left: 2, right: 2 }, textColor: [40, 40, 40], overflow: 'linebreak' },
+    headStyles: { textColor: VERDE, font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5, fillColor: false },
+    footStyles: { textColor: VERDE, font: FONT_NUNITO, fontStyle: 'bold', fontSize: 9.5, fillColor: [240, 244, 240] },
   };
   let y = mT;
   const garantirEspaco = (altura) => {
     if (y + altura > pageH - mB - 8) { doc.addPage(); y = topoContinuacao; }
   };
   const tabela = (opcoes) => {
-    garantirEspaco(20);
-    const limpar = linhas => linhas?.map(l => l.map(c => (c && typeof c === 'object') ? { ...c, content: seguro(c.content) } : seguro(c)));
+    garantirEspaco(opcoes.alturaMinima ?? 20);
     const direita = Object.entries(opcoes.columnStyles || {}).filter(([, e]) => e.halign === 'right').map(([i]) => Number(i));
     doc.autoTable({ ...estiloTabela, startY: y, showFoot: 'lastPage', ...opcoes,
-      head: limpar(opcoes.head), body: limpar(opcoes.body), foot: limpar(opcoes.foot),
-      // columnStyles não vale para cabeçalho/rodapé; alinha os valores à direita.
-      didParseCell: data => { if (data.section !== 'body' && direita.includes(data.column.index)) data.cell.styles.halign = 'right'; } });
-    y = doc.lastAutoTable.finalY + 8;
+      didParseCell: data => {
+        // columnStyles não vale para cabeçalho/rodapé; alinha os valores à direita.
+        if (data.section !== 'body' && direita.includes(data.column.index)) data.cell.styles.halign = 'right';
+        if (fontesEmbutidas && FORA_DA_FONTE.test(data.cell.text.join(' '))) { data.cell.styles.font = 'helvetica'; data.cell.styles.fontStyle = 'normal'; }
+      },
+      // Linha fina sob cada linha (e mais forte sob o cabeçalho).
+      didDrawCell: opcoes.didDrawCell || (data => {
+        if (data.column.index !== 0) return;
+        const forte = data.section === 'head';
+        doc.setDrawColor(...(forte ? VERDE : [225, 225, 222])); doc.setLineWidth(forte ? 0.3 : 0.15);
+        const yl = data.cell.y + data.cell.height;
+        doc.line(mL, yl, pageW - mR, yl);
+      }) });
+    y = doc.lastAutoTable.finalY + (opcoes.espacoDepois ?? 9);
   };
-  const titulo = (texto, cor = [25, 66, 42]) => {
-    garantirEspaco(24);
-    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(8); doc.setTextColor(...cor);
-    doc.text(texto, mL, y);
-    y += 3;
+  const tituloSecao = (texto, cor = VERDE) => {
+    garantirEspaco(26);
+    doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(10); doc.setTextColor(...cor);
+    doc.text(seguro(texto), mL, y);
+    y += 2.5;
   };
 
   drawCabecalho(y);
-  y += 27;
+  y += 28;
 
-  // Contexto
-  doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-  doc.text('PERÍODO', mL, y);
-  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text(seguro(label), mL, y + 4);
-  doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-  doc.text('ESCOPO', mL + cW / 2, y);
-  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  const escopoLines = doc.splitTextToSize(seguro(escopo), cW / 2 - 4);
-  doc.text(escopoLines, mL + cW / 2, y + 4);
-  y += 4 + (escopoLines.length * 4) + 2;
-  doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
-  doc.text(`Datas de ${dataBR(ini)} a ${dataBR(fim)}, pela data em que a entrega foi concluída.`, mL, y + 2);
-  y += 7;
+  // Período e escopo em uma linha
+  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+  doc.text(seguro(`${dataBR(ini)} a ${dataBR(fim)}  —  ${escopo}`), mL, y);
+  doc.setFontSize(7.5); doc.setTextColor(...CINZA);
+  doc.text('Considera a data em que a entrega foi concluída.', mL, y + 4.5);
+  y += 11;
 
   // Aviso quando não foi possível confirmar com o servidor
   if (relFonte.erro || !relFonte.atualizadoEm) {
@@ -5990,85 +6005,86 @@ async function gerarPdfRelatorio(ini, fim, label) {
     y += h + 5;
   }
 
-  // Resumo (4 cards)
-  doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(8); doc.setTextColor(25, 66, 42);
-  doc.text('RESUMO DO PERÍODO', mL, y);
-  y += 5;
-
+  // Resumo: três números
   const cards = [
     ['Total entregue', moeda(d.total)],
     ['Pedidos entregues', String(d.nPedidos)],
-    ['Recebido', moeda(d.recebido)],
     ['A receber', moeda(d.aReceber)],
   ];
-  const cardW = (cW - 6) / 4;
+  const cardW = (cW - 8) / 3;
   cards.forEach((c, i) => {
-    const cx = mL + i * (cardW + 2);
-    doc.setFillColor(250, 250, 248); doc.setDrawColor(205, 205, 200); doc.setLineWidth(0.25);
-    doc.roundedRect(cx, y, cardW, 16, 1.5, 1.5, 'FD');
-    doc.setDrawColor(212, 175, 55); doc.setLineWidth(0.7);
-    doc.line(cx + 2, y + 1.5, cx + cardW - 2, y + 1.5);
-    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(10); doc.setTextColor(25, 66, 42);
+    const cx = mL + i * (cardW + 4);
+    doc.setFillColor(248, 249, 246); doc.setDrawColor(222, 224, 218); doc.setLineWidth(0.25);
+    doc.roundedRect(cx, y, cardW, 15, 1.5, 1.5, 'FD');
+    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(12); doc.setTextColor(...VERDE);
     doc.text(c[1], cx + cardW / 2, y + 7, { align: 'center' });
-    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(6.5); doc.setTextColor(100, 100, 100);
-    doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 12, { align: 'center' });
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(6.5); doc.setTextColor(...CINZA);
+    doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 11.5, { align: 'center' });
   });
-  y += 22;
+  y += 24;
 
-  // Pedidos não marcados como entregues: alerta logo após o resumo
+  // Pedidos sem baixa de entrega: alerta logo após o resumo
   if (pendentes.length) {
-    titulo(`ATENÇÃO: ${pendentes.length} PEDIDO(S) AINDA NÃO MARCADO(S) COMO ENTREGUE(S) — FORA DO TOTAL`, [170, 40, 30]);
+    tituloSecao(`Atenção: ${pendentes.length} pedido(s) sem baixa de entrega (fora do total)`, [170, 40, 30]);
     tabela({
-      head: [['Previsto', 'Pedido', 'Cliente', ...(admin ? ['Vendedor'] : []), 'Valor']],
-      body: pendentes.map(p => [p.data_entrega ? dataBR(p.data_entrega) : 'sem data', String(p.id),
-        p.cliente_nome || 'Cliente', ...(admin ? [nomeVendedorRelatorio(p.vendedor)] : []), moeda(p.valor)]),
-      headStyles: { ...estiloTabela.headStyles, fillColor: [253, 236, 234], textColor: [150, 30, 20] },
-      columnStyles: admin
-        ? { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 32 }, 4: { halign: 'right', cellWidth: 28 } }
-        : { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { halign: 'right', cellWidth: 28 } },
+      head: [['Cliente', 'Pedido', 'Previsto', 'Valor']],
+      body: pendentes.map(p => [p.cliente_nome || 'Cliente', String(p.id),
+        p.data_entrega ? dataBR(p.data_entrega) : 'sem data', moeda(p.valor)]),
+      headStyles: { ...estiloTabela.headStyles, textColor: [150, 30, 20] },
+      columnStyles: { 1: { cellWidth: 18 }, 2: { cellWidth: 24 }, 3: { halign: 'right', cellWidth: 30 } },
     });
   }
 
-  // Por vendedor (admin): base do acerto de comissão
-  if (admin && d.porVendedor.length) {
-    tabela({
-      head: [['Por vendedor', 'Pedidos', 'Recebido', 'A receber', 'Total']],
-      body: d.porVendedor.map(v => [nomeVendedorRelatorio(v.vendedor), String(v.nPedidos), moeda(v.recebido), moeda(v.aReceber), moeda(v.total)]),
-      foot: [['Total', String(d.nPedidos), moeda(d.recebido), moeda(d.aReceber), moeda(d.total)]],
-      columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 30 }, 4: { halign: 'right', cellWidth: 32 } },
-    });
-  }
-
-  // Lista completa: um pedido por linha
-  if (pedidos.length) {
-    tabela({
-      head: [['Entrega', 'Pedido', 'Cliente', ...(admin ? ['Vendedor'] : []), 'Pagamento', 'Valor']],
-      body: pedidos.map(p => [dataBR(dataRealEntrega(p)), String(p.id), p.cliente_nome || 'Cliente',
-        ...(admin ? [nomeVendedorRelatorio(p.vendedor)] : []), situacaoPagamentoRelatorio(p), moeda(p.valor)]),
-      foot: [[{ content: `Total: ${d.nPedidos} pedido(s) entregue(s)`, colSpan: admin ? 5 : 4 }, moeda(d.total)]],
-      columnStyles: admin
-        ? { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 30 }, 4: { cellWidth: 22 }, 5: { halign: 'right', cellWidth: 28 } }
-        : { 0: { cellWidth: 20 }, 1: { cellWidth: 16 }, 3: { cellWidth: 24 }, 4: { halign: 'right', cellWidth: 28 } },
-    });
-  } else {
+  if (!d.nPedidos) {
     garantirEspaco(10);
-    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+    doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
     doc.text('Nenhum pedido entregue neste período.', mL, y);
     y += 10;
-  }
-
-  if (d.topProdutos.length) {
+  } else {
+    // 1) Total de cada produto no período
+    tituloSecao('Produtos entregues');
     tabela({
-      head: [['Top 5 produtos', 'Qtd', 'Valor']],
-      body: d.topProdutos.map(t => [t.nome, String(t.qtd), moeda(t.valor)]),
-      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 35 } },
+      head: [['Produto', 'Quantidade']],
+      body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`]),
+      columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
     });
-  }
-  if (d.topClientes.length) {
+
+    // 2) Cada cliente com a quantidade de cada produto. Um bloco por cliente,
+    // sem partir entre páginas (a não ser que sozinho passe de uma página).
+    tituloSecao('Por cliente');
+    const pad = (t, b, l = 2) => ({ top: t, bottom: b, left: l, right: 2 });
+    d.clientes.forEach((c, n) => {
+      const refs = c.pedidos.map(p => `${p.id} (${dataRealEntregaCurta(p.data)})`).join(', ');
+      const altura = 12 + c.itens.length * 5.6;
+      if (altura < pageH - topoContinuacao - mB - 10) garantirEspaco(altura);
+      else garantirEspaco(30);
+      if (n > 0 && y > topoContinuacao) {
+        doc.setDrawColor(215, 215, 210); doc.setLineWidth(0.2);
+        doc.line(mL, y, pageW - mR, y);
+      }
+      tabela({
+        alturaMinima: 0,
+        espacoDepois: 1,
+        body: [
+          [{ content: c.nome, styles: { fontStyle: 'bold', textColor: VERDE, fontSize: 10, cellPadding: pad(3, 0.3) } },
+           { content: moeda(c.total), styles: { halign: 'right', textColor: VERDE, fontSize: 10, cellPadding: pad(3, 0.3) } }],
+          [{ content: `Pedidos nº ${refs}`, colSpan: 2, styles: { fontSize: 7.5, textColor: CINZA, cellPadding: pad(0, 1.6) } }],
+          ...c.itens.map(i => [
+            { content: i.nome, styles: { cellPadding: pad(1.2, 1.2, 7) } },
+            { content: `${qtdTexto(i.qtd)} un`, styles: { halign: 'right', cellPadding: pad(1.2, 1.2) } },
+          ]),
+        ],
+        columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
+        didDrawCell: () => {},
+      });
+    });
+    y += 3;
     tabela({
-      head: [['Top 5 clientes', 'Pedidos', 'Valor']],
-      body: d.topClientes.map(t => [t.nome, String(t.pedidos), moeda(t.valor)]),
-      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 } },
+      alturaMinima: 12,
+      body: [[`${d.clientes.length} cliente(s) — ${d.nPedidos} pedido(s)`, moeda(d.total)]],
+      styles: { ...estiloTabela.styles, fontSize: 9.5, textColor: VERDE, fillColor: [240, 244, 240] },
+      columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
+      didDrawCell: () => {},
     });
   }
 
@@ -6082,7 +6098,8 @@ async function gerarPdfRelatorio(ini, fim, label) {
 
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  const nomeArquivo = `relatorio-${relTipo}-${label.replace(/[^\w]+/g, '-').toLowerCase()}.pdf`;
+  const sufixo = usuario.perfil === 'admin' && relVendedor ? `-${relVendedor}` : '';
+  const nomeArquivo = `relatorio-${relTipo}${sufixo}-${label.replace(/[^\w]+/g, '-').toLowerCase()}.pdf`;
   return { blob, url, nomeArquivo };
 }
 
