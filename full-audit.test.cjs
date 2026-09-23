@@ -104,11 +104,11 @@ test('consulta CNPJ antiga não preenche documento trocado durante a rede',async
 });
 
 test('nomes iguais a propriedades de Object não quebram totais dos relatórios',()=>{
- const c={foiPago:()=>false};
+ const c={foiPago:()=>false,dataRealEntrega:p=>p.data_entregue_em};
  vm.runInNewContext(trecho('function calcularDadosRelatorio(', 'function renderizarRelatorio('),c);
  const dados=c.calcularDadosRelatorio([{valor:20,cliente_nome:'constructor',itens:[{nome:'__proto__',qtd:2,preco_unit:10}]}]);
- assert.equal(dados.topProdutos[0].nome,'__proto__');assert.equal(dados.topProdutos[0].valor,20);
- assert.equal(dados.topClientes[0].valor,20);
+ assert.equal(dados.produtos[0].nome,'__proto__');assert.equal(dados.produtos[0].valor,20);
+ assert.equal(dados.clientes[0].total,20);assert.equal(dados.clientes[0].itens[0].qtd,2);
 });
 
 test('janelas de relatório e vencimento são iguais em fusos distintos do aparelho',()=>{
