@@ -63,38 +63,33 @@ assert.equal(qtd('Farelo (nome novo)'), 3, 'usa o nome atual do catálogo');
 assert.equal(d.produtos.length, 4, 'nenhum produto fica de fora (sem "top 5")');
 assert.deepEqual(Array.from(d.produtos.slice(0, 2), p => p.nome), ['Farelo (nome novo)', 'Milho 30kg'], 'ordem alfabética, 30kg antes de 60kg');
 
-// Cada cliente com a quantidade de cada produto, somando todos os pedidos dele
-const soc = d.clientes.find(c => c.nome === 'Sociedade dos Criadores');
-assert.equal(soc.pedidos.length, 2);
-assert.equal(soc.itens.find(i => i.nome === 'Milho 60kg').qtd, 15);
-assert.equal(d.clientes.length, 13);
+// Sem seção por cliente (removida a pedido): só produtos e pedidos sem baixa.
+assert.equal(d.clientes, undefined);
 
 const pend = contexto.pendentesDoRelatorio('2026-09-30');
 assert.deepEqual(Array.from(pend, p => p.id), [60], 'pendente previsto no período aparece como alerta');
 
 contexto.renderizarRelatorio();
 const html = el('relatorio-conteudo').innerHTML;
-for (let i = 1; i <= 12; i++) assert.match(html, new RegExp(`Cliente ${i}<`), `Cliente ${i} precisa aparecer`);
-assert.match(html, /Sociedade dos Criadores/);
 assert.match(html, /Ração Nova Cadastrada Hoje/);
+assert.match(html, /Milho 60kg<\/span>\s*<span class="rel-linha-qtd">93 un/);
+assert.doesNotMatch(html, /Por cliente|rel-cliente/);
 assert.match(html, /Esquecido Ltda/, 'pedido sem baixa aparece no alerta');
 assert.doesNotMatch(html, /Mês passado|Futuro/);
 assert.match(html, /rel-chip/, 'admin escolhe o vendedor');
 
 // Filtro por vendedor (admin): só os pedidos daquele vendedor
 contexto.mudarVendedorRelatorio('vendedor');
-const htmlVendFiltro = el('relatorio-conteudo').innerHTML;
-assert.match(htmlVendFiltro, /Sociedade dos Criadores/);
-assert.doesNotMatch(htmlVendFiltro, /Cliente 2</);
 assert.equal(contexto.montarRelatorio().d.nPedidos, 8);
+assert.equal(contexto.montarRelatorio().d.produtos.find(p => p.nome === 'Milho 60kg').qtd, 1 + 3 + 5 + 7 + 9 + 11 + 10 + 5);
 contexto.mudarVendedorRelatorio('');
 
 // Vendedor só enxerga os próprios pedidos e não tem filtro
 contexto.usuario = { perfil: 'vendedor', login: 'vendedor' };
 contexto.renderizarRelatorio();
 const htmlVend = el('relatorio-conteudo').innerHTML;
-assert.match(htmlVend, /Sociedade dos Criadores/);
-assert.doesNotMatch(htmlVend, /Cliente 2</);
+assert.match(htmlVend, /Esquecido Ltda/);
+assert.equal(contexto.montarRelatorio().d.nPedidos, 8, 'vendedor só vê os próprios pedidos');
 assert.doesNotMatch(htmlVend, /rel-chip/);
 
 // Sem conferir com o servidor, o aviso aparece.
@@ -102,13 +97,13 @@ contexto.relFonte = { pedidos: null, atualizadoEm: null, erro: 'offline', carreg
 contexto.renderizarRelatorio();
 assert.match(el('relatorio-conteudo').innerHTML, /Não use para acertar comissão/);
 
-// O PDF traz produtos, clientes com cada produto, alerta e aviso de servidor.
+// O PDF traz produtos, alerta de pedidos sem baixa e aviso de servidor.
 const pdf = trecho('async function gerarPdfRelatorio(', '// Gera PDF do relatório e mostra');
 assert.match(pdf, /montarRelatorio\(\)/);
 assert.match(pdf, /d\.produtos\.map/);
-assert.match(pdf, /d\.clientes\.forEach/);
+assert.doesNotMatch(pdf, /Por cliente/);
 assert.match(pdf, /sem baixa de entrega/);
 assert.match(pdf, /ATENÇÃO: este relatório foi gerado SEM conferir com o servidor/);
 assert.match(app, /async function imprimirRelatorio\(\)[\s\S]{0,900}await atualizarFonteRelatorio\(\)/);
 
-console.log('Relatório: todos os produtos por cliente, produto novo automático, filtro por vendedor.');
+console.log('Relatório: todos os produtos entregues, produto novo automático, filtro por vendedor.');
