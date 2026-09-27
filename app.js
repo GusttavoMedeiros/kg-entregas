@@ -5405,23 +5405,112 @@ function acaoOfflinePertenceAoUsuario(acao) {
   return usuario.perfil === 'entregador';
 }
 
+// Recusas que não se resolvem tentando de novo (pedido apagado, sem permissão,
+// data no futuro...). A entrega continua guardada, marcada com o motivo, e não
+// é reenviada sozinha: quem está com o aparelho decide tentar de novo ou descartar.
+// Rede, sessão expirada, excesso de pedidos e erro do servidor seguem tentando.
+function falhaDefinitivaFila(res) {
+  const status = Number(res.status);
+  return !res.rede && status >= 400 && status < 500 && ![401, 408, 429, 499].includes(status);
+}
+
+function motivoFalhaFila(res) {
+  const texto = String(res.erro || '');
+  try {
+    const corpo = JSON.parse(texto.replace(/^HTTP \d+:\s*/, ''));
+    if (corpo?.message) return corpo.message;
+  } catch (e) { /* resposta sem JSON: usa o texto como veio */ }
+  return texto || 'Recusada pelo servidor.';
+}
+
+// Identifica a ação mesmo depois de ganhar o campo "falha".
+function chaveAcaoFila(a) {
+  return a.acaoId || (a.ts ? `${a.pedidoId}-${a.ts}` : JSON.stringify(a));
+}
+
+function falhasDaFila() {
+  return lerFilaOffline().filter(a => a.falha && acaoOfflinePertenceAoUsuario(a));
+}
+
 function atualizarAvisoFila() {
   const aviso = document.getElementById('aviso-fila-offline');
   if (!aviso) return;
   try {
-    const qtd = lerFilaOffline().filter(acaoOfflinePertenceAoUsuario).length;
-    aviso.hidden = !qtd;
-    aviso.textContent = qtd ? `${qtd} entrega(s) aguardando envio. Mantenha este aparelho com os dados do aplicativo até sincronizar.` : '';
+    const minhas = lerFilaOffline().filter(acaoOfflinePertenceAoUsuario);
+    const recusadas = minhas.filter(a => a.falha).length;
+    const aguardando = minhas.length - recusadas;
+    aviso.hidden = !minhas.length;
+    aviso.innerHTML = [
+      aguardando ? `${aguardando} entrega(s) aguardando envio. Mantenha este aparelho com os dados do aplicativo até sincronizar.` : '',
+      recusadas ? `<b>⚠ ${recusadas} entrega(s) recusada(s) pelo servidor.</b> <button type="button" class="btn-azul" onclick="abrirFalhasFila()">Ver e resolver</button>` : '',
+    ].filter(Boolean).join('<br>');
   } catch (e) {
     aviso.hidden = false;
     aviso.textContent = 'Não foi possível ler as entregas offline. Preserve os dados deste aparelho e procure suporte.';
   }
 }
 
+// Lista as entregas recusadas, com o motivo, para tentar de novo ou descartar.
+function abrirFalhasFila() {
+  const el = document.getElementById('fila-falhas-conteudo');
+  if (!el) return;
+  let falhas;
+  try { falhas = falhasDaFila(); } catch (e) { toast(e.message); return; }
+  if (!falhas.length) { fecharModal('modal-fila-falhas'); return; }
+  el.innerHTML = falhas.map(a => {
+    const p = todosOsPedidos.find(x => x.id === a.pedidoId);
+    const chave = esc(JSON.stringify(chaveAcaoFila(a)));
+    return `
+      <div class="fila-falha">
+        <div><b>${esc(p?.cliente_nome || 'Pedido não encontrado')}</b> <small>nº ${esc(a.pedidoId)} · entregue em ${esc(dataBR(a.payload?.data_entregue_em))}</small></div>
+        <div class="fila-falha-motivo">Motivo: ${esc(a.falha.motivo)}</div>
+        <div class="fila-falha-botoes">
+          <button type="button" class="btn-azul" onclick="tentarNovamenteFila(${chave})">Tentar de novo</button>
+          <button type="button" class="btn-secundario" onclick="descartarAcaoFila(${chave})">Descartar</button>
+        </div>
+      </div>`;
+  }).join('');
+  if (!document.getElementById('modal-fila-falhas')?.classList.contains('aberto')) abrirModal('modal-fila-falhas');
+}
+
+async function tentarNovamenteFila(chave) {
+  try {
+    await alterarFilaOffline(fila => fila.map(a => {
+      if (chaveAcaoFila(a) !== chave) return a;
+      const { falha, ...semFalha } = a;
+      return semFalha;
+    }));
+    await processarFilaOffline();
+    const aindaFalha = falhasDaFila().find(a => chaveAcaoFila(a) === chave);
+    toast(aindaFalha ? `O servidor recusou de novo: ${aindaFalha.falha.motivo}`
+      : 'Tentativa feita. Se não houver outro aviso, a entrega foi registrada.');
+  } catch (e) { toast(e.message); }
+  abrirFalhasFila();
+}
+
+async function descartarAcaoFila(chave) {
+  let acao;
+  try { acao = falhasDaFila().find(a => chaveAcaoFila(a) === chave); } catch (e) { toast(e.message); return; }
+  if (!acao) { abrirFalhasFila(); return; }
+  const ok = await confirmar(
+    `Descartar a entrega do pedido nº ${acao.pedidoId}?\n\n` +
+    `Ela NÃO será registrada no sistema. Se o produto foi mesmo entregue, ` +
+    `avise o administrador para registrar a entrega.`
+  );
+  if (!ok) return;
+  try {
+    await alterarFilaOffline(fila => fila.filter(a => chaveAcaoFila(a) !== chave));
+  } catch (e) { toast(e.message); }
+  atualizarAvisoFila();
+  abrirFalhasFila();
+}
+
 function aplicarFilaOffline(pedidos) {
   try {
     for (const acao of lerFilaOffline()) {
       if (acao.tipo !== 'marcar-entregue' || !acaoOfflinePertenceAoUsuario(acao)) continue;
+      // Recusada pelo servidor: o pedido continua como o servidor diz (pendente).
+      if (acao.falha) continue;
       const pedido = pedidos.find(p => p.id === acao.pedidoId);
       if (pedido && pedido.status !== 'entregue') {
         const pagamento = pedido.status_pagamento === 'pago' ? {
@@ -5442,29 +5531,43 @@ async function processarFilaOffline() {
   const loginInicial = usuario.login;
   _processandoFila = true;
   const sucesso = [];
+  const recusadas = new Map(); // chave da ação -> motivo
   try {
     for (const acao of lerFilaOffline()) {
       if (usuario?.login !== loginInicial) break;
-      if (!acaoOfflinePertenceAoUsuario(acao) || acao.tipo !== 'marcar-entregue') continue;
+      if (!acaoOfflinePertenceAoUsuario(acao) || acao.tipo !== 'marcar-entregue' || acao.falha) continue;
       const res = await apiSupabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
-      if (!res.ok) continue;
-      sucesso.push(JSON.stringify(acao));
+      if (!res.ok) {
+        if (falhaDefinitivaFila(res)) recusadas.set(chaveAcaoFila(acao), motivoFalhaFila(res));
+        continue;
+      }
+      sucesso.push(chaveAcaoFila(acao));
       if (usuario?.login === loginInicial) {
         const pedido = todosOsPedidos.find(p => p.id === acao.pedidoId);
         if (pedido) Object.assign(pedido, res.dados);
       }
     }
     // Remove apenas as ações efetivamente enviadas, preservando novas entregas
-    // acrescentadas enquanto a rede estava respondendo.
-    if (sucesso.length) await alterarFilaOffline(fila => fila.filter(a => !sucesso.includes(JSON.stringify(a))));
+    // acrescentadas enquanto a rede estava respondendo. As recusadas ficam,
+    // marcadas com o motivo, até o usuário decidir.
+    if (sucesso.length || recusadas.size) {
+      await alterarFilaOffline(fila => fila
+        .filter(a => !sucesso.includes(chaveAcaoFila(a)))
+        .map(a => recusadas.has(chaveAcaoFila(a))
+          ? { ...a, acaoId: a.acaoId || crypto.randomUUID(), falha: { motivo: recusadas.get(chaveAcaoFila(a)), em: Date.now() } }
+          : a));
+    }
   } catch (e) {
     console.warn('Fila de entregas preservada:', e);
   } finally {
     _processandoFila = false;
     atualizarAvisoFila();
   }
-  if (sucesso.length && usuario?.login === loginInicial) {
+  if ((sucesso.length || recusadas.size) && usuario?.login === loginInicial) {
     registrarMudancaLocal('pedidos');
+    // A recusada tinha sido mostrada como entregue neste aparelho; recarrega
+    // para voltar a mostrar o que o servidor diz.
+    if (recusadas.size) solicitarSincronizacao();
   }
 }
 
