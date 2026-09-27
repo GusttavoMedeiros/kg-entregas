@@ -58,3 +58,20 @@ milho 60kg, outro pelo de 30kg). O relatório passou a ser organizado assim:
 A pedido, a seção **Por cliente** saiu da tela e do PDF. O relatório tem agora
 só o resumo, os **pedidos sem baixa de entrega** e os **produtos entregues**
 (total de unidades de cada produto). Para voltar com a seção, ver o PR #13.
+
+## Conferência com o servidor (27/09/2026)
+
+Revisão feita em conjunto com o Codex. Dois caminhos faziam o relatório parecer
+conferido sem estar:
+
+- **Cópia antiga do celular.** Com internet fraca ou caída, o service worker
+  responde com a última cópia salva dos pedidos (marcada com `x-from-cache`).
+  O relatório tratava essa cópia como resposta do servidor e mostrava
+  "Conferido com o servidor". Agora essa resposta conta como falha: tela e PDF
+  mostram o aviso para não usar no acerto.
+- **Entregas feitas offline neste aparelho.** Eram somadas ao total antes de
+  chegarem ao banco. Agora o relatório tenta enviá-las antes de conferir; as
+  que continuarem sem envio ficam **fora do total** e aparecem num bloco
+  próprio ("ainda não enviadas ao servidor"), na tela e no PDF.
+
+Teste: `report-server-check.test.cjs`. Nenhuma alteração no banco de dados.

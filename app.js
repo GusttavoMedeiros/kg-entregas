@@ -1062,7 +1062,11 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
     const faixa = res.headers?.get?.('Content-Range') || '';
     const total = Number(faixa.match(/\/(\d+)$/)?.[1]);
     const count = Number.isFinite(total) ? total : (Array.isArray(resposta) ? resposta.length : null);
-    return { ok:true, dados:resposta, count, total:Number.isFinite(total) ? total : null };
+    // Sem rede, o service worker devolve a última cópia salva e a marca com
+    // x-from-cache. Ela serve para o app funcionar offline, mas não confirma
+    // nada com o servidor.
+    const deCache = res.headers?.get?.('x-from-cache') === '1';
+    return { ok:true, dados:resposta, count, total:Number.isFinite(total) ? total : null, deCache };
   } catch(e) {
     if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada.' };
     if (e.name === 'AbortError') {
@@ -1629,19 +1633,21 @@ window.addEventListener('resize', reposicionarIndicadorNav, { passive: true });
 async function listarTodos(tabela, select='*') {
   const dados = [];
   let ultimo = 0;
+  let deCache = false; // alguma página veio da cópia offline do service worker
   while (true) {
     const res = await apiSupabase(tabela,'GET',null,
       `?select=${select}&order=id.asc&limit=500&id=gt.${ultimo}`, true, { contar:true });
     if (!res.ok) return res;
     if (!Array.isArray(res.dados)) return { ok:false, erro:'Resposta de dados inválida.' };
-    if (!res.dados.length) return { ok:true, dados };
+    deCache = deCache || !!res.deCache;
+    if (!res.dados.length) return { ok:true, dados, deCache };
     const proximo = Number(res.dados.at(-1).id);
     if (!Number.isSafeInteger(proximo) || proximo <= ultimo) return { ok:false, erro:'Paginação inválida.' };
     dados.push(...res.dados);
     // O total é dos registros restantes (id > ultimo), não das páginas já
     // acumuladas. Sem total (cache antigo), mantém a paginação conservadora.
     if (Number.isSafeInteger(res.total) && res.total >= 0 && res.dados.length >= res.total) {
-      return { ok:true, dados };
+      return { ok:true, dados, deCache };
     }
     ultimo = proximo;
   }
@@ -5577,18 +5583,33 @@ let relVendedor = '';      // admin: '' = todos, ou o login do vendedor
 // Pedidos buscados no servidor no momento em que o relatório é aberto/impresso.
 // A lista em memória pode estar parada se a sincronização automática falhou
 // (sem internet, sessão expirada); para a comissão isso não é aceitável.
-let relFonte = { pedidos: null, atualizadoEm: null, erro: null, carregando: false };
+let relFonte = { pedidos: null, filaPendente: [], atualizadoEm: null, erro: null, carregando: false };
 let relToken = 0;
 
 async function buscarPedidosRelatorio() {
-  if (MODO_DEMO) return { ok: true, pedidos: todosOsPedidos };
+  if (MODO_DEMO) return { ok: true, pedidos: todosOsPedidos, filaPendente: [] };
   const loginInicial = usuario?.login;
+  // Entregas feitas sem internet neste aparelho: tenta enviá-las antes de conferir.
+  if (navigator.onLine) await processarFilaOffline();
   const res = await listarTodos('pedidos', '*,clientes(nome),itens_pedido(*)');
   if (!usuario || usuario.login !== loginInicial) return { ok: false, erro: 'A sessão foi alterada.' };
   if (!res.ok) return { ok: false, erro: res.erro || 'Falha ao consultar o servidor.' };
+  if (res.deCache) return { ok: false, erro: 'O servidor não respondeu; os dados são os do último acesso.' };
+  // Aqui NÃO se aplica a fila offline: o total do acerto é só o que o banco confirmou.
   const pedidos = normalizarPedidos(res.dados);
-  aplicarFilaOffline(pedidos);
-  return { ok: true, pedidos };
+  return { ok: true, pedidos, filaPendente: entregasNaFilaOffline(pedidos) };
+}
+
+// Pedidos que este aparelho marcou como entregues, mas que o servidor ainda
+// não recebeu. Ficam fora do total e aparecem à parte no relatório.
+function entregasNaFilaOffline(pedidos) {
+  return lerFilaOffline()
+    .filter(a => a.tipo === 'marcar-entregue' && acaoOfflinePertenceAoUsuario(a))
+    .map(a => {
+      const p = pedidos.find(x => x.id === a.pedidoId);
+      return p && p.status !== 'entregue' ? { ...p, data_entregue_em: a.payload?.data_entregue_em || null } : null;
+    })
+    .filter(Boolean);
 }
 
 async function atualizarFonteRelatorio() {
@@ -5600,8 +5621,8 @@ async function atualizarFonteRelatorio() {
   catch (e) { r = { ok: false, erro: e.message }; }
   if (token !== relToken) return relFonte;
   relFonte = r.ok
-    ? { pedidos: r.pedidos, atualizadoEm: new Date(), erro: null, carregando: false }
-    : { pedidos: null, atualizadoEm: null, erro: r.erro, carregando: false };
+    ? { pedidos: r.pedidos, filaPendente: r.filaPendente || [], atualizadoEm: new Date(), erro: null, carregando: false }
+    : { pedidos: null, filaPendente: [], atualizadoEm: null, erro: r.erro, carregando: false };
   renderizarRelatorio();
   return relFonte;
 }
@@ -5615,7 +5636,7 @@ function abrirModalRelatorio() {
   relTipo = 'semanal';
   relOffset = 0;
   relVendedor = '';
-  relFonte = { pedidos: null, atualizadoEm: null, erro: null, carregando: true };
+  relFonte = { pedidos: null, filaPendente: [], atualizadoEm: null, erro: null, carregando: true };
   // Reseta abas visuais para a primeira
   document.querySelectorAll('#abas-relatorio .aba').forEach((b, i) => {
     b.classList.toggle('ativa', i === 0);
@@ -5791,16 +5812,25 @@ function montarRelatorio() {
   const base = pedidosBaseRelatorio();
   const entreguesTodos = pedidosDoRelatorio(ini, fim, base);
   const pedidos = filtrarVendedorRelatorio(entreguesTodos);
-  const pendentes = filtrarVendedorRelatorio(pendentesDoRelatorio(fim, base));
+  // Entregues neste aparelho e ainda não enviados: fora do total, listados à parte
+  // (e não repetidos entre os "sem baixa", pois a entrega já aconteceu).
+  const fila = relFonte.filaPendente || [];
+  const idsNaFila = new Set(fila.map(p => p.id));
+  const naFila = filtrarVendedorRelatorio(fila.filter(p => {
+    const data = p.data_entregue_em;
+    if (usuario.perfil === 'vendedor' && p.vendedor !== usuario.login) return false;
+    return !data || (data >= ini && data <= fim);
+  }));
+  const pendentes = filtrarVendedorRelatorio(pendentesDoRelatorio(fim, base)).filter(p => !idsNaFila.has(p.id));
   const d = calcularDadosRelatorio(pedidos, typeof todosOsProdutos !== 'undefined' ? todosOsProdutos : []);
   // Vendedores do período, para os botões de filtro do admin.
   const vendedores = [...new Set(entreguesTodos.map(p => p.vendedor).filter(Boolean))]
     .sort((a, b) => nomeVendedorRelatorio(a).localeCompare(nomeVendedorRelatorio(b), 'pt-BR'));
-  return { ini, fim, label, pedidos, pendentes, d, vendedores };
+  return { ini, fim, label, pedidos, pendentes, naFila, d, vendedores };
 }
 
 function renderizarRelatorio() {
-  const { fim, label, pedidos, pendentes, d, vendedores } = montarRelatorio();
+  const { fim, label, pedidos, pendentes, naFila, d, vendedores } = montarRelatorio();
   document.getElementById('rel-periodo-label').textContent = label;
 
   // Desabilita seta "próximo" quando já está no período atual
@@ -5833,6 +5863,18 @@ function renderizarRelatorio() {
         </div>`).join('')}
     </details>` : '';
 
+  const htmlFila = naFila.length ? `
+    <details class="rel-alerta" open>
+      <summary><b>⚠ ${naFila.length} entrega(s) ainda não enviada(s) ao servidor</b><span>fora do total</span></summary>
+      <div class="rel-alerta-texto">Foram marcadas como entregues neste aparelho, sem internet. Conecte-se e toque em "Tentar novamente" antes de acertar a comissão.
+        <button type="button" class="btn-azul" onclick="atualizarFonteRelatorio()">Tentar novamente</button></div>
+      ${naFila.map(p => `
+        <div class="rel-linha">
+          <span class="rel-linha-nome">${esc(p.cliente_nome || 'Cliente')} <small>nº ${esc(p.id)} · ${esc(p.data_entregue_em ? dataRealEntregaCurta(p.data_entregue_em) : 'sem data')}</small></span>
+          <span class="rel-linha-valor">${moeda(p.valor)}</span>
+        </div>`).join('')}
+    </details>` : '';
+
   const htmlResumo = `
     <div class="rel-resumo">
       <div><b>${moeda(d.total)}</b><span>Entregue</span></div>
@@ -5841,7 +5883,7 @@ function renderizarRelatorio() {
     </div>`;
 
   if (!pedidos.length) {
-    el.innerHTML = htmlFonte + opcoesVendedor + htmlPendentes +
+    el.innerHTML = htmlFonte + opcoesVendedor + htmlFila + htmlPendentes +
       `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
     return;
   }
@@ -5850,6 +5892,7 @@ function renderizarRelatorio() {
     ${htmlFonte}
     ${opcoesVendedor}
     ${htmlResumo}
+    ${htmlFila}
     ${htmlPendentes}
 
     <div class="rel-secao">
@@ -5869,7 +5912,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
-  const { pendentes, d } = montarRelatorio();
+  const { pendentes, naFila, d } = montarRelatorio();
   const escopo = usuario.perfil === 'vendedor'
     ? `Vendedor: ${usuario.nome || usuario.login}`
     : (relVendedor ? `Vendedor: ${nomeVendedorRelatorio(relVendedor)}` : 'Todos os vendedores');
@@ -5962,16 +6005,23 @@ async function gerarPdfRelatorio(ini, fim, label) {
   doc.text('Considera a data em que a entrega foi concluída.', mL, y + 4.5);
   y += 11;
 
-  // Aviso quando não foi possível confirmar com o servidor
+  // Avisos: sem conferência com o servidor, ou entregas deste aparelho não enviadas
+  const avisos = [];
   if (relFonte.erro || !relFonte.atualizadoEm) {
-    const aviso = doc.splitTextToSize('ATENÇÃO: este relatório foi gerado SEM conferir com o servidor e pode estar incompleto. Não use para acertar comissão; gere novamente com internet.', cW - 6);
+    avisos.push('ATENÇÃO: este relatório foi gerado SEM conferir com o servidor e pode estar incompleto. Não use para acertar comissão; gere novamente com internet.');
+  }
+  if (naFila.length) {
+    avisos.push(`ATENÇÃO: ${naFila.length} entrega(s) feita(s) neste aparelho ainda não chegaram ao servidor e estão FORA do total. Envie-as e gere novamente antes de acertar comissão.`);
+  }
+  avisos.forEach(texto => {
+    const aviso = doc.splitTextToSize(texto, cW - 6);
     const h = aviso.length * 4 + 4;
     doc.setFillColor(253, 236, 234); doc.setDrawColor(192, 57, 43); doc.setLineWidth(0.4);
     doc.roundedRect(mL, y, cW, h, 1.5, 1.5, 'FD');
     doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(8.5); doc.setTextColor(150, 30, 20);
     doc.text(aviso, mL + 3, y + 5);
     y += h + 5;
-  }
+  });
 
   // Resumo: três números
   const cards = [
@@ -5998,6 +6048,17 @@ async function gerarPdfRelatorio(ini, fim, label) {
       head: [['Cliente', 'Pedido', 'Previsto', 'Valor']],
       body: pendentes.map(p => [p.cliente_nome || 'Cliente', String(p.id),
         p.data_entrega ? dataBR(p.data_entrega) : 'sem data', moeda(p.valor)]),
+      headStyles: { ...estiloTabela.headStyles, textColor: [150, 30, 20] },
+      columnStyles: { 1: { cellWidth: 18 }, 2: { cellWidth: 24 }, 3: { halign: 'right', cellWidth: 30 } },
+    });
+  }
+
+  if (naFila.length) {
+    tituloSecao(`Entregas não enviadas ao servidor: ${naFila.length} (fora do total)`, [170, 40, 30]);
+    tabela({
+      head: [['Cliente', 'Pedido', 'Entregue', 'Valor']],
+      body: naFila.map(p => [p.cliente_nome || 'Cliente', String(p.id),
+        p.data_entregue_em ? dataBR(p.data_entregue_em) : 'sem data', moeda(p.valor)]),
       headStyles: { ...estiloTabela.headStyles, textColor: [150, 30, 20] },
       columnStyles: { 1: { cellWidth: 18 }, 2: { cellWidth: 24 }, 3: { halign: 'right', cellWidth: 30 } },
     });
