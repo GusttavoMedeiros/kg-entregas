@@ -3768,6 +3768,110 @@ async function excluirCliente(id) {
 // ============================================================
 // MODAL CONFIRMAR ENTREGA
 // ============================================================
+// ------------------------------------------------------------
+// ENTREGA PARCIAL: o que não chegou é cancelado e o cliente paga só o que
+// recebeu. O entregador ajusta a quantidade entregue de cada item; o banco
+// (rpc/concluir_entrega_parcial) reduz os itens e recalcula o valor.
+// ------------------------------------------------------------
+const chaveItemEntrega = (item, idx) => String(item.id != null ? item.id : 'n' + idx);
+const centavosEntrega = v => Math.round((Number(v) || 0) * 100);
+const chaveEntregue = e => String(e.id != null ? e.id : e.chave);
+
+// Quantidades digitadas na tela, na ordem dos itens.
+function lerItensEntrega() {
+  return [...document.querySelectorAll('#entrega-itens-lista .entrega-item-qtd')].map(inp => ({
+    id: inp.dataset.id === '' ? null : Number(inp.dataset.id),
+    chave: inp.dataset.chave,
+    qtd: Number(inp.dataset.max),
+    qtd_entregue: inp.value.trim() === '' ? NaN : Number(inp.value),
+  }));
+}
+
+const entregaInvalida = e => !Number.isInteger(e.qtd_entregue) || e.qtd_entregue < 0 || e.qtd_entregue > e.qtd;
+
+function valorEntregaParcial(pedido, entregues) {
+  const porChave = new Map(entregues.map(e => [chaveEntregue(e), e.qtd_entregue]));
+  return (pedido.itens || []).reduce((soma, i, idx) => {
+    const chave = chaveItemEntrega(i, idx);
+    const qtd = porChave.has(chave) ? porChave.get(chave) : Number(i.qtd);
+    return soma + centavosEntrega(i.preco_unit) * qtd;
+  }, 0) / 100;
+}
+
+// Reflete no aparelho o que o banco faz: reduz/remove itens e recalcula o valor.
+function aplicarEntregaParcialLocal(pedido, entregues) {
+  const porChave = new Map(entregues.map(e => [chaveEntregue(e), Number(e.qtd_entregue)]));
+  pedido.itens = (pedido.itens || []).flatMap((i, idx) => {
+    const chave = chaveItemEntrega(i, idx);
+    const qtd = porChave.has(chave) ? porChave.get(chave) : Number(i.qtd);
+    if (!(qtd > 0)) return [];
+    return [qtd < Number(i.qtd) ? { ...i, qtd, qtd_pedida: i.qtd_pedida ?? i.qtd } : i];
+  });
+  pedido.valor = pedido.itens.reduce((s, i) => s + centavosEntrega(i.preco_unit) * Number(i.qtd), 0) / 100;
+  pedido.descricao = pedido.itens.map(i => `${i.qtd}x ${i.nome}`).join(', ');
+}
+
+function renderizarItensEntrega(p) {
+  const bloco = document.getElementById('entrega-itens');
+  const lista = document.getElementById('entrega-itens-lista');
+  if (!bloco || !lista) return;
+  const itens = p.itens || [];
+  bloco.hidden = !itens.length;
+  // Quem pagou adiantado teria pago mais do que recebeu: o admin ajusta o pedido antes.
+  const travado = p.status_pagamento === 'pago';
+  lista.innerHTML = itens.map((i, idx) => {
+    const chave = chaveItemEntrega(i, idx);
+    const nome = esc(i.nome || i.produto_nome || 'Produto');
+    const chaveJs = esc(JSON.stringify(chave));
+    return `
+      <div class="entrega-item">
+        <div class="entrega-item-info"><span class="entrega-item-nome">${nome}</span><small>pedido: ${esc(i.qtd)}</small></div>
+        <div class="carrinho-qtd">
+          <button type="button" class="btn-qtd" onclick="ajustarQtdEntrega(${chaveJs}, -1)" aria-label="Diminuir ${nome}"${travado ? ' disabled' : ''}>−</button>
+          <input type="number" class="qtd-input entrega-item-qtd" inputmode="numeric" min="0" max="${esc(i.qtd)}" step="1" value="${esc(i.qtd)}"
+            data-id="${i.id != null ? esc(i.id) : ''}" data-chave="${esc(chave)}" data-max="${esc(i.qtd)}"
+            oninput="atualizarResumoEntrega()" aria-label="Quantidade entregue de ${nome}"${travado ? ' disabled' : ''}>
+          <button type="button" class="btn-qtd" onclick="ajustarQtdEntrega(${chaveJs}, 1)" aria-label="Aumentar ${nome}"${travado ? ' disabled' : ''}>+</button>
+        </div>
+      </div>`;
+  }).join('') + (travado
+    ? '<div class="entrega-itens-resumo aviso">Pedido já pago adiantado. Para entregar menos, peça ao administrador para ajustar o pedido.</div>' : '');
+  atualizarResumoEntrega();
+}
+
+function ajustarQtdEntrega(chave, delta) {
+  const inp = [...document.querySelectorAll('#entrega-itens-lista .entrega-item-qtd')].find(x => x.dataset.chave === chave);
+  if (!inp) return;
+  const max = Number(inp.dataset.max);
+  const atual = Number.isInteger(Number(inp.value)) && inp.value.trim() !== '' ? Number(inp.value) : max;
+  inp.value = String(Math.min(max, Math.max(0, atual + delta)));
+  atualizarResumoEntrega();
+}
+
+function atualizarResumoEntrega() {
+  const resumo = document.getElementById('entrega-itens-resumo');
+  const valorEl = document.getElementById('entrega-valor');
+  const p = pedidoSelecionado;
+  if (!resumo || !p) return;
+  const entregues = lerItensEntrega();
+  const define = (classe, texto) => { resumo.className = 'entrega-itens-resumo' + (classe ? ' ' + classe : ''); resumo.textContent = texto; };
+  if (!entregues.length) { define('', ''); return; }
+  if (entregues.some(entregaInvalida)) {
+    if (valorEl) valorEl.textContent = moeda(p.valor);
+    define('aviso', 'Confira as quantidades: use números inteiros de 0 até o que foi pedido.');
+    return;
+  }
+  const novo = valorEntregaParcial(p, entregues);
+  if (valorEl) valorEl.textContent = moeda(novo);
+  if (entregues.every(e => e.qtd_entregue === 0)) {
+    define('aviso', 'Nenhum item marcado como entregue. Se nada chegou ao cliente, não confirme a entrega.');
+  } else if (entregues.some(e => e.qtd_entregue < e.qtd)) {
+    define('aviso', `⚠ Entrega parcial: ${moeda(p.valor)} → ${moeda(novo)}. O que faltou será cancelado e o cliente paga só ${moeda(novo)}.`);
+  } else {
+    define('', '');
+  }
+}
+
 function abrirModalEntrega(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
@@ -3798,9 +3902,10 @@ function abrirModalEntrega(id) {
   document.getElementById('modal-entrega-info').innerHTML = `
     <strong style="color:var(--o1)">${esc(p.cliente_nome)}</strong>
     <div style="margin-top:5px;color:var(--c2)">${esc(p.descricao)}</div>
-    <div style="margin-top:5px;color:var(--o1);font-weight:700">${moeda(p.valor)}</div>
+    <div style="margin-top:5px;color:var(--o1);font-weight:700" id="entrega-valor">${moeda(p.valor)}</div>
     <div style="margin-top:3px;font-size:12px;color:var(--c3)">Entrega prevista: ${dataBR(p.data_entrega)}</div>
     ${pagtoInfo}`;
+  renderizarItensEntrega(p);
   document.getElementById('entrega-obs').value = p.observacao||'';
   abrirModal('modal-entrega');
 }
@@ -3824,6 +3929,22 @@ async function confirmarEntrega() {
   }
   const obs = document.getElementById('entrega-obs').value.trim();
   const id  = pedidoSelecionado.id;
+
+  // ====== ENTREGA PARCIAL: quantidade entregue de cada item ======
+  const entregues = lerItensEntrega();
+  if (entregues.some(entregaInvalida)) {
+    toast('Confira as quantidades entregues: use números inteiros de 0 até o que foi pedido.');
+    return;
+  }
+  if (entregues.length && entregues.every(e => e.qtd_entregue === 0)) {
+    toast('Nenhum item foi marcado como entregue. Se nada chegou ao cliente, não confirme a entrega.');
+    return;
+  }
+  const parcial = entregues.some(e => e.qtd_entregue < e.qtd);
+  if (parcial && pedidoSelecionado.status_pagamento === 'pago') {
+    toast('Este pedido já foi pago adiantado. Para entregar menos, peça ao administrador para ajustar o pedido.');
+    return;
+  }
 
   // ====== VALIDAÇÃO DE PAGAMENTO (à vista ou cheque) ======
   const modalSheet = document.querySelector('#modal-entrega .modal-sheet');
@@ -3870,8 +3991,11 @@ async function confirmarEntrega() {
   // ====== VALIDAÇÃO DO CHECKLIST (só para entregador) ======
   if (usuario.perfil === 'entregador' && pedidoSelecionado.itens?.length) {
     const marcados = getChecklist(id);
-    const total = pedidoSelecionado.itens.length;
-    const qtdMarcados = pedidoSelecionado.itens.filter(i => marcados.has(Number(i.produto_id))).length;
+    // Item que não chegou (quantidade 0) não precisa estar conferido na carga.
+    const zerados = new Set(entregues.filter(e => e.qtd_entregue === 0).map(chaveEntregue));
+    const aConferir = pedidoSelecionado.itens.filter((i, idx) => !zerados.has(chaveItemEntrega(i, idx)));
+    const total = aConferir.length;
+    const qtdMarcados = aConferir.filter(i => marcados.has(Number(i.produto_id))).length;
     if (qtdMarcados < total) {
       const faltam = total - qtdMarcados;
       const ok = await confirmar(
@@ -3884,6 +4008,17 @@ async function confirmarEntrega() {
     }
   }
 
+  if (parcial) {
+    const novoValor = valorEntregaParcial(pedidoSelecionado, entregues);
+    const ok = await confirmar(
+      `⚠ Entrega PARCIAL\n\n` +
+      `O que não chegou será CANCELADO. O pedido passa de ${moeda(pedidoSelecionado.valor)} ` +
+      `para ${moeda(novoValor)} e o cliente paga só o que recebeu.\n\n` +
+      `Confirmar a entrega parcial?`
+    );
+    if (!ok) return;
+  }
+
   salvando = true;
   botaoSalvando('confirmarEntrega', true, '✓ Confirmar Entrega');
   try {
@@ -3894,15 +4029,15 @@ async function confirmarEntrega() {
       forma_pagamento_real,
       data_pagamento,
     };
+    // Só na entrega parcial: quanto chegou de cada item.
+    const itensEntregues = parcial ? entregues.map(e => ({ id: e.id, qtd_entregue: e.qtd_entregue })) : null;
+    const acaoFila = { tipo: 'marcar-entregue', pedidoId: id, payload, ...(itensEntregues ? { itensEntregues } : {}) };
+    let respostaServidor = null;
 
     if (!MODO_DEMO) {
       // Se está offline, enfileira em vez de tentar enviar (e falhar)
       if (!navigator.onLine) {
-        await adicionarNaFilaOffline({
-          tipo: 'marcar-entregue',
-          pedidoId: id,
-          payload,
-        });
+        await adicionarNaFilaOffline(acaoFila);
         toast(
           '📡 Sem internet no momento.\n\n' +
           'O pedido foi marcado localmente como ENTREGUE e será sincronizado ' +
@@ -3910,15 +4045,13 @@ async function confirmarEntrega() {
           'Continue suas entregas normalmente.'
         );
       } else {
-        const res = await apiSupabase('rpc/concluir_entrega','POST', { p_id:id, p_dados:payload });
+        const res = itensEntregues
+          ? await apiSupabase('rpc/concluir_entrega_parcial','POST', { p_id:id, p_dados:payload, p_itens:itensEntregues })
+          : await apiSupabase('rpc/concluir_entrega','POST', { p_id:id, p_dados:payload });
         if (!res.ok) {
           // Se falhou por timeout (rede ruim), também enfileira
           if (res.rede || res.status === 408 || res.status === 429 || res.status >= 500) {
-            await adicionarNaFilaOffline({
-              tipo: 'marcar-entregue',
-              pedidoId: id,
-              payload,
-            });
+            await adicionarNaFilaOffline(acaoFila);
             toast(
               '⚠ Conexão lenta — pedido marcado localmente.\n\n' +
               'Vai sincronizar automaticamente quando a internet melhorar.'
@@ -3929,6 +4062,7 @@ async function confirmarEntrega() {
           }
         } else {
           Object.assign(payload, res.dados);
+          respostaServidor = res.dados;
         }
       }
     }
@@ -3936,6 +4070,9 @@ async function confirmarEntrega() {
     const idx = todosOsPedidos.findIndex(p=>p.id===id);
     if (idx>=0) {
       Object.assign(todosOsPedidos[idx], payload);
+      // O servidor devolve os itens já reduzidos; sem resposta dele (offline,
+      // demonstração), reduz aqui do mesmo jeito.
+      if (parcial && !Array.isArray(respostaServidor?.itens)) aplicarEntregaParcialLocal(todosOsPedidos[idx], entregues);
     }
     // Pedido entregue: limpa o checklist (não precisa mais)
     limparChecklist(id);
@@ -5042,9 +5179,10 @@ function verDetalhePedido(id) {
   const itensHtml = p.itens?.length
     ? p.itens.map(i=>`
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--ol)">
-          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}</span>
+          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}${i.qtd_pedida > i.qtd ? ` <small style="color:#f4a04a">(pedido: ${esc(i.qtd_pedida)})</small>` : ''}</span>
           <span style="font-size:13px;color:var(--o1);font-weight:700">${moeda(i.preco_unit*i.qtd)}</span>
-        </div>`).join('')
+        </div>`).join('') + (p.itens.some(i => i.qtd_pedida > i.qtd)
+      ? '<div style="font-size:12px;color:#f4a04a;padding:8px 0">⚠ Entrega parcial: o que faltou foi cancelado e o cliente paga só o que recebeu.</div>' : '')
     : `<div style="font-size:13px;color:var(--c2);padding:8px 0">${esc(p.descricao)}</div>`;
 
   const pagtoTxt = formatarPagamento(p);
@@ -5519,6 +5657,7 @@ function aplicarFilaOffline(pedidos) {
           data_pagamento: pedido.data_pagamento,
         } : {};
         Object.assign(pedido, acao.payload, pagamento);
+        if (acao.itensEntregues?.length) aplicarEntregaParcialLocal(pedido, acao.itensEntregues);
       }
     }
   } catch (e) { toast(e.message); }
@@ -5536,7 +5675,9 @@ async function processarFilaOffline() {
     for (const acao of lerFilaOffline()) {
       if (usuario?.login !== loginInicial) break;
       if (!acaoOfflinePertenceAoUsuario(acao) || acao.tipo !== 'marcar-entregue' || acao.falha) continue;
-      const res = await apiSupabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
+      const res = acao.itensEntregues?.length
+        ? await apiSupabase('rpc/concluir_entrega_parcial','POST', { p_id:acao.pedidoId, p_dados:acao.payload, p_itens:acao.itensEntregues })
+        : await apiSupabase('rpc/concluir_entrega','POST', { p_id:acao.pedidoId, p_dados:acao.payload });
       if (!res.ok) {
         if (falhaDefinitivaFila(res)) recusadas.set(chaveAcaoFila(acao), motivoFalhaFila(res));
         continue;

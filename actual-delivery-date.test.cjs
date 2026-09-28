@@ -29,7 +29,8 @@ assert.deepEqual(
   { status: 'entregue', data_entregue_em: '2026-08-18' },
 );
 assert.match(app, /const payload = \{\s*\.\.\.dadosEntregaConcluida\(\)/);
-assert.match(app, /adicionarNaFilaOffline\(\{[\s\S]*?pedidoId: id,[\s\S]*?payload,/);
+assert.match(app, /const acaoFila = \{[^}]*pedidoId: id,[^}]*payload,/);
+assert.match(app, /adicionarNaFilaOffline\(acaoFila\)/);
 
 // 6. O app bloqueia uma segunda conclusão e o banco preserva a data em edições/reversões.
 assert.match(app, /pedidoSelecionado\.status === 'entregue'/);

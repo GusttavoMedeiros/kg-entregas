@@ -67,13 +67,13 @@ test('Entrega de pedido pré-pago preserva recebimento no modo offline', async (
       forma_pagamento_real: 'pix', data_pagamento: '2026-09-01' };
     const c = { salvando: false, pedidoSelecionado: pedido, todosOsPedidos: [pedido],
       usuario: { perfil: 'admin' }, MODO_DEMO: false, navigator: { onLine: false },
-      document: { getElementById: () => ({ value: '' }), querySelector: () => ({ dataset: { precisaPagamento: '0' } }) },
+      document: { getElementById: () => ({ value: '' }), querySelector: () => ({ dataset: { precisaPagamento: '0' } }), querySelectorAll: () => [] },
       dadosEntregaConcluida: () => ({ status: 'entregue', data_entregue_em: '2026-09-09' }),
       adicionarNaFilaOffline: async a => { payload = a.payload; },
       toast() {}, limparChecklist() {}, fecharModal() {}, agendarRender() {},
       botaoSalvando() {}, registrarMudancaLocal() {}, console,
     };
-    vm.runInNewContext(trecho('async function confirmarEntrega()', '// EXCLUIR PEDIDO'), c);
+    vm.runInNewContext(trecho('const chaveItemEntrega', 'function renderizarItensEntrega(') + trecho('async function confirmarEntrega()', '// EXCLUIR PEDIDO'), c);
     await c.confirmarEntrega();
     assert.equal(payload.status_pagamento, 'pago');
     assert.equal(payload.forma_pagamento_real, 'pix');
