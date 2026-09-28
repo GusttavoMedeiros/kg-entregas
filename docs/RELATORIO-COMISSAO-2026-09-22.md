@@ -107,3 +107,16 @@ gatilho `restringir_update_entregador` da migration `20260813153429`).
 
 Testes: `partial-delivery-db.test.cjs` (Postgres em memória com as regras reais),
 `partial-delivery-app.test.cjs`.
+
+## Marcar como Pago (28/09/2026)
+
+Antes, o botão "Marcar como Pago" da janela do cliente quitava **todos** os pedidos em aberto de uma vez, como dinheiro, sem perguntar. Isso incluía pedidos ainda não entregues e pagamentos que o cliente tinha se recusado a fazer.
+
+Agora:
+- Cada pedido em aberto tem sua caixa de seleção, todas **desmarcadas**. Há "Marcar todos" e "Limpar".
+- É preciso escolher a forma: **Dinheiro** ou **PIX / Cartão** (grava em `forma_pagamento_real`).
+- Antes de gravar, o app mostra uma confirmação com os números dos pedidos, o total, a forma e, se houver, o aviso de pedido ainda não entregue (a entrega continua pendente).
+- A gravação só atinge os pedidos marcados e só os que ainda não estão pagos (`status_pagamento` nulo ou diferente de `pago`). Se outro aparelho já tiver quitado algum, o app avisa quantos foram atualizados de fato e recarrega os dados.
+- A escolha em andamento não se perde quando a tela atualiza sozinha, e não passa para outro cliente.
+
+Impacto no relatório de comissão: nenhum. O relatório usa `data_entregue_em`, não a data do pagamento. Sem mudança no banco de dados.
