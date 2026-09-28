@@ -75,3 +75,35 @@ conferido sem estar:
   próprio ("ainda não enviadas ao servidor"), na tela e no PDF.
 
 Teste: `report-server-check.test.cjs`. Nenhuma alteração no banco de dados.
+
+## Entrega parcial (28/09/2026)
+
+Às vezes chega só parte do pedido. Antes, a entrega marcava o pedido inteiro e o
+relatório contava todas as unidades, então a comissão saía a mais. Regra
+combinada: **o que não chegou é cancelado e o cliente paga só o que recebeu**.
+
+- Na tela de confirmar entrega, cada item vem preenchido com a quantidade pedida.
+  O entregador só ajusta quando chegou menos. O valor novo aparece na hora e o app
+  pede confirmação antes de gravar.
+- O banco reduz as quantidades, tira o item que não chegou, recalcula o valor e
+  guarda em cada item a quantidade originalmente pedida (`qtd_pedida`).
+- O relatório já soma a quantidade de cada item, então passa a contar só o que foi
+  entregue, sem mudança nele.
+- **Pedido já pago adiantado não aceita entrega parcial** (o cliente teria pago a
+  mais). Os campos ficam travados e o administrador ajusta o pedido antes.
+- Funciona sem internet: a entrega parcial fica na fila com as quantidades e é
+  enviada depois pela mesma função.
+
+**Banco de dados** (`supabase/migrations/20260928170000_partial_delivery.sql`), só
+acréscimos: coluna `itens_pedido.qtd_pedida` (vazia nos pedidos existentes), função
+`concluir_entrega_parcial` e um ajuste no gatilho do entregador, que continua sem
+poder mudar valor ou itens por conta própria (só a função nova pode, dentro da sua
+transação). `concluir_entrega` não muda.
+
+**Ordem para publicar:** aplicar a migration no banco **primeiro**, publicar o app
+depois. O app antigo continua funcionando com a migration aplicada. Para desfazer:
+remover a função `concluir_entrega_parcial` e a coluna `qtd_pedida` (e restaurar o
+gatilho `restringir_update_entregador` da migration `20260813153429`).
+
+Testes: `partial-delivery-db.test.cjs` (Postgres em memória com as regras reais),
+`partial-delivery-app.test.cjs`.

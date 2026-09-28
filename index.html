@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=77" as="script">
+<link rel="preload" href="app.js?v=78" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -616,6 +616,21 @@ body.offline #app{padding-top:54px}
 .rel-alerta summary::-webkit-details-marker{display:none}
 .rel-alerta summary span{font-size:11px;opacity:.8;white-space:nowrap}
 .rel-alerta-texto{font-size:11.5px;color:var(--c3);margin:6px 0 2px;line-height:1.4}
+
+/* Entrega parcial: quantidade entregue de cada item */
+.entrega-itens{margin-bottom:14px}
+.entrega-itens[hidden]{display:none}
+.entrega-item{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 0;border-bottom:1px solid var(--ol)}
+.entrega-item-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.entrega-item-nome{font-size:13px;color:var(--creme);font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.entrega-item-info small{font-size:11px;color:var(--c3)}
+.entrega-item .carrinho-qtd{flex-shrink:0}
+.entrega-item .btn-qtd:disabled,.entrega-item .qtd-input:disabled{opacity:.4;cursor:not-allowed}
+.entrega-itens-resumo{font-size:12px;line-height:1.4;color:var(--c3);margin-top:8px}
+.entrega-itens-resumo:empty{display:none}
+.entrega-itens-resumo.aviso{color:#f4a04a;background:rgba(212,121,26,.12);border:1px solid rgba(212,121,26,.4);
+  border-radius:var(--r);padding:8px 10px}
 
 /* Entregas offline recusadas pelo servidor */
 #aviso-fila-offline .btn-azul{margin-top:8px;display:block}
@@ -2007,6 +2022,13 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     <div class="modal-titulo">Confirmar Entrega</div>
     <div id="modal-entrega-info" style="background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:13px;margin-bottom:14px;font-size:13px;color:var(--creme)"></div>
 
+    <!-- ITENS ENTREGUES — o entregador só ajusta se chegou menos do que o pedido -->
+    <div id="entrega-itens" class="entrega-itens" hidden>
+      <label class="bloco-pagto-label">📦 O que foi entregue?</label>
+      <div id="entrega-itens-lista"></div>
+      <div id="entrega-itens-resumo" class="entrega-itens-resumo" role="status" aria-live="polite"></div>
+    </div>
+
     <!-- BLOCO DE PAGAMENTO — aparece só para à vista e cheque -->
     <div class="bloco-pagamento-entrega">
       <label class="bloco-pagto-label">💰 O cliente pagou? <span class="campo-obrig">*</span></label>
@@ -2222,6 +2244,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=77"></script>
+<script src="app.js?v=78"></script>
 </body>
 </html>
