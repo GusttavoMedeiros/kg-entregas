@@ -3119,14 +3119,34 @@ function filtrarFinanceiro(filtro, btn) {
   renderizarFinanceiro(filtro);
 }
 
+// Baixa de pagamento: quais pedidos o cliente pagou e como. Fica fora da tela
+// porque a janela é redesenhada quando chegam dados novos, e a escolha em
+// andamento não pode se perder.
+let finSelecionados = new Set(); // ids dos pedidos marcados como pagos
+let finForma = '';               // 'dinheiro' | 'pix'
+const FIN_FORMAS = { dinheiro: 'Dinheiro', pix: 'PIX / Cartão' };
+
+function statusPedidoAberto(p) {
+  if (isPagamentoAtrasado(p)) return '<span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>';
+  if (p.status_pagamento === 'recusado') return '<span style="color:#ee7d6f;font-weight:700">✗ Cliente não pagou na entrega</span>';
+  if (p.status !== 'entregue') return '<span style="color:#f4a04a;font-weight:700">📦 Ainda não entregue</span>';
+  return '';
+}
+
 function verFinanceiroCliente(id) {
   const c = todosOsClientes.find(x => x.id===id);
   if (!c) return;
+  const modal = document.getElementById('modal-fin-cliente');
+  // Redesenho por atualização automática mantém a escolha; abrir outro cliente começa limpo.
+  const mesmaJanela = modal.classList.contains('aberto') && clienteSelecionado?.id === id;
   clienteSelecionado = c;
-  document.getElementById('modal-fin-cliente').dataset.registroId = String(id);
+  modal.dataset.registroId = String(id);
   // Cobrança = tudo que ainda não foi PAGO (inclui entregue sem pagar —
   // que é justamente quem mais precisa ser cobrado)
   const pedidos = todosOsPedidos.filter(p => p.cliente_id===id && !foiPago(p));
+  if (!mesmaJanela) { finSelecionados = new Set(); finForma = ''; }
+  // Pedido quitado em outro aparelho sai da escolha.
+  finSelecionados = new Set([...finSelecionados].filter(pid => pedidos.some(p => p.id === pid)));
   const total = pedidos.reduce((s,p)=>s+(Number(p.valor)||0),0);
   const wa = (c.whatsapp||'').replace(/\D/g,'');
 
@@ -3138,23 +3158,82 @@ function verFinanceiroCliente(id) {
   document.getElementById('fin-cliente-conteudo').innerHTML = `
     <div style="font-size:13px;color:var(--c2);margin-bottom:14px">📱 ${esc(c.whatsapp||'–')}</div>
     <div class="separador">Pagamentos em aberto</div>
-    ${pedidos.length ? pedidos.map(p=>`
-      <div style="border-bottom:1px solid var(--ol);padding:9px 0">
-        <div class="flex-entre">
-          <span style="font-size:13px;color:var(--creme)">${esc(p.descricao)}</span>
-          <span style="font-size:14px;font-weight:700;color:#e05a4e">${moeda(p.valor)}</span>
-        </div>
-        <div style="font-size:12px;color:var(--c3);margin-top:3px">
-          Venc.: ${dataBR(p.data_vencimento)} ${isPagamentoAtrasado(p)?'· <span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>':''}
-        </div>
-      </div>`).join('')
+    ${pedidos.length ? `
+      <div class="fin-instrucao">Marque só os pedidos que o cliente pagou agora.</div>
+      <div class="fin-selecao-atalhos">
+        <button type="button" onclick="selecionarPedidosPagos(true)">Marcar todos</button>
+        <button type="button" onclick="selecionarPedidosPagos(false)">Limpar</button>
+      </div>
+      ${pedidos.map(p=>`
+      <label class="fin-pedido">
+        <input type="checkbox" data-pedido="${esc(p.id)}" onchange="alternarPedidoPago(${Number(p.id)}, this.checked)"${finSelecionados.has(p.id) ? ' checked' : ''}>
+        <span class="fin-pedido-corpo">
+          <span class="flex-entre">
+            <span style="font-size:13px;color:var(--creme)">${esc(p.descricao)}</span>
+            <span style="font-size:14px;font-weight:700;color:#e05a4e">${moeda(p.valor)}</span>
+          </span>
+          <span style="display:block;font-size:12px;color:var(--c3);margin-top:3px">
+            Pedido nº ${esc(p.id)} · Venc.: ${dataBR(p.data_vencimento)} ${statusPedidoAberto(p) ? '· ' + statusPedidoAberto(p) : ''}
+          </span>
+        </span>
+      </label>`).join('')}`
     : '<div class="vazio" style="padding:20px"><p>Sem pagamentos em aberto</p></div>'}
-    <div style="margin-top:12px;font-weight:700;color:var(--o1);font-size:15px">Total: ${moeda(total)}</div>
+    <div style="margin-top:12px;font-weight:700;color:var(--o1);font-size:15px">Total em aberto: ${moeda(total)}</div>
+    ${pedidos.length ? `
+      <div class="fin-forma-bloco">
+        <label class="bloco-pagto-label">💰 Como o cliente pagou? <span class="campo-obrig">*</span></label>
+        <div class="pagto-recebido-grupo">
+          ${Object.entries(FIN_FORMAS).map(([valor, rotulo]) => `
+          <button type="button" class="pagto-recebido pagto-pago${finForma === valor ? ' ativo' : ''}" data-forma="${valor}" onclick="escolherFormaPaga('${valor}')">
+            <span class="pagto-recebido-icone">${valor === 'dinheiro' ? '💵' : '💳'}</span>
+            <span class="pagto-recebido-label">${esc(rotulo)}</span>
+          </button>`).join('')}
+        </div>
+      </div>
+      <div id="fin-resumo-selecao" class="fin-resumo-selecao" role="status" aria-live="polite"></div>` : ''}
     ${linkWa?`<a href="${linkWa}" target="_blank" rel="noopener"
       style="display:block;margin-top:12px;background:var(--gnb);color:var(--gn);border:1px solid rgba(39,174,96,.3);
              border-radius:var(--r);padding:12px;text-align:center;text-decoration:none;font-weight:700;font-size:14px">
       📲 Enviar cobrança no WhatsApp</a>`:''}`;
+  atualizarResumoPagos();
   abrirModal('modal-fin-cliente');
+}
+
+// Pedidos em aberto do cliente que está na janela.
+function pedidosAbertosDoCliente() {
+  if (!clienteSelecionado) return [];
+  return todosOsPedidos.filter(p => p.cliente_id === clienteSelecionado.id && !foiPago(p));
+}
+
+function atualizarResumoPagos() {
+  const el = document.getElementById('fin-resumo-selecao');
+  if (!el) return;
+  const marcados = pedidosAbertosDoCliente().filter(p => finSelecionados.has(p.id));
+  if (!marcados.length) { el.className = 'fin-resumo-selecao'; el.textContent = 'Nenhum pedido marcado.'; return; }
+  const totalC = marcados.reduce((s, p) => s + Math.round((Number(p.valor) || 0) * 100), 0);
+  el.className = 'fin-resumo-selecao ativo';
+  el.textContent = `${marcados.length} pedido(s) marcado(s): ${moeda(totalC / 100)}`;
+}
+
+function alternarPedidoPago(id, marcado) {
+  if (marcado) finSelecionados.add(id); else finSelecionados.delete(id);
+  atualizarResumoPagos();
+}
+
+function selecionarPedidosPagos(todos) {
+  finSelecionados = new Set(todos ? pedidosAbertosDoCliente().map(p => p.id) : []);
+  document.querySelectorAll('#fin-cliente-conteudo input[data-pedido]').forEach(inp => {
+    inp.checked = finSelecionados.has(Number(inp.dataset.pedido));
+  });
+  atualizarResumoPagos();
+}
+
+function escolherFormaPaga(forma) {
+  if (!FIN_FORMAS[forma]) return;
+  finForma = forma;
+  document.querySelectorAll('#fin-cliente-conteudo .pagto-recebido').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.forma === forma);
+  });
 }
 
 // Monta uma mensagem de cobrança pronta, educada e detalhada.
@@ -3196,11 +3275,24 @@ function obterSaudacao() {
 async function marcarPagoCliente() {
   if (salvando) return;
   if (!clienteSelecionado) return;
-  // Pega TODOS que ainda não estão pagos: pendentes de entrega OU entregues sem pagamento
-  const paraPagar = todosOsPedidos.filter(p =>
-    p.cliente_id === clienteSelecionado.id && !foiPago(p)
+  const cliente = clienteSelecionado;
+  const abertos = pedidosAbertosDoCliente();
+  if (!abertos.length) { fecharModal('modal-fin-cliente'); return; }
+  // Só o que foi marcado na tela: quitar um pedido não pode quitar os outros do cliente.
+  const paraPagar = abertos.filter(p => finSelecionados.has(p.id));
+  if (!paraPagar.length) { toast('Marque os pedidos que o cliente pagou.'); return; }
+  if (!FIN_FORMAS[finForma]) { toast('Escolha como o cliente pagou: dinheiro ou PIX / Cartão.'); return; }
+  const forma = finForma;
+  const totalC = paraPagar.reduce((s, p) => s + Math.round((Number(p.valor) || 0) * 100), 0);
+  const naoEntregues = paraPagar.filter(p => p.status !== 'entregue');
+  const ok = await confirmar(
+    `Marcar como PAGO ${paraPagar.length} pedido(s) de "${cliente.nome}"?\n\n` +
+    `Pedido(s) nº ${paraPagar.map(p => p.id).join(', ')}\n` +
+    `Total: ${moeda(totalC / 100)}\n` +
+    `Forma: ${FIN_FORMAS[forma]}` +
+    (naoEntregues.length ? `\n\n⚠ ${naoEntregues.length} ainda não foi entregue (pagamento adiantado). A entrega continua pendente.` : '')
   );
-  if (!paraPagar.length) { fecharModal('modal-fin-cliente'); return; }
+  if (!ok) return;
   salvando = true;
   botaoSalvando('marcarPagoCliente', true, '✓ Marcar como Pago');
   try {
@@ -3209,24 +3301,35 @@ async function marcarPagoCliente() {
     // muda — pedido pago adiantado continua aparecendo para o entregador.
     const payload = {
       status_pagamento: 'pago',
-      forma_pagamento_real: 'dinheiro',  // padrão para baixa manual
+      forma_pagamento_real: forma,
       data_pagamento: hojeStr,
     };
+    let confirmados = paraPagar;
     if (!MODO_DEMO) {
       // Uma única instrução evita baixa parcial se a conexão cair entre pedidos.
+      // O filtro "ainda não pago" impede sobrescrever um pagamento que outro
+      // aparelho registrou enquanto esta janela estava aberta.
       const ids = paraPagar.map(p => Number(p.id)).filter(Number.isFinite);
-      const res = await apiSupabase('pedidos','PATCH', payload, `?id=in.(${ids.join(',')})`);
+      const res = await apiSupabase('pedidos','PATCH', payload,
+        `?id=in.(${ids.join(',')})&or=(status_pagamento.is.null,status_pagamento.neq.pago)`);
       if (!res.ok || !Array.isArray(res.dados)) { toast('Erro ao atualizar. Tente novamente.'); return; }
       const porId = new Map(res.dados.map(p => [Number(p.id), p]));
       paraPagar.forEach(p => { if (porId.has(Number(p.id))) Object.assign(p, porId.get(Number(p.id))); });
-      if (res.count !== ids.length) {
-        console.warn('Baixa confirmou menos pedidos que o esperado:', { esperados:ids.length, confirmados:res.count });
+      confirmados = paraPagar.filter(p => porId.has(Number(p.id)));
+      if (confirmados.length !== ids.length) {
+        toast(`Só ${confirmados.length} de ${ids.length} pedido(s) foram atualizados: os outros já tinham sido pagos ou mudaram. Os dados serão recarregados.`);
+        solicitarSincronizacao();
       }
     } else {
       paraPagar.forEach(p => { Object.assign(p, payload); });
     }
+    finSelecionados = new Set();
     fecharModal('modal-fin-cliente');
     registrarMudancaLocal('pedidos');
+    if (confirmados.length === paraPagar.length) {
+      const pagoC = confirmados.reduce((s, p) => s + Math.round((Number(p.valor) || 0) * 100), 0);
+      toast(`✓ ${confirmados.length} pedido(s) de "${cliente.nome}" marcado(s) como pago: ${moeda(pagoC / 100)}`);
+    }
   } finally {
     salvando = false;
     botaoSalvando('marcarPagoCliente', false, '✓ Marcar como Pago');
