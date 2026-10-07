@@ -6137,10 +6137,16 @@ window.addEventListener('appinstalled', () => {
     }
   }
 
-  window.addEventListener('scroll', checar, { passive: true });
-  // Captura o scroll da .conteudo (desktop) — usa fase de captura pois
-  // o evento scroll não borbulha
-  document.addEventListener('scroll', checar, { passive: true, capture: true });
+  // checar() mede a página (getComputedStyle, scrollHeight): no máximo uma vez
+  // por quadro, e não a cada evento, para não travar a rolagem.
+  let quadroPendente = 0;
+  const agendarChecagem = () => {
+    if (quadroPendente) return;
+    quadroPendente = requestAnimationFrame(() => { quadroPendente = 0; checar(); });
+  };
+  // Um ouvinte só: a captura no document recebe a rolagem da janela e a da
+  // .conteudo (desktop), já que o evento scroll de elemento não borbulha.
+  document.addEventListener('scroll', agendarChecagem, { passive: true, capture: true });
 
   // Ação do botão: rola o container certo de volta ao topo
   btn.onclick = () => {

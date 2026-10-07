@@ -34,8 +34,9 @@ assert.doesNotMatch(html, /family=Nunito/);
 assert.match(css, /html\.modo-economico \.header[\s\S]*backdrop-filter:none/);
 assert.match(css, /#tela-login\s*\{[^}]*overflow-y:auto/s);
 assert.match(css, /max-height:700px[\s\S]*#tela-login[\s\S]*justify-content:flex-start/);
-assert.match(css, /@supports \(content-visibility:auto\)[\s\S]*contain-intrinsic-size:auto 172px/);
-assert.match(html, /ios-like\.css\?v=7/);
+// Sem content-visibility nos cartões: a altura estimada fazia a lista pular na rolagem.
+assert.doesNotMatch(css, /content-visibility:\s*auto/);
+assert.match(html, /ios-like\.css\?v=8/);
 assert.match(html, /styles\/design-tokens\.css\?v=1/);
 assert.match(html, /styles\/visual-polish\.css\?v=1/);
 assert.match(tokens, /--kg-motion-ease/);
