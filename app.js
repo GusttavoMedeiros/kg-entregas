@@ -6103,21 +6103,35 @@ let relVendedor = '';      // admin: '' = todos, ou o login do vendedor
 // Pedidos buscados no servidor no momento em que o relatório é aberto/impresso.
 // A lista em memória pode estar parada se a sincronização automática falhou
 // (sem internet, sessão expirada); para a comissão isso não é aceitável.
-let relFonte = { pedidos: null, filaPendente: [], atualizadoEm: null, erro: null, carregando: false };
+// acertos: acertos de comissão registrados (null = não foi possível consultar).
+let relFonte = { pedidos: null, filaPendente: [], acertos: null, atualizadoEm: null, erro: null, carregando: false };
 let relToken = 0;
 
 async function buscarPedidosRelatorio() {
-  if (MODO_DEMO) return { ok: true, pedidos: todosOsPedidos, filaPendente: [] };
+  if (MODO_DEMO) return { ok: true, pedidos: todosOsPedidos, filaPendente: [], acertos: [] };
   const loginInicial = usuario?.login;
   // Entregas feitas sem internet neste aparelho: tenta enviá-las antes de conferir.
   if (navigator.onLine) await processarFilaOffline();
-  const res = await listarTodos('pedidos', '*,clientes(nome),itens_pedido(*)');
+  const [res, acertos] = await Promise.all([
+    listarTodos('pedidos', '*,clientes(nome),itens_pedido(*)'),
+    buscarAcertosRelatorio(),
+  ]);
   if (!usuario || usuario.login !== loginInicial) return { ok: false, erro: 'A sessão foi alterada.' };
   if (!res.ok) return { ok: false, erro: res.erro || 'Falha ao consultar o servidor.' };
   if (res.deCache) return { ok: false, erro: 'O servidor não respondeu; os dados são os do último acesso.' };
   // Aqui NÃO se aplica a fila offline: o total do acerto é só o que o banco confirmou.
   const pedidos = normalizarPedidos(res.dados);
-  return { ok: true, pedidos, filaPendente: entregasNaFilaOffline(pedidos) };
+  return { ok: true, pedidos, filaPendente: entregasNaFilaOffline(pedidos), acertos };
+}
+
+// Acertos de comissão já registrados. Falha aqui não impede o relatório: só
+// deixa de mostrar o que mudou depois do acerto (e o botão de registrar).
+async function buscarAcertosRelatorio() {
+  try {
+    const res = await apiSupabase('acertos_comissao', 'GET', null, '?select=*&order=registrado_em.desc&limit=1000');
+    if (!res.ok || res.deCache || !Array.isArray(res.dados)) return null;
+    return res.dados;
+  } catch (_) { return null; }
 }
 
 // Pedidos que este aparelho marcou como entregues, mas que o servidor ainda
@@ -6141,8 +6155,8 @@ async function atualizarFonteRelatorio() {
   catch (e) { r = { ok: false, erro: e.message }; }
   if (token !== relToken) return relFonte;
   relFonte = r.ok
-    ? { pedidos: r.pedidos, filaPendente: r.filaPendente || [], atualizadoEm: new Date(), erro: null, carregando: false }
-    : { pedidos: null, filaPendente: [], atualizadoEm: null, erro: r.erro, carregando: false };
+    ? { pedidos: r.pedidos, filaPendente: r.filaPendente || [], acertos: Array.isArray(r.acertos) ? r.acertos : null, atualizadoEm: new Date(), erro: null, carregando: false }
+    : { pedidos: null, filaPendente: [], acertos: null, atualizadoEm: null, erro: r.erro, carregando: false };
   renderizarRelatorio();
   return relFonte;
 }
@@ -6156,7 +6170,7 @@ function abrirModalRelatorio() {
   relTipo = 'semanal';
   relOffset = 0;
   relVendedor = '';
-  relFonte = { pedidos: null, filaPendente: [], atualizadoEm: null, erro: null, carregando: true };
+  relFonte = { pedidos: null, filaPendente: [], acertos: null, atualizadoEm: null, erro: null, carregando: true };
   // Reseta abas visuais para a primeira
   document.querySelectorAll('#abas-relatorio .aba').forEach((b, i) => {
     b.classList.toggle('ativa', i === 0);
@@ -6363,6 +6377,162 @@ function mudarVendedorRelatorio(v) {
   renderizarRelatorio();
 }
 
+// ===== Acerto de comissão =====
+// O administrador registra o acerto de um vendedor num período; o banco guarda,
+// pedido a pedido, as unidades e o valor. Depois, o relatório compara com o que
+// está no servidor e mostra o que mudou (devolução, correção, entrega lançada
+// tarde), para acertar a diferença no próximo pagamento. Nada fica travado.
+
+// Unidades de um pedido, como o relatório conta (soma das quantidades dos itens).
+function unidadesDoPedido(p) {
+  return (p.itens || []).reduce((s, i) => s + Math.round(Math.max(0, Number(i.qtd) || 0) * 100), 0) / 100;
+}
+
+// De quem é o acerto mostrado: o vendedor logado, o escolhido pelo admin ou,
+// sem filtro, o único vendedor do período.
+function vendedorDoAcerto(vendedores) {
+  if (usuario.perfil === 'vendedor') return usuario.login || '';
+  if (usuario.perfil !== 'admin') return '';
+  if (relVendedor) return relVendedor;
+  return vendedores.length === 1 ? vendedores[0] : '';
+}
+
+// Último acerto registrado exatamente para este vendedor e período.
+function acertoDoPeriodo(acertos, vendedor, ini, fim) {
+  if (!vendedor || !Array.isArray(acertos)) return null;
+  return acertos.filter(a => a.vendedor === vendedor && a.ini === ini && a.fim === fim)
+    .sort((a, b) => (Date.parse(b.registrado_em) || 0) - (Date.parse(a.registrado_em) || 0))[0] || null;
+}
+
+// O que mudou desde o acerto: pedidos que entraram, saíram ou mudaram de unidades/valor.
+function diferencasDoAcerto(acerto, pedidos) {
+  const c = v => Math.round((Number(v) || 0) * 100);
+  const antes = new Map((acerto.pedidos || []).map(x => [Number(x.id), x]));
+  const agora = new Map(pedidos.map(p => [Number(p.id), p]));
+  const mudancas = [];
+  agora.forEach((p, id) => {
+    const a = antes.get(id);
+    const m = { id, cliente: p.cliente_nome || a?.cliente || 'Cliente',
+      antesUn: Number(a?.unidades) || 0, agoraUn: unidadesDoPedido(p),
+      antesValor: Number(a?.valor) || 0, agoraValor: Number(p.valor) || 0 };
+    if (!a) mudancas.push({ ...m, tipo: 'entrou' });
+    else if (c(m.antesUn) !== c(m.agoraUn) || c(m.antesValor) !== c(m.agoraValor)) mudancas.push({ ...m, tipo: 'mudou' });
+  });
+  antes.forEach((a, id) => {
+    if (!agora.has(id)) mudancas.push({ id, cliente: a.cliente || 'Cliente', tipo: 'saiu',
+      antesUn: Number(a.unidades) || 0, agoraUn: 0, antesValor: Number(a.valor) || 0, agoraValor: 0 });
+  });
+  mudancas.sort((x, y) => x.id - y.id);
+  return { mudancas,
+    difUnidades: mudancas.reduce((s, m) => s + c(m.agoraUn) - c(m.antesUn), 0) / 100,
+    difValor: mudancas.reduce((s, m) => s + c(m.agoraValor) - c(m.antesValor), 0) / 100 };
+}
+
+// Textos só com letras, números e pontuação simples: saem iguais na tela e no PDF.
+function textoMudancaAcerto(m) {
+  if (m.tipo === 'entrou') return `entrou depois do acerto (${qtdTexto(m.agoraUn)} un, ${moeda(m.agoraValor)})`;
+  if (m.tipo === 'saiu') return `saiu do período (${qtdTexto(m.antesUn)} un, ${moeda(m.antesValor)})`;
+  const partes = [];
+  if (Math.round(m.antesUn * 100) !== Math.round(m.agoraUn * 100)) partes.push(`de ${qtdTexto(m.antesUn)} para ${qtdTexto(m.agoraUn)} un`);
+  if (Math.round(m.antesValor * 100) !== Math.round(m.agoraValor * 100)) partes.push(`de ${moeda(m.antesValor)} para ${moeda(m.agoraValor)}`);
+  return 'mudou: ' + partes.join(', ');
+}
+
+function textoDiferencaAcerto(dif) {
+  const parte = (n, f) => n === 0 ? null : `${f(Math.abs(n))} a ${n > 0 ? 'mais' : 'menos'}`;
+  return [parte(dif.difUnidades, v => qtdTexto(v) + ' un'), parte(dif.difValor, moeda)].filter(Boolean).join(', ')
+    || 'mesmo total, pedidos diferentes';
+}
+
+function dataHoraAcerto(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const fuso = { timeZone: 'America/Sao_Paulo' };
+  return `${d.toLocaleDateString('pt-BR', fuso)} às ${d.toLocaleTimeString('pt-BR', { ...fuso, hour: '2-digit', minute: '2-digit' })}`;
+}
+
+// Bloco do acerto na tela: situação do acerto e, para o admin, o botão de registrar.
+function htmlAcertoRelatorio(r) {
+  const admin = usuario.perfil === 'admin';
+  if (!admin && usuario.perfil !== 'vendedor') return '';
+  if (!Array.isArray(relFonte.acertos)) {
+    return relFonte.atualizadoEm ? '<div class="rel-status">Não foi possível consultar os acertos de comissão registrados.</div>' : '';
+  }
+  let html = '';
+  const { acerto, difAcerto, vendedorAcerto } = r;
+  if (acerto) {
+    const quando = dataHoraAcerto(acerto.registrado_em);
+    const base = `${qtdTexto(Number(acerto.unidades) || 0)} un · ${moeda(Number(acerto.total) || 0)}`;
+    if (!difAcerto.mudancas.length) {
+      html += `<div class="rel-acerto ok">✓ Acerto registrado em ${esc(quando)}: <b>${esc(base)}</b>. Nada mudou desde então.</div>`;
+    } else {
+      html += `
+      <details class="rel-alerta rel-acerto-mudou" open>
+        <summary><b>⚠ Mudou depois do acerto de ${esc(quando)}</b><span>${esc(textoDiferencaAcerto(difAcerto))}</span></summary>
+        <div class="rel-alerta-texto">No acerto: <b>${esc(base)}</b>. Acerte a diferença no próximo pagamento${admin ? ' e registre o acerto de novo' : ''}.</div>
+        ${difAcerto.mudancas.map(m => `
+          <div class="rel-linha">
+            <span class="rel-linha-nome">${esc(m.cliente)} <small>nº ${esc(m.id)}</small>
+              <span class="rel-acerto-mudanca">${esc(textoMudancaAcerto(m))}</span></span>
+          </div>`).join('')}
+      </details>`;
+    }
+  }
+  if (admin) {
+    if (vendedorAcerto) {
+      const pronto = !!relFonte.atualizadoEm && !relFonte.erro && !relFonte.carregando && !r.naFila.length;
+      html += `<button type="button" class="btn-azul rel-btn-acerto"${pronto ? '' : ' disabled'} onclick="registrarAcertoRelatorio()">${acerto ? 'Registrar novo acerto' : 'Registrar acerto deste período'} · ${esc(nomeVendedorRelatorio(vendedorAcerto))}</button>`;
+      if (!pronto) html += '<div class="rel-status">Para registrar o acerto, confira com o servidor e envie as entregas pendentes deste aparelho.</div>';
+    } else if (r.vendedores.length > 1) {
+      html += '<div class="rel-status">Para registrar o acerto da comissão, escolha o vendedor acima.</div>';
+    }
+  }
+  return html ? `<div class="rel-acerto-bloco">${html}</div>` : '';
+}
+
+let _registrandoAcerto = false;
+async function registrarAcertoRelatorio() {
+  if (_registrandoAcerto || usuario.perfil !== 'admin') return;
+  if (MODO_DEMO) { toast('No modo demonstração o acerto não é registrado.'); return; }
+  const r = montarRelatorio();
+  const vendedor = r.vendedorAcerto;
+  if (!vendedor) { toast('Escolha o vendedor do acerto.'); return; }
+  if (!relFonte.atualizadoEm || relFonte.erro || relFonte.carregando || r.naFila.length) {
+    toast('Confira o relatório com o servidor (e envie as entregas deste aparelho) antes de registrar o acerto.');
+    return;
+  }
+  const doVendedor = r.pedidos.filter(p => (p.vendedor || '') === vendedor);
+  const unidades = doVendedor.reduce((s, p) => s + Math.round(unidadesDoPedido(p) * 100), 0) / 100;
+  const total = doVendedor.reduce((s, p) => s + Math.round((Number(p.valor) || 0) * 100), 0) / 100;
+  const emAndamento = r.fim >= fmt(new Date());
+  const ok = await confirmar(
+    `${nomeVendedorRelatorio(vendedor)} — ${r.label}\n\n` +
+    `${doVendedor.length} pedido(s) · ${qtdTexto(unidades)} unidade(s) · ${moeda(total)}\n\n` +
+    (emAndamento ? 'Atenção: este período ainda não terminou. O que for entregue depois vai aparecer como mudança.\n\n' : '') +
+    'Depois de registrar, qualquer mudança neste período (devolução, correção, entrega lançada depois) aparece em destaque no relatório.',
+    { titulo: r.acerto ? 'Registrar novo acerto?' : 'Registrar acerto da comissão?', okLabel: 'Registrar acerto' });
+  if (!ok) return;
+  _registrandoAcerto = true;
+  try {
+    const res = await apiSupabase('rpc/registrar_acerto', 'POST', { p_vendedor: vendedor, p_tipo: relTipo, p_ini: r.ini, p_fim: r.fim });
+    const novo = Array.isArray(res.dados) ? res.dados[0] : res.dados;
+    if (!res.ok || !novo || typeof novo !== 'object') {
+      toast('O acerto não foi registrado.\n\nDetalhes: ' + (res.erro || 'resposta inválida do servidor'));
+      return;
+    }
+    relFonte = { ...relFonte, acertos: [novo, ...(relFonte.acertos || [])] };
+    const dif = diferencasDoAcerto(novo, doVendedor);
+    toast(dif.mudancas.length
+      ? 'Acerto registrado, mas o servidor tinha dados diferentes desta tela. Veja o aviso no relatório.'
+      : '✓ Acerto registrado.');
+    renderizarRelatorio();
+  } catch (e) {
+    toast('O acerto não foi registrado. ' + e.message);
+  } finally {
+    _registrandoAcerto = false;
+  }
+}
+
 // Tudo que o relatório mostra, na tela e no PDF, sai daqui.
 function montarRelatorio() {
   const { ini, fim, label } = calcularJanelaRelatorio(relTipo, relOffset);
@@ -6380,14 +6550,20 @@ function montarRelatorio() {
   }));
   const pendentes = filtrarVendedorRelatorio(pendentesDoRelatorio(fim, base)).filter(p => !idsNaFila.has(p.id));
   const d = calcularDadosRelatorio(pedidos, typeof todosOsProdutos !== 'undefined' ? todosOsProdutos : []);
-  // Vendedores do período, para os botões de filtro do admin.
-  const vendedores = [...new Set(entreguesTodos.map(p => p.vendedor).filter(Boolean))]
+  // Vendedores do período, para os botões de filtro do admin. Quem teve acerto
+  // registrado no período também entra, mesmo que todos os pedidos tenham saído.
+  const comAcerto = (relFonte.acertos || []).filter(a => a.ini === ini && a.fim === fim).map(a => a.vendedor);
+  const vendedores = [...new Set([...entreguesTodos.map(p => p.vendedor), ...comAcerto].filter(Boolean))]
     .sort((a, b) => nomeVendedorRelatorio(a).localeCompare(nomeVendedorRelatorio(b), 'pt-BR'));
-  return { ini, fim, label, pedidos, pendentes, naFila, d, vendedores };
+  const vendedorAcerto = vendedorDoAcerto(vendedores);
+  const acerto = acertoDoPeriodo(relFonte.acertos, vendedorAcerto, ini, fim);
+  const difAcerto = acerto ? diferencasDoAcerto(acerto, pedidos.filter(p => (p.vendedor || '') === vendedorAcerto)) : null;
+  return { ini, fim, label, pedidos, pendentes, naFila, d, vendedores, vendedorAcerto, acerto, difAcerto };
 }
 
 function renderizarRelatorio() {
-  const { fim, label, pedidos, pendentes, naFila, d, vendedores } = montarRelatorio();
+  const rel = montarRelatorio();
+  const { fim, label, pedidos, pendentes, naFila, d, vendedores } = rel;
   document.getElementById('rel-periodo-label').textContent = label;
 
   // Desabilita seta "próximo" quando já está no período atual
@@ -6440,10 +6616,11 @@ function renderizarRelatorio() {
       <div class="${d.aReceber > 0 ? 'rel-laranja' : ''}"><b>${moeda(d.aReceber)}</b><span>A receber</span></div>
     </div>
     <div class="rel-resumo-sub">${d.nClientes} cliente(s) · ${qtdTexto(d.unidades)} unidade(s)</div>`;
+  const htmlAcerto = htmlAcertoRelatorio(rel);
 
   if (!pedidos.length) {
     const deQuem = usuario.perfil === 'vendedor' ? ' (seus pedidos)' : (relVendedor ? ` de ${nomeVendedorRelatorio(relVendedor)}` : '');
-    el.innerHTML = htmlFonte + opcoesVendedor + htmlResumo + htmlFila + htmlPendentes +
+    el.innerHTML = htmlFonte + opcoesVendedor + htmlResumo + htmlAcerto + htmlFila + htmlPendentes +
       `<div class="rel-vazio">Nenhum pedido entregue neste período${esc(deQuem)}.</div>`;
     return;
   }
@@ -6452,6 +6629,7 @@ function renderizarRelatorio() {
     ${htmlFonte}
     ${opcoesVendedor}
     ${htmlResumo}
+    ${htmlAcerto}
     ${htmlFila}
     ${htmlPendentes}
 
@@ -6487,7 +6665,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     throw new Error('Biblioteca jsPDF não está carregada.');
   }
-  const { pendentes, naFila, d } = montarRelatorio();
+  const { pendentes, naFila, d, acerto, difAcerto } = montarRelatorio();
   const escopo = usuario.perfil === 'vendedor'
     ? `Vendedor: ${usuario.nome || usuario.login}`
     : (relVendedor ? `Vendedor: ${nomeVendedorRelatorio(relVendedor)}` : 'Todos os vendedores');
@@ -6633,6 +6811,27 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 11.5, { align: 'center' });
   });
   y += 23;
+
+  // Acerto de comissão já registrado para este período: o que mudou depois.
+  if (acerto) {
+    const quando = dataHoraAcerto(acerto.registrado_em);
+    const base = `${qtdTexto(Number(acerto.unidades) || 0)} un, ${moeda(Number(acerto.total) || 0)}`;
+    if (!difAcerto.mudancas.length) {
+      garantirEspaco(10);
+      doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...VERDE);
+      doc.text(seguro(`Acerto registrado em ${quando}: ${base}. Nada mudou desde então.`), mL, y);
+      y += 8;
+    } else {
+      tituloSecao(`Mudou depois do acerto de ${quando}: ${textoDiferencaAcerto(difAcerto)}`, LARANJA);
+      tabela({
+        head: [['Pedido', 'Cliente', 'O que mudou']],
+        body: difAcerto.mudancas.map(m => [String(m.id), m.cliente, textoMudancaAcerto(m)]),
+        foot: [[{ content: `No acerto: ${base}. Acerte a diferença no próximo pagamento.`, colSpan: 3 }]],
+        headStyles: { ...estiloTabela.headStyles, textColor: LARANJA },
+        columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 62 } },
+      });
+    }
+  }
 
   // Pedidos sem baixa de entrega: alerta logo após o resumo
   if (pendentes.length) {
