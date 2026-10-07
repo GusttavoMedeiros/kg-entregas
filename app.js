@@ -3231,8 +3231,9 @@ function filtrarFinanceiro(filtro, btn) {
 // porque a janela é redesenhada quando chegam dados novos, e a escolha em
 // andamento não pode se perder.
 let finSelecionados = new Set(); // ids dos pedidos marcados como pagos
-let finForma = '';               // 'dinheiro' | 'pix'
-const FIN_FORMAS = { dinheiro: 'Dinheiro', pix: 'PIX / Cartão' };
+let finForma = '';               // 'dinheiro' | 'pix' | 'cheque'
+const FIN_FORMAS = { dinheiro: 'Dinheiro', pix: 'PIX / Cartão', cheque: 'Cheque' };
+const FIN_ICONES = { dinheiro: '💵', pix: '💳', cheque: '📝' };
 
 function statusPedidoAberto(p) {
   if (isPagamentoAtrasado(p)) return '<span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>';
@@ -3293,7 +3294,7 @@ function verFinanceiroCliente(id) {
         <div class="pagto-recebido-grupo">
           ${Object.entries(FIN_FORMAS).map(([valor, rotulo]) => `
           <button type="button" class="pagto-recebido pagto-pago${finForma === valor ? ' ativo' : ''}" data-forma="${valor}" onclick="escolherFormaPaga('${valor}')">
-            <span class="pagto-recebido-icone">${valor === 'dinheiro' ? '💵' : '💳'}</span>
+            <span class="pagto-recebido-icone">${FIN_ICONES[valor]}</span>
             <span class="pagto-recebido-label">${esc(rotulo)}</span>
           </button>`).join('')}
         </div>
@@ -3389,7 +3390,7 @@ async function marcarPagoCliente() {
   // Só o que foi marcado na tela: quitar um pedido não pode quitar os outros do cliente.
   const paraPagar = abertos.filter(p => finSelecionados.has(p.id));
   if (!paraPagar.length) { toast('Marque os pedidos que o cliente pagou.'); return; }
-  if (!FIN_FORMAS[finForma]) { toast('Escolha como o cliente pagou: dinheiro ou PIX / Cartão.'); return; }
+  if (!FIN_FORMAS[finForma]) { toast('Escolha como o cliente pagou: dinheiro, PIX / Cartão ou cheque.'); return; }
   const forma = finForma;
   const totalC = paraPagar.reduce((s, p) => s + Math.round((Number(p.valor) || 0) * 100), 0);
   const naoEntregues = paraPagar.filter(p => p.status !== 'entregue');
@@ -4166,9 +4167,10 @@ async function confirmarEntrega() {
   if (precisaPagamento && !pagtoEscolhido) {
     toast(
       '⚠ Você precisa informar como o cliente pagou.\n\n' +
-      'Escolha uma das 4 opções:\n' +
+      'Escolha uma das 5 opções:\n' +
       '• 💵 Pagou em dinheiro\n' +
       '• 💳 PIX / Cartão\n' +
+      '• 📝 Cheque\n' +
       '• ⏰ Vai pagar depois\n' +
       '• ✗ Não quis pagar'
     );
@@ -4185,7 +4187,7 @@ async function confirmarEntrega() {
     forma_pagamento_real = pedidoSelecionado.forma_pagamento_real;
     data_pagamento = pedidoSelecionado.data_pagamento;
   } else if (precisaPagamento) {
-    if (pagtoEscolhido === 'dinheiro' || pagtoEscolhido === 'pix') {
+    if (FIN_FORMAS[pagtoEscolhido]) {
       status_pagamento = 'pago';
       forma_pagamento_real = pagtoEscolhido;
       data_pagamento = fmt(new Date());
@@ -5469,8 +5471,7 @@ function verDetalhePedido(id) {
   let statusPagtoLinha = '';
   if (p.status === 'entregue') {
     if (foiPago(p)) {
-      const formaReal = p.forma_pagamento_real === 'dinheiro' ? 'Dinheiro' :
-                        p.forma_pagamento_real === 'pix' ? 'PIX/Cartão' : '';
+      const formaReal = ({ dinheiro: 'Dinheiro', pix: 'PIX/Cartão', cheque: 'Cheque' })[p.forma_pagamento_real] || '';
       const dataPgto = p.data_pagamento ? ` em ${dataBR(p.data_pagamento)}` : '';
       statusPagtoLinha = `<div style="font-size:12px;color:#7ec850;margin-bottom:4px;font-weight:700">✓ Pago${formaReal?' ('+formaReal+')':''}${dataPgto}</div>`;
     } else if (p.status_pagamento === 'recusado') {
