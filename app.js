@@ -4623,6 +4623,11 @@ function formatarPagamento(p) {
   return 'Não informado';
 }
 
+// Forma de pagamento sem o emoji do começo ("À vista" mantém o "À").
+function pagamentoSemEmoji(p) {
+  return formatarPagamento(p).replace(/^[^\p{L}\p{N}]+/u, '');
+}
+
 // Usa sempre o preço efetivamente cobrado e reconhece pesos como 20kg, 20 KG e 10,1 kg.
 function formatarPrecoItemPedido(item) {
   const nome = String(item?.nome || item?.produto_nome || '').trim();
@@ -4754,6 +4759,15 @@ async function _carregarAssetsVia() {
   return _viaAssets.promise;
 }
 
+// A fonte embutida (Nunito/Cinzel, recortada) só desenha estes caracteres. No
+// jsPDF, o primeiro caractere que ela não tem CORTA o resto da linha ("Boa
+// Safra & Cia" saía "Boa Safra "). Texto com qualquer outro caractere usa a
+// Helvetica, que tem o alfabeto latino completo.
+const PDF_FONTE_TEM = /^[A-Za-z0-9 \n\r\t\u00e7\u00e3\u00f5\u00e1\u00e9\u00ed\u00f3\u00fa\u00e2\u00ea\u00f4\u00e0\u00c7\u00c3\u00d5\u00c1\u00c9\u00cd\u00d3\u00da\u00c2\u00ca\u00d4\u00c0(),.:\/$\u00b0\u00ba\u2014\u2022\u00d7-]*$/;
+const pdfPrecisaFonteReserva = t => !PDF_FONTE_TEM.test(String(t ?? ''));
+// Emoji e símbolos fora do Latin-1 nem a Helvetica desenha: viram "?".
+const pdfTextoSeguro = t => String(t ?? '').replace(/[^\u0000-\u00ff\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026\u20ac\u2122]/g, '?');
+
 function _registrarFontesPdf(doc) {
   const FONT_CINZEL = _viaAssets.cinzel ? 'Cinzel' : 'helvetica';
   const FONT_NUNITO = _viaAssets.nunito ? 'Nunito' : 'helvetica';
@@ -4770,6 +4784,27 @@ function _registrarFontesPdf(doc) {
   return { FONT_CINZEL, FONT_NUNITO };
 }
 
+// Pedido e cliente para a via: do servidor quando há internet; os dados salvos
+// no aparelho só se estiver sem conexão ou com entrega ainda na fila offline.
+async function _pedidoParaVia(id) {
+  const local = todosOsPedidos.find(x => x.id === id);
+  const doAparelho = () => {
+    if (!local) throw new Error('Pedido não encontrado: ' + id);
+    return { p: local, c: todosOsClientes.find(x => x.id === local.cliente_id), conferido: false };
+  };
+  if (MODO_DEMO || !navigator.onLine) return doAparelho();
+  // Ação deste aparelho que o servidor ainda não recebeu: a tela está mais certa que o servidor.
+  if (lerFilaOffline().some(a => a.pedidoId === id && !a.falha)) return doAparelho();
+  let res;
+  try { res = await apiSupabase('pedidos', 'GET', null, `?id=eq.${encodeURIComponent(id)}&select=*,clientes(*),itens_pedido(*)`); }
+  catch (_) { return doAparelho(); }
+  if (!res.ok || res.deCache || !Array.isArray(res.dados)) return doAparelho();
+  if (!res.dados.length) throw new Error('Este pedido não existe mais no servidor. Atualize a lista de pedidos.');
+  const bruto = res.dados[0];
+  const p = normalizarPedidos([bruto])[0];
+  return { p, c: bruto.clientes || todosOsClientes.find(x => x.id === p.cliente_id), conferido: true };
+}
+
 // Gera o Blob do PDF da via. Retorna { blob, url, nomeArquivo }.
 async function gerarPdfViaPedido(id) {
   await _carregarBibliotecasPdf();
@@ -4780,9 +4815,9 @@ async function gerarPdfViaPedido(id) {
   // Carrega fontes e logo antes de montar o documento.
   await _carregarAssetsVia();
 
-  const p = todosOsPedidos.find(x => x.id === id);
-  if (!p) throw new Error('Pedido não encontrado: ' + id);
-  const c = todosOsClientes.find(x => x.id === p.cliente_id);
+  // A via é entregue ao cliente: usa o pedido como está no servidor, não a cópia
+  // que pode estar velha neste aparelho.
+  const { p, c, conferido } = await _pedidoParaVia(id);
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -4793,8 +4828,22 @@ async function gerarPdfViaPedido(id) {
   // Registra as fontes customizadas (se carregaram). jsPDF usa 'helvetica' como
   // fallback quando elas não estão disponíveis.
   const { FONT_CINZEL, FONT_NUNITO } = _registrarFontesPdf(doc);
+  const fontesEmbutidas = FONT_NUNITO !== 'helvetica';
 
-  const pagto = formatarPagamento(p).replace(/^[^\w]*\s*/, '');
+  // Texto com caractere que a fonte embutida não tem sai em Helvetica (mesmo
+  // tamanho e estilo), em vez de perder o resto da linha.
+  const comFonteReserva = (t, fn) => {
+    const lista = Array.isArray(t) ? t : [t];
+    if (!fontesEmbutidas || !lista.some(pdfPrecisaFonteReserva)) return fn(t);
+    const atual = doc.getFont();
+    doc.setFont('helvetica', atual.fontStyle === 'bold' ? 'bold' : 'normal');
+    try { return fn(Array.isArray(t) ? t.map(pdfTextoSeguro) : pdfTextoSeguro(t)); }
+    finally { doc.setFont(atual.fontName, atual.fontStyle); }
+  };
+  const escrever = (t, x, y, opcoes) => comFonteReserva(t, texto => doc.text(texto, x, y, opcoes));
+  const quebrar = (t, largura) => comFonteReserva(t, texto => doc.splitTextToSize(texto, largura));
+
+  const pagto = pagamentoSemEmoji(p);
 
   // ========== CORES DA MARCA ==========
   const COR = {
@@ -4825,39 +4874,37 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(16);
     doc.setTextColor(...COR.verdeTexto);
-    doc.text('KG AGROPET', mL + 23, yRef + 8);
+    escrever('KG AGROPET', mL + 23, yRef + 8);
 
     doc.setFont(FONT_NUNITO, 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(...COR.cinzaTexto);
-    doc.text('Glória do Goitá — PE', mL + 23, yRef + 14);
+    escrever('Glória do Goitá — PE', mL + 23, yRef + 14);
 
     doc.setFontSize(7);
     doc.setTextColor(...COR.cinzaTexto);
-    doc.text('Pedido para conferência e entrega', mL + 23, yRef + 19);
+    escrever('Pedido para conferência e entrega', mL + 23, yRef + 19);
 
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(10.5);
     doc.setTextColor(...COR.verdeTexto);
-    doc.text('VIA DO PEDIDO', pageW - mR, yRef + 8, { align: 'right' });
+    escrever('VIA DO PEDIDO', pageW - mR, yRef + 8, { align: 'right' });
 
     doc.setFont(FONT_NUNITO, 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...COR.cinzaTexto);
-    doc.text(`Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, yRef + 13.5, { align: 'right' });
+    escrever(`Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, yRef + 13.5, { align: 'right' });
 
     doc.setFont(FONT_NUNITO, 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(p.status === 'entregue' ? 50 : 110, p.status === 'entregue' ? 100 : 110, p.status === 'entregue' ? 65 : 110);
-    doc.text(p.status === 'entregue' ? 'ENTREGUE' : 'PENDENTE', pageW - mR, yRef + 19, { align: 'right' });
+    escrever(p.status === 'entregue' ? 'ENTREGUE' : 'PENDENTE', pageW - mR, yRef + 19, { align: 'right' });
 
     return yRef + ALTURA_CABECALHO + 6;
   };
 
   // ========== RODAPÉ ==========
-  const drawRodape = () => {
-    const pageCount = doc.internal.getNumberOfPages();
-    const cur = doc.internal.getCurrentPageInfo().pageNumber;
+  const drawRodape = (cur, pageCount) => {
     const y = pageH - mB + 4;
     doc.setDrawColor(...COR.cinzaMedio);
     doc.setLineWidth(0.2);
@@ -4866,13 +4913,17 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_NUNITO, 'normal');
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 120);
-    doc.text('Este documento não substitui documento fiscal.', mL, y);
+    escrever('Este documento não substitui documento fiscal.', mL, y);
+    if (!conferido && !MODO_DEMO) {
+      doc.setTextColor(170, 40, 30);
+      escrever('Gerado com os dados salvos neste aparelho, sem conferir com o servidor.', mL, y + 3.5);
+    }
 
     doc.setTextColor(...COR.cinzaTexto);
-    doc.text(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
+    escrever(`Página ${cur} de ${pageCount}`, pageW - mR, y, { align: 'right' });
 
     doc.setTextColor(120, 120, 120);
-    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
+    escrever(`Gerado em ${new Date().toLocaleString('pt-BR')}`, pageW / 2, y, { align: 'center' });
   };
 
   // ========== BLOCO DO CLIENTE ==========
@@ -4880,7 +4931,7 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...COR.dourado);
-    doc.text('CLIENTE', mL, yRef);
+    escrever('CLIENTE', mL, yRef);
     doc.setDrawColor(...COR.dourado);
     doc.setLineWidth(0.4);
     doc.line(mL, yRef + 1.5, mL + 18, yRef + 1.5);
@@ -4888,32 +4939,32 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(14);
     doc.setTextColor(...COR.preto);
-    doc.text(p.cliente_nome || c?.nome || '—', mL, yRef + 9);
+    escrever(p.cliente_nome || c?.nome || '—', mL, yRef + 9);
 
     let yLocal = yRef + 15;
     const colW = (cW - 4) / 2;
 
     if (c?.responsavel) {
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-      doc.text('RESPONSÁVEL', mL, yLocal);
+      escrever('RESPONSÁVEL', mL, yLocal);
       doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-      const txt = doc.splitTextToSize(c.responsavel, colW);
-      doc.text(txt, mL, yLocal + 4);
+      const txt = quebrar(c.responsavel, colW);
+      escrever(txt, mL, yLocal + 4);
     }
     if (c?.whatsapp) {
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-      doc.text('WHATSAPP', mL + colW + 4, yLocal);
+      escrever('WHATSAPP', mL + colW + 4, yLocal);
       doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-      doc.text(mascaraTelefone(c.whatsapp), mL + colW + 4, yLocal + 4);
+      escrever(mascaraTelefone(c.whatsapp), mL + colW + 4, yLocal + 4);
     }
     yLocal += 10;
 
     if (c?.endereco) {
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-      doc.text('ENDEREÇO', mL, yLocal);
+      escrever('ENDEREÇO', mL, yLocal);
       doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-      const endLines = doc.splitTextToSize(c.endereco, cW);
-      doc.text(endLines, mL, yLocal + 4);
+      const endLines = quebrar(c.endereco, cW);
+      escrever(endLines, mL, yLocal + 4);
       yLocal += 4 + (endLines.length * 4.2) + 2;
     }
 
@@ -4921,9 +4972,9 @@ async function gerarPdfViaPedido(id) {
       const docFmt = (c.tipo_pessoa === 'fisica') ? mascaraCPF(c.cnpj_cpf) : mascaraCNPJ(c.cnpj_cpf);
       const labelDoc = c.tipo_pessoa === 'fisica' ? 'CPF' : 'CNPJ';
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-      doc.text(labelDoc, mL, yLocal);
+      escrever(labelDoc, mL, yLocal);
       doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-      doc.text(docFmt, mL, yLocal + 4);
+      escrever(docFmt, mL, yLocal + 4);
       yLocal += 10;
     }
     return yLocal;
@@ -4935,7 +4986,7 @@ async function gerarPdfViaPedido(id) {
         const d = formatarPrecoItemPedido(i);
         return [
           String(d.quantidade),
-          d.nome,
+          d.nome + (Number(i.qtd_pedida) > Number(i.qtd) ? ` (pediu ${i.qtd_pedida})` : ''),
           moeda(d.precoUnitario),
           moeda(d.subtotal),
         ];
@@ -4947,7 +4998,7 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...COR.dourado);
-    doc.text('PAGAMENTO E PRAZOS', mL, yRef);
+    escrever('PAGAMENTO E PRAZOS', mL, yRef);
     doc.setDrawColor(...COR.dourado);
     doc.setLineWidth(0.4);
     doc.line(mL, yRef + 1.5, mL + 38, yRef + 1.5);
@@ -4965,14 +5016,14 @@ async function gerarPdfViaPedido(id) {
       const [lbl1, val1] = campos[i];
       const col2 = campos[i + 1];
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-      doc.text(lbl1.toUpperCase(), mL, yLocal);
+      escrever(lbl1.toUpperCase(), mL, yLocal);
       doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-      doc.text(String(val1 || '—'), mL, yLocal + 4);
+      escrever(String(val1 || '—'), mL, yLocal + 4);
       if (col2) {
         doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-        doc.text(col2[0].toUpperCase(), mL + colW + 4, yLocal);
+        escrever(col2[0].toUpperCase(), mL + colW + 4, yLocal);
         doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9.5); doc.setTextColor(...COR.preto);
-        doc.text(String(col2[1] || '—'), mL + colW + 4, yLocal + 4);
+        escrever(String(col2[1] || '—'), mL + colW + 4, yLocal + 4);
       }
       yLocal += 10;
     }
@@ -4985,7 +5036,7 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_CINZEL, 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...COR.dourado);
-    doc.text('OBSERVAÇÕES', mL, yRef);
+    escrever('OBSERVAÇÕES', mL, yRef);
     doc.setDrawColor(...COR.dourado);
     doc.setLineWidth(0.4);
     doc.line(mL, yRef + 1.5, mL + 28, yRef + 1.5);
@@ -4993,8 +5044,8 @@ async function gerarPdfViaPedido(id) {
     doc.setFont(FONT_NUNITO, 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(...COR.preto);
-    const obsLines = doc.splitTextToSize(p.observacao, cW);
-    doc.text(obsLines, mL, yRef + 6);
+    const obsLines = quebrar(p.observacao, cW);
+    escrever(obsLines, mL, yRef + 6);
     return yRef + 6 + (obsLines.length * 4.2) + 2;
   };
 
@@ -5006,7 +5057,7 @@ async function gerarPdfViaPedido(id) {
   doc.setFont(FONT_CINZEL, 'bold');
   doc.setFontSize(8);
   doc.setTextColor(...COR.dourado);
-  doc.text('ITENS DO PEDIDO', mL, y);
+  escrever('ITENS DO PEDIDO', mL, y);
   doc.setDrawColor(...COR.dourado);
   doc.setLineWidth(0.4);
   doc.line(mL, y + 1.5, mL + 36, y + 1.5);
@@ -5016,7 +5067,7 @@ async function gerarPdfViaPedido(id) {
     startY: y,
     head: [['Qtd', 'Produto', 'Unitário', 'Subtotal']],
     body: itens,
-    margin: { left: mL, right: mR, bottom: mB + 8 },
+    margin: { left: mL, right: mR, top: mT + 18, bottom: mB + 8 },
     styles: {
       font: FONT_NUNITO,
       fontSize: 8.5,
@@ -5041,20 +5092,13 @@ async function gerarPdfViaPedido(id) {
       2: { halign: 'right', cellWidth: 34, font: FONT_NUNITO },
       3: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
     },
-    didDrawPage: (data) => {
-      drawRodape();
-      if (data.pageNumber > 1) {
-        // Repete cabeçalho compacto em páginas seguintes, sem bloco de tinta.
-        if (_viaAssets.logoPng) {
-          try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, mT, 10, 10, undefined, 'FAST'); }
-          catch (e) { /* ignora erro de imagem */ }
-        }
-        doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(9); doc.setTextColor(...COR.dourado);
-        doc.text('KG AGROPET', mL + 13, mT + 6.5);
-        doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...COR.verdeTexto);
-        doc.text(`Via do Pedido · Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, mT + 7, { align: 'right' });
-        doc.setDrawColor(...COR.dourado); doc.setLineWidth(0.4);
-        doc.line(mL, mT + 12, pageW - mR, mT + 12);
+    // Cabeçalho e rodapé são desenhados no fim, em todas as páginas.
+    didParseCell: data => {
+      if (fontesEmbutidas && pdfPrecisaFonteReserva(data.cell.text.join('\n'))) {
+        data.cell.text = data.cell.text.map(pdfTextoSeguro);
+        data.cell.styles.font = 'helvetica';
+        if (data.section === 'body') data.cell.styles.textColor = [60, 60, 60];
+        if (data.column.index !== 0) data.cell.styles.fontStyle = data.section === 'head' ? 'bold' : 'normal';
       }
     },
   });
@@ -5077,12 +5121,12 @@ async function gerarPdfViaPedido(id) {
   doc.setFont(FONT_CINZEL, 'bold');
   doc.setFontSize(8);
   doc.setTextColor(...COR.verdeTexto);
-  doc.text('TOTAL DO PEDIDO', totalBoxX + 4, yAfterTable + 5);
+  escrever('TOTAL DO PEDIDO', totalBoxX + 4, yAfterTable + 5);
 
   doc.setFont(FONT_CINZEL, 'bold');
   doc.setFontSize(15);
   doc.setTextColor(...COR.verdeTexto);
-  doc.text(moeda(p.valor), totalBoxX + totalBoxW - 4, yAfterTable + 11.5, { align: 'right' });
+  escrever(moeda(p.valor), totalBoxX + totalBoxW - 4, yAfterTable + 11.5, { align: 'right' });
 
   yAfterTable += totalBoxH + 8;
 
@@ -5091,7 +5135,7 @@ async function gerarPdfViaPedido(id) {
     doc.addPage();
     yAfterTable = mT + 18;
   }
-  yAfterTable = drawPagamento(yAfterTable);
+  yAfterTable = drawPagamento(yAfterTable) + 3;
 
   // Observações
   if (p.observacao) {
@@ -5100,6 +5144,26 @@ async function gerarPdfViaPedido(id) {
       yAfterTable = mT + 18;
     }
     yAfterTable = drawObservacoes(yAfterTable);
+  }
+
+  // Cabeçalho das páginas seguintes e rodapé de todas, com o total de páginas certo.
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    if (i > 1) {
+      // Cabeçalho compacto, sem bloco de tinta.
+      if (_viaAssets.logoPng) {
+        try { doc.addImage(_viaAssets.logoPng, 'PNG', mL, mT, 10, 10, undefined, 'FAST'); }
+        catch (e) { /* ignora erro de imagem */ }
+      }
+      doc.setFont(FONT_CINZEL, 'bold'); doc.setFontSize(9); doc.setTextColor(...COR.dourado);
+      escrever('KG AGROPET', mL + 13, mT + 6.5);
+      doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...COR.verdeTexto);
+      escrever(`Via do Pedido — Nº ${String(p.id).padStart(4, '0')}`, pageW - mR, mT + 7, { align: 'right' });
+      doc.setDrawColor(...COR.dourado); doc.setLineWidth(0.4);
+      doc.line(mL, mT + 12, pageW - mR, mT + 12);
+    }
+    drawRodape(i, totalPaginas);
   }
 
   // Gera o blob
@@ -5366,7 +5430,7 @@ function enviarPedidoWhatsApp(id) {
   const detalhes = [
     `*Pedido nº ${p.id}*`,
     `*Total do pedido: ${moeda(p.valor)}*`,
-    p.forma_pagamento ? `Pagamento: ${formatarPagamento(p).replace(/^[^\w]*\s*/, '')}` : '',
+    p.forma_pagamento ? `Pagamento: ${pagamentoSemEmoji(p)}` : '',
     p.data_entrega ? `Entrega prevista: ${dataBR(p.data_entrega)}` : '',
     p.status === 'entregue' && p.data_entregue_em ? `Entregue em: ${dataBR(p.data_entregue_em)}` : '',
     p.data_vencimento ? `Vencimento: ${dataBR(p.data_vencimento)}` : '',
@@ -6423,7 +6487,6 @@ async function gerarPdfRelatorio(ini, fim, label) {
   // e outros somem do PDF. Textos fixos trocam o símbolo; nas tabelas, a célula
   // com um desses símbolos usa a Helvetica, para o nome do cliente sair inteiro.
   const seguro = t => String(t ?? '').replace(/·/g, '—').replace(/–/g, '-').replace(/ª/g, 'a').replace(/#/g, 'Nº ');
-  const FORA_DA_FONTE = /[!"#%&'*+;<=>?@[\\\]^_`{|}~ÄÈÎÖÜäèîöüª·–“”‘’…]/;
 
   const { jsPDF } = window.jspdf;
   // Papel ofício (216 x 330 mm). O relatório deve caber em 2 folhas: se passar,
@@ -6490,7 +6553,10 @@ async function gerarPdfRelatorio(ini, fim, label) {
       didParseCell: data => {
         // columnStyles não vale para cabeçalho/rodapé; alinha os valores à direita.
         if (data.section !== 'body' && direita.includes(data.column.index)) data.cell.styles.halign = 'right';
-        if (fontesEmbutidas && FORA_DA_FONTE.test(data.cell.text.join(' '))) { data.cell.styles.font = 'helvetica'; data.cell.styles.fontStyle = 'normal'; data.cell.styles.textColor = [95, 95, 95]; }
+        if (fontesEmbutidas && pdfPrecisaFonteReserva(data.cell.text.join('\n'))) {
+          data.cell.text = data.cell.text.map(pdfTextoSeguro);
+          data.cell.styles.font = 'helvetica'; data.cell.styles.fontStyle = 'normal'; data.cell.styles.textColor = [95, 95, 95];
+        }
         if (aoParsear) aoParsear(data);
       },
       // Linha fina sob cada linha (e mais forte sob o cabeçalho).

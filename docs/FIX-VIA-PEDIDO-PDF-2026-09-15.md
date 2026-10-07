@@ -301,3 +301,13 @@ Pra considerar no futuro (não são parte deste fix):
 **Total:** 9 arquivos modificados, 53 testes passando, 0 hacks sobrepostos, 1 arquitetura definitiva.
 
 **Sobre o autor:** este documento e a implementação foram gerados pelo agente Mavis (MiniMax Code). O usuário pode revisar, ajustar ou pedir modificações ao Codex conforme necessário.
+
+## Via do pedido mais robusta (07/10/2026)
+
+**Símbolos que sumiam.** A fonte embutida (Nunito/Cinzel) é recortada e só desenha letras, números, os acentos do português e `( ) , . : / - $ ° º — • ×`. No jsPDF, o primeiro caractere que a fonte não tem **corta o resto da linha**: "Boa Safra & Cia" saía "Boa Safra ". Isso pegava `& ' + ! ? " % # ; @ ñ ü ² € ª` e outros. A lista antiga de "caracteres que faltam" estava incompleta (não tinha `ñ`, `ü`, `²`, `€`). Agora a regra é ao contrário: só o que a fonte **tem** usa a fonte da marca. Qualquer outro caractere faz aquele texto sair em Helvetica, com o mesmo tamanho e estilo. Emoji e símbolos que nem a Helvetica desenha viram `?`. A mesma regra vale para o relatório.
+
+**Dados do servidor.** A via agora busca o pedido (com itens e cliente) no servidor antes de gerar, em vez de usar a cópia que pode estar velha no aparelho. Sem internet, com falha, ou com uma ação deste aparelho ainda na fila offline, usa os dados do aparelho e escreve no rodapé: "Gerado com os dados salvos neste aparelho, sem conferir com o servidor." Se o pedido foi apagado no servidor, avisa em vez de gerar uma via velha.
+
+**Páginas.** O rodapé dizia "Página 1 de 1" mesmo quando o PDF tinha 2 páginas, e as páginas criadas à mão (total, pagamento, observações) ficavam sem cabeçalho e sem rodapé. Agora cabeçalho das páginas seguintes e rodapé são desenhados no fim, em todas as páginas, com o total certo; a tabela das páginas seguintes começa abaixo do cabeçalho.
+
+**Outros.** "À vista" aparecia como "vista" (a limpeza do emoji apagava o "À"); corrigido no PDF e na mensagem do WhatsApp. Entrega parcial aparece como "Produto (pediu 9)". Mais espaço entre "Pagamento e prazos" e "Observações". Sem mudança no banco.
