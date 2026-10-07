@@ -6206,24 +6206,54 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
   const ordemNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' });
 
   const porProduto = new Map();
+  const clientesDistintos = new Set();
+  const entregas = [];
+  let unidadesC = 0;
   pedidos.forEach(p => {
+    const cliente = p.cliente_nome || 'Cliente';
+    const chaveCliente = p.cliente_id != null && p.cliente_id !== '' ? `id:${p.cliente_id}` : `nome:${cliente}`;
+    clientesDistintos.add(chaveCliente);
+    const itensEntrega = [];
     (p.itens || []).forEach(i => {
       const chave = chaveProduto(i);
       const nome = nomeProduto(i);
       const qtd = Number(i.qtd) || 0;
       const valorC = Math.round((Number(i.preco_unit) || 0) * qtd * 100);
-      if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0 });
+      if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0, clientes: new Map() });
       const prod = porProduto.get(chave);
       prod.qtd += qtd; prod.valorC += valorC;
+      if (qtd > 0) {
+        if (!prod.clientes.has(chaveCliente)) prod.clientes.set(chaveCliente, { nome: cliente, qtd: 0 });
+        prod.clientes.get(chaveCliente).qtd += qtd;
+        unidadesC += Math.round(qtd * 100);
+        // Entrega parcial: mostra quanto foi pedido, para o acerto não parecer erro.
+        const pedida = Number(i.qtd_pedida);
+        itensEntrega.push({ nome, qtd, pediu: Number.isFinite(pedida) && pedida > qtd ? pedida : null });
+      }
     });
+    entregas.push({ id: p.id, data: dataRealEntrega(p), cliente, vendedor: p.vendedor || '',
+      valor: Number(p.valor) || 0, pago: foiPago(p), itens: itensEntrega });
   });
 
   const produtos = [...porProduto.values()]
-    .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100 }))
+    .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100,
+      clientes: [...p.clientes.values()].sort(ordemNome) }))
     .sort(ordemNome);
 
   return { total: totalC / 100, recebido: recebidoC / 100, aReceber: (totalC - recebidoC) / 100,
-    nPedidos: pedidos.length, produtos };
+    nPedidos: pedidos.length, nClientes: clientesDistintos.size, unidades: unidadesC / 100, produtos, entregas };
+}
+
+// "Ana (10), Bruno (5)": para quem cada produto foi entregue.
+// No PDF, "&" vira "e": a fonte embutida não tem o símbolo e a linha ficaria em outra letra.
+function textoClientesProduto(prod, paraPdf = false) {
+  return prod.clientes.map(c => `${paraPdf ? c.nome.replace(/\s*&\s*/g, ' e ') : c.nome} (${qtdTexto(c.qtd)})`).join(', ');
+}
+
+// Produtos de uma entrega: um por linha ou, para economizar papel, em uma linha só.
+function textoItensEntrega(entrega, emLinha = false) {
+  const itens = entrega.itens.map(i => `${qtdTexto(i.qtd)}x ${i.nome}${i.pediu ? ` (pediu ${qtdTexto(i.pediu)})` : ''}`);
+  return itens.join(emLinha ? ', ' : '\n') || 'Sem itens detalhados';
 }
 
 function dataRealEntregaCurta(d) {
@@ -6335,7 +6365,8 @@ function renderizarRelatorio() {
       <div><b>${moeda(d.total)}</b><span>Entregue</span></div>
       <div><b>${d.nPedidos}</b><span>Pedidos</span></div>
       <div class="${d.aReceber > 0 ? 'rel-laranja' : ''}"><b>${moeda(d.aReceber)}</b><span>A receber</span></div>
-    </div>`;
+    </div>
+    <div class="rel-resumo-sub">${d.nClientes} cliente(s) · ${qtdTexto(d.unidades)} unidade(s)</div>`;
 
   if (!pedidos.length) {
     el.innerHTML = htmlFonte + opcoesVendedor + htmlFila + htmlPendentes +
@@ -6353,10 +6384,25 @@ function renderizarRelatorio() {
     <div class="rel-secao">
       <div class="rel-secao-titulo">Produtos entregues <span>${d.produtos.length}</span></div>
       ${d.produtos.map(p => `
-        <div class="rel-linha">
-          <span class="rel-linha-nome">${esc(p.nome)}</span>
-          <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un</span>
+        <div class="rel-bloco">
+          <div class="rel-linha">
+            <span class="rel-linha-nome">${esc(p.nome)}</span>
+            <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un</span>
+          </div>
+          <div class="rel-linha-sub">${esc(textoClientesProduto(p))}</div>
         </div>`).join('') || '<div class="rel-vazio">Pedidos sem itens detalhados</div>'}
+    </div>
+
+    <div class="rel-secao">
+      <div class="rel-secao-titulo">Entregas do período <span>${d.entregas.length}</span></div>
+      ${d.entregas.map(e => `
+        <div class="rel-bloco">
+          <div class="rel-linha">
+            <span class="rel-linha-nome">${esc(e.cliente)} <small>nº ${esc(e.id)} · ${esc(dataRealEntregaCurta(e.data))}</small></span>
+            <span class="rel-linha-valor">${moeda(e.valor)}</span>
+          </div>
+          <div class="rel-linha-sub">${esc(textoItensEntrega(e, true))} · <b class="${e.pago ? 'rel-pago' : 'rel-a-receber'}">${e.pago ? 'Pago' : 'A receber'}</b></div>
+        </div>`).join('')}
     </div>`;
 }
 
@@ -6371,6 +6417,8 @@ async function gerarPdfRelatorio(ini, fim, label) {
   const escopo = usuario.perfil === 'vendedor'
     ? `Vendedor: ${usuario.nome || usuario.login}`
     : (relVendedor ? `Vendedor: ${nomeVendedorRelatorio(relVendedor)}` : 'Todos os vendedores');
+  // Com todos os vendedores misturados, cada entrega mostra de quem é.
+  const mostrarVendedor = usuario.perfil === 'admin' && !relVendedor && new Set(d.entregas.map(e => e.vendedor)).size > 1;
   // As fontes embutidas (recortadas) não têm vários símbolos: & ' + ! ? " % # · ª
   // e outros somem do PDF. Textos fixos trocam o símbolo; nas tabelas, a célula
   // com um desses símbolos usa a Helvetica, para o nome do cliente sair inteiro.
@@ -6378,14 +6426,23 @@ async function gerarPdfRelatorio(ini, fim, label) {
   const FORA_DA_FONTE = /[!"#%&'*+;<=>?@[\\\]^_`{|}~ÄÈÎÖÜäèîöüª·–“”‘’…]/;
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  // Papel ofício (216 x 330 mm). O relatório deve caber em 2 folhas: se passar,
+  // o texto é adensado (primeiro os produtos em uma linha, depois sem o detalhe
+  // de clientes por produto, que já aparece na lista de entregas).
+  const NIVEIS = [
+    { fonte: 9,   folga: 1.8, emLinha: false, clientesNoProduto: true },
+    { fonte: 8.5, folga: 1.3, emLinha: true,  clientesNoProduto: true },
+    { fonte: 8,   folga: 1,   emLinha: true,  clientesNoProduto: false },
+  ];
+  const desenhar = (cfg) => {
+  const doc = new jsPDF({ unit: 'mm', format: [216, 330] });
   const { FONT_CINZEL, FONT_NUNITO } = _registrarFontesPdf(doc);
   const fontesEmbutidas = FONT_NUNITO !== 'helvetica';
-  const pageW = 210, pageH = 297;
-  const mL = 15, mR = 15, mT = 15, mB = 18;
+  const pageW = 216, pageH = 330;
+  const mL = 14, mR = 14, mT = 14, mB = 18;
   const cW = pageW - mL - mR;
   const topoContinuacao = mT + 27; // abaixo do cabeçalho repetido nas páginas seguintes
-  const VERDE = [25, 66, 42], CINZA = [110, 110, 110];
+  const VERDE = [25, 66, 42], CINZA = [110, 110, 110], LARANJA = [196, 105, 15];
 
   const drawCabecalho = (yRef) => {
     if (_viaAssets.logoPng) {
@@ -6415,10 +6472,11 @@ async function gerarPdfRelatorio(ini, fim, label) {
   // Tabelas sem grade: só uma linha fina entre as linhas, visual limpo.
   const estiloTabela = {
     theme: 'plain',
+    rowPageBreak: 'avoid',
     margin: { left: mL, right: mR, top: topoContinuacao, bottom: mB + 8 },
-    styles: { font: FONT_NUNITO, fontSize: 9, cellPadding: { top: 1.8, bottom: 1.8, left: 2, right: 2 }, textColor: [40, 40, 40], overflow: 'linebreak' },
+    styles: { font: FONT_NUNITO, fontSize: cfg.fonte, cellPadding: { top: cfg.folga, bottom: cfg.folga, left: 2, right: 2 }, textColor: [40, 40, 40], overflow: 'linebreak' },
     headStyles: { textColor: VERDE, font: FONT_CINZEL, fontStyle: 'bold', fontSize: 7.5, fillColor: false },
-    footStyles: { textColor: VERDE, font: FONT_NUNITO, fontStyle: 'bold', fontSize: 9.5, fillColor: [240, 244, 240] },
+    footStyles: { textColor: VERDE, font: FONT_NUNITO, fontStyle: 'bold', fontSize: cfg.fonte + 0.5, fillColor: [240, 244, 240] },
   };
   let y = mT;
   const garantirEspaco = (altura) => {
@@ -6427,11 +6485,13 @@ async function gerarPdfRelatorio(ini, fim, label) {
   const tabela = (opcoes) => {
     garantirEspaco(20);
     const direita = Object.entries(opcoes.columnStyles || {}).filter(([, e]) => e.halign === 'right').map(([i]) => Number(i));
-    doc.autoTable({ ...estiloTabela, startY: y, showFoot: 'lastPage', ...opcoes,
+    const { aoParsear, ...resto } = opcoes;
+    doc.autoTable({ ...estiloTabela, startY: y, showFoot: 'lastPage', ...resto,
       didParseCell: data => {
         // columnStyles não vale para cabeçalho/rodapé; alinha os valores à direita.
         if (data.section !== 'body' && direita.includes(data.column.index)) data.cell.styles.halign = 'right';
-        if (fontesEmbutidas && FORA_DA_FONTE.test(data.cell.text.join(' '))) { data.cell.styles.font = 'helvetica'; data.cell.styles.fontStyle = 'normal'; }
+        if (fontesEmbutidas && FORA_DA_FONTE.test(data.cell.text.join(' '))) { data.cell.styles.font = 'helvetica'; data.cell.styles.fontStyle = 'normal'; data.cell.styles.textColor = [95, 95, 95]; }
+        if (aoParsear) aoParsear(data);
       },
       // Linha fina sob cada linha (e mais forte sob o cabeçalho).
       didDrawCell: opcoes.didDrawCell || (data => {
@@ -6441,7 +6501,7 @@ async function gerarPdfRelatorio(ini, fim, label) {
         const yl = data.cell.y + data.cell.height;
         doc.line(mL, yl, pageW - mR, yl);
       }) });
-    y = doc.lastAutoTable.finalY + 9;
+    y = doc.lastAutoTable.finalY + 8;
   };
   const tituloSecao = (texto, cor = VERDE) => {
     garantirEspaco(26);
@@ -6478,23 +6538,25 @@ async function gerarPdfRelatorio(ini, fim, label) {
     y += h + 5;
   });
 
-  // Resumo: três números
+  // Resumo: cinco números
   const cards = [
     ['Total entregue', moeda(d.total)],
     ['Pedidos entregues', String(d.nPedidos)],
+    ['Clientes', String(d.nClientes)],
+    ['Unidades', qtdTexto(d.unidades)],
     ['A receber', moeda(d.aReceber)],
   ];
-  const cardW = (cW - 8) / 3;
+  const cardW = (cW - 4 * 3) / 5;
   cards.forEach((c, i) => {
-    const cx = mL + i * (cardW + 4);
+    const cx = mL + i * (cardW + 3);
     doc.setFillColor(248, 249, 246); doc.setDrawColor(222, 224, 218); doc.setLineWidth(0.25);
     doc.roundedRect(cx, y, cardW, 15, 1.5, 1.5, 'FD');
-    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(12); doc.setTextColor(...VERDE);
+    doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(11); doc.setTextColor(...(i === 4 && d.aReceber > 0 ? LARANJA : VERDE));
     doc.text(c[1], cx + cardW / 2, y + 7, { align: 'center' });
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(6.5); doc.setTextColor(...CINZA);
     doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 11.5, { align: 'center' });
   });
-  y += 24;
+  y += 23;
 
   // Pedidos sem baixa de entrega: alerta logo após o resumo
   if (pendentes.length) {
@@ -6525,12 +6587,48 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.text('Nenhum pedido entregue neste período.', mL, y);
     y += 10;
   } else {
-    // Total de cada produto no período (base da comissão por unidade)
+    // Total de cada produto no período (base da comissão por unidade), com os
+    // clientes que receberam cada um.
     tituloSecao('Produtos entregues');
+    const somaProdutos = d.produtos.reduce((s, p) => s + Math.round(p.valor * 100), 0) / 100;
+    if (cfg.clientesNoProduto) {
+      tabela({
+        head: [['Produto', 'Quantidade', 'Valor', 'Entregue para (quantidade)']],
+        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`, moeda(p.valor), textoClientesProduto(p, true)]),
+        foot: [['Total', `${qtdTexto(d.unidades)} un`, moeda(somaProdutos), '']],
+        columnStyles: { 0: { cellWidth: 46 }, 1: { halign: 'right', cellWidth: 22 }, 2: { halign: 'right', cellWidth: 26 } },
+      });
+    } else {
+      tabela({
+        head: [['Produto', 'Quantidade', 'Valor']],
+        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`, moeda(p.valor)]),
+        foot: [['Total', `${qtdTexto(d.unidades)} un`, moeda(somaProdutos)]],
+        columnStyles: { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 34 } },
+      });
+    }
+
+    // Cada entrega, com o cliente, para conferir pedido a pedido.
+    tituloSecao('Entregas do período');
+    const cabecalho = ['Data', 'Pedido', 'Cliente', 'Produtos entregues', 'Valor', 'Pagamento'];
+    if (mostrarVendedor) cabecalho.push('Vendedor');
+    const colunaPagamento = 5;
     tabela({
-      head: [['Produto', 'Quantidade']],
-      body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`]),
-      columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
+      head: [cabecalho],
+      body: d.entregas.map(e => {
+        const linha = [dataRealEntregaCurta(e.data), String(e.id), e.cliente, textoItensEntrega(e, cfg.emLinha),
+          moeda(e.valor), e.pago ? 'Pago' : 'A receber'];
+        if (mostrarVendedor) linha.push(nomeVendedorRelatorio(e.vendedor));
+        return linha;
+      }),
+      foot: [[{ content: `Total do período — ${d.nPedidos} pedido(s)`, colSpan: 4 }, moeda(d.total),
+        ...Array(cabecalho.length - 5).fill('')]],
+      columnStyles: { 0: { cellWidth: 13 }, 1: { cellWidth: 14 }, 2: { cellWidth: 44 }, 4: { halign: 'right', cellWidth: 24 },
+        5: { cellWidth: 23 }, ...(mostrarVendedor ? { 6: { cellWidth: 25 } } : {}) },
+      aoParsear: data => {
+        if (data.section === 'body' && data.column.index === colunaPagamento && data.cell.text.join('') === 'A receber') {
+          data.cell.styles.textColor = LARANJA; data.cell.styles.fontStyle = 'bold';
+        }
+      },
     });
   }
 
@@ -6540,6 +6638,17 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.setPage(i);
     if (i > 1) drawCabecalho(mT);
     drawRodape(i, totalPaginas);
+  }
+  return doc;
+  };
+
+  // Usa o nível menos adensado que caiba em 2 folhas. Se nenhum couber, fica com
+  // o que usa menos folhas (a letra nunca passa de 8 pt, para continuar legível).
+  let doc = null;
+  for (const cfg of NIVEIS) {
+    const tentativa = desenhar(cfg);
+    if (!doc || tentativa.internal.getNumberOfPages() < doc.internal.getNumberOfPages()) doc = tentativa;
+    if (doc.internal.getNumberOfPages() <= 2) break;
   }
 
   const blob = doc.output('blob');

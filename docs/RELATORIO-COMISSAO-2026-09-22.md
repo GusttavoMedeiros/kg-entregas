@@ -129,3 +129,18 @@ Antes, para apagar todo o histórico bastava digitar LIMPAR e confirmar. Agora:
 - Se houver entrega feita sem internet ainda não enviada, a limpeza é bloqueada até o envio.
 - A limpeza apaga **somente os pedidos que estão na cópia**; um pedido criado depois dela é preservado.
 - A cópia vale para uma limpeza só. Sem mudança no banco de dados.
+
+## Relatório completo, com clientes, em papel ofício (07/10/2026)
+
+O PDF agora é gerado em papel **ofício (216 x 330 mm)** e traz, além do que já tinha:
+- **Resumo com 5 números:** total entregue, pedidos, clientes atendidos, unidades e a receber.
+- **Produtos entregues:** quantidade e valor de cada produto, e a coluna "Entregue para (quantidade)", com os clientes que receberam aquele produto e quanto cada um recebeu. Isso confere a comissão por unidade.
+- **Entregas do período:** uma linha por pedido, com data, nº do pedido, **cliente**, produtos entregues, valor, se está **Pago** ou **A receber** e, quando o admin vê todos os vendedores, o vendedor. Termina com o total do período.
+- Entrega parcial aparece como "5x Milho (pediu 8)".
+- Nenhuma linha de tabela é cortada entre duas folhas.
+
+Limite de 2 folhas: o app tenta primeiro a letra normal (9 pt). Se não couber, junta os produtos de cada entrega em uma linha e reduz para 8,5 pt; depois tira o detalhe de clientes por produto (que continua na lista de entregas) e vai a 8 pt. Se mesmo assim passar de 2 folhas (em torno de 40 pedidos ou mais), usa o formato que gasta menos folhas e segue para a 3ª, sem reduzir mais a letra. Nos testes, 22 pedidos couberam em 2 folhas.
+
+Na tela do relatório também aparecem os clientes por produto e a lista de entregas.
+
+No PDF, o "&" do nome do cliente vira "e" na lista "Entregue para", porque a fonte embutida não tem o símbolo. Na tabela de entregas o nome sai exato. A seção antiga "Por cliente" continua removida de propósito (a comissão é por unidade de produto). Sem mudança no banco.
