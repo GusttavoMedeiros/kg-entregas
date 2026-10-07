@@ -5525,12 +5525,67 @@ function verDetalhePedido(id) {
   // Botão de via do pedido: admin e vendedor (entregador não emite documento)
   const acoesVia = document.getElementById('detalhe-pedido-acoes-via');
   if (acoesVia) {
-    acoesVia.innerHTML = (usuario.perfil === 'admin' || usuario.perfil === 'vendedor')
+    acoesVia.innerHTML = ((usuario.perfil === 'admin' || usuario.perfil === 'vendedor')
       ? `<button class="btn-primario mt-12" onclick="fecharModal('modal-detalhe-pedido'); gerarViaPedido(${p.id})">📄 Via do pedido (PDF / Imprimir)</button>`
-      : '';
+      : '') +
+      // Só o admin desfaz uma entrega (ex.: devolução): o pedido volta a pendente para ser corrigido.
+      (usuario.perfil === 'admin' && p.status === 'entregue'
+        ? `<button class="btn-perigo w100 mt-8" onclick="desfazerEntrega(${p.id})">↩ Desfazer entrega</button>`
+        : '');
   }
   abrirModal('modal-detalhe-pedido');
   carregarHistoricoPedido(p.id);
+}
+
+// Desfazer entrega (só admin): o pedido volta a pendente para ser corrigido (devolução,
+// item errado) e entregue de novo. Pedido entregue não pode ser editado; este é o caminho.
+// O pagamento já recebido continua valendo; "a receber" e "não pagou" são apagados e
+// voltam a ser perguntados na próxima entrega. A data da entrega antiga fica no histórico.
+let _desfazendoEntrega = false;
+async function desfazerEntrega(id) {
+  if (_desfazendoEntrega || usuario.perfil !== 'admin') return;
+  const p = todosOsPedidos.find(x => x.id === id);
+  if (!p || p.status !== 'entregue') return;
+  if (!MODO_DEMO && !navigator.onLine) { toast('Sem internet. Para desfazer uma entrega é preciso estar conectado.'); return; }
+  const pago = p.status_pagamento === 'pago';
+  const parcial = (p.itens || []).some(i => Number(i.qtd_pedida) > Number(i.qtd));
+  const ok = await confirmar(
+    `Pedido nº ${p.id} — ${p.cliente_nome || 'Cliente'}\n` +
+    `Entregue em ${dataBR(dataRealEntrega(p))} · ${moeda(p.valor)}\n\n` +
+    'O pedido volta para PENDENTE: sai do relatório de entregas, volta para a lista de entregas e pode ser editado (por exemplo, numa devolução). Depois, marque a entrega de novo.\n\n' +
+    (pago ? 'O pagamento já registrado continua valendo.\n\n'
+          : 'A situação do pagamento é apagada e será informada de novo na próxima entrega.\n\n') +
+    (parcial ? 'Os itens que faltaram na entrega parcial não voltam sozinhos: ajuste o pedido se precisar.\n\n' : '') +
+    'Se a comissão deste período já foi acertada, o relatório vai mostrar a mudança.',
+    { titulo: 'Desfazer a entrega?', okLabel: 'Desfazer entrega', perigo: true });
+  if (!ok) return;
+  _desfazendoEntrega = true;
+  try {
+    const mudancas = pago
+      ? { status: 'pendente' }
+      : { status: 'pendente', status_pagamento: null, forma_pagamento_real: null, data_pagamento: null };
+    if (!MODO_DEMO) {
+      // "status=eq.entregue": se outro aparelho já desfez, não faz de novo.
+      const res = await apiSupabase('pedidos', 'PATCH', mudancas, `?id=eq.${Number(id)}&status=eq.entregue`);
+      if (!res.ok) { toast('A entrega não foi desfeita.\n\nDetalhes: ' + (res.erro || 'desconhecido')); return; }
+      if (!Array.isArray(res.dados) || !res.dados.length) {
+        toast('Este pedido já não estava entregue no servidor. Os dados serão recarregados.');
+        solicitarSincronizacao();
+        return;
+      }
+      const { clientes, itens_pedido, ...linha } = res.dados[0];
+      Object.assign(p, linha);
+    } else {
+      Object.assign(p, mudancas);
+    }
+    fecharModal('modal-detalhe-pedido');
+    registrarMudancaLocal('pedidos');
+    toast('↩ Entrega desfeita. O pedido voltou para pendente.');
+  } catch (e) {
+    toast('A entrega não foi desfeita. ' + e.message);
+  } finally {
+    _desfazendoEntrega = false;
+  }
 }
 
 async function carregarHistoricoPedido(pedidoId) {
@@ -5562,8 +5617,10 @@ async function carregarHistoricoPedido(pedidoId) {
       const data = new Date(h.criado_em);
       const quando = data.toLocaleDateString('pt-BR') + ' às ' + data.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
       const campos = (h.campos || []).map(c => nomesCampos[c]).filter(Boolean);
+      // Status mudou sem ser a conclusão da entrega: só acontece quando o admin desfaz a entrega.
+      const titulo = h.acao !== 'entregue' && (h.campos || []).includes('status') ? 'Entrega desfeita' : (acoes[h.acao] || h.acao);
       return `<div class="historico-item">
-        <div style="font-size:13px;font-weight:700;color:var(--creme)">${esc(acoes[h.acao] || h.acao)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--creme)">${esc(titulo)}</div>
         ${campos.length ? `<div style="font-size:11px;color:var(--c2);margin-top:3px">Alterou: ${esc(campos.join(', '))}</div>` : ''}
         <div class="historico-item-data" style="margin-top:5px">📅 ${esc(quando)} · por ${esc(h.alterado_por)}</div>
       </div>`;

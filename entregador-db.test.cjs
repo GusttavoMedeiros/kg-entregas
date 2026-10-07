@@ -234,3 +234,58 @@ test('Migração: funções iguais às do cheque, só com a marca antes e depois
     assert.equal(norm(sem(corpo(nova))), norm(corpo(cheque)), nome);
   }
 });
+
+test('Postgres: admin desfaz a entrega (pedido volta a pendente) e o entregador entrega de novo', async () => {
+  const db = await bancoAtual();
+  try {
+    await db.exec(lerMigration(NOVA));
+    await pedidos(db);
+    const antes = await hojeBrasil(db, -3), hoje = await hojeBrasil(db);
+    await quem(db, 'entregador');
+    await completa(db, 1, dados(antes, { status_pagamento: 'pendente', forma_pagamento_real: null, data_pagamento: null }));
+
+    // Entregador e vendedor não conseguem desfazer (a RLS só deixa mexer em pendentes: nada muda).
+    for (const role of ['entregador', 'vendedor']) {
+      await quem(db, role);
+      await db.exec("update public.pedidos set status='pendente' where id=1").catch(() => {});
+      assert.equal((await linha(db, 1)).status, 'entregue', role);
+    }
+
+    // Admin desfaz, como o app faz: só se ainda estiver entregue, apagando o "a receber".
+    await quem(db, 'admin');
+    const r = await db.query("update public.pedidos set status='pendente', status_pagamento=null, forma_pagamento_real=null, data_pagamento=null where id=1 and status='entregue' returning status");
+    assert.equal(r.rows.length, 1);
+    const desfeito = await linha(db, 1);
+    assert.equal(desfeito.status, 'pendente');
+    assert.equal(desfeito.status_pagamento, null);
+    // Repetir não faz nada (outro aparelho já desfez).
+    await quem(db, 'admin');
+    assert.equal((await db.query("update public.pedidos set status='pendente' where id=1 and status='entregue' returning id")).rows.length, 0);
+
+    // Nova entrega: pede o pagamento de novo e grava a data nova.
+    await quem(db, 'entregador');
+    await assert.rejects(completa(db, 1, dados(hoje, { status_pagamento: null })), /resultado do recebimento/);
+    const { r: nova } = (await completa(db, 1, dados(hoje, { forma_pagamento_real: 'cheque' }))).rows[0];
+    assert.equal(nova.status, 'entregue');
+    assert.equal(nova.data_entregue_em, hoje);
+    assert.equal(nova.forma_pagamento_real, 'cheque');
+  } finally { await db.close(); }
+});
+
+test('Postgres: desfazer pedido já pago mantém o pagamento, e a nova entrega também', async () => {
+  const db = await bancoAtual();
+  try {
+    await db.exec(lerMigration(NOVA));
+    await pedidos(db);
+    const hoje = await hojeBrasil(db);
+    await quem(db, 'entregador');
+    await completa(db, 1, dados(hoje, { forma_pagamento_real: 'pix' }));
+    await quem(db, 'admin');
+    await db.exec("update public.pedidos set status='pendente' where id=1 and status='entregue'");
+    assert.equal((await linha(db, 1)).status_pagamento, 'pago');
+    await quem(db, 'entregador');
+    const { r } = (await completa(db, 1, dados(hoje, { status_pagamento: 'pendente', forma_pagamento_real: null, data_pagamento: null }))).rows[0];
+    assert.equal(r.status_pagamento, 'pago', 'pagamento recebido antes continua');
+    assert.equal(r.forma_pagamento_real, 'pix');
+  } finally { await db.close(); }
+});
