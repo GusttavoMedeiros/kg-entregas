@@ -144,3 +144,9 @@ Limite de 2 folhas: o app tenta primeiro a letra normal (9 pt). Se não couber, 
 Na tela do relatório também aparecem os clientes por produto e a lista de entregas.
 
 No PDF, o "&" do nome do cliente vira "e" na lista "Entregue para", porque a fonte embutida não tem o símbolo. Na tabela de entregas o nome sai exato. A seção antiga "Por cliente" continua removida de propósito (a comissão é por unidade de produto). Sem mudança no banco.
+
+## Relatório de período sem entregas (07/10/2026)
+
+- **Resumo mantido.** Sem entregas no período, a tela continua mostrando o resumo (R$ 0,00, 0 pedidos, 0 clientes e unidades) e os avisos de pedidos sem baixa, em vez de só uma mensagem. A mensagem diz de quem é o relatório ("... neste período de Admin (Kleber)").
+- **Filtro de vendedor não some mais.** Antes, se o admin escolhia um vendedor e navegava para um período em que ele não tinha entregado nada, o botão dele desaparecia e o filtro seguia ativo sem ninguém ver (nem "Todos" ficava marcado). Agora o vendedor escolhido sempre aparece na lista.
+- O PDF de período vazio já mostrava os totais zerados, o período e o vendedor; foi só conferido. Sem mudança no banco.

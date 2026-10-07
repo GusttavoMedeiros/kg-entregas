@@ -6350,6 +6350,13 @@ function filtrarVendedorRelatorio(lista) {
   return lista.filter(p => (p.vendedor || '') === relVendedor);
 }
 
+// Vendedores do filtro: os do período mais o escolhido, que não pode sumir da lista
+// só porque não entregou nada no período (senão o filtro fica ativo e invisível).
+function vendedoresDoFiltro(vendedores, escolhido) {
+  return [...new Set([...vendedores, escolhido].filter(Boolean))]
+    .sort((a, b) => nomeVendedorRelatorio(a).localeCompare(nomeVendedorRelatorio(b), 'pt-BR'));
+}
+
 function mudarVendedorRelatorio(v) {
   relVendedor = v;
   renderizarRelatorio();
@@ -6394,9 +6401,10 @@ function renderizarRelatorio() {
     <div class="rel-status ${fonte.classe}">${esc(fonte.texto)}${relFonte.erro
       ? ' <button type="button" class="btn-azul" onclick="atualizarFonteRelatorio()">Tentar novamente</button>' : ''}</div>` : '';
 
-  const opcoesVendedor = admin && (vendedores.length > 1 || relVendedor) ? `
+  const listaVendedores = vendedoresDoFiltro(vendedores, relVendedor);
+  const opcoesVendedor = admin && (listaVendedores.length > 1 || relVendedor) ? `
     <div class="rel-filtro" role="group" aria-label="Vendedor">
-      ${['', ...vendedores].map(v => `
+      ${['', ...listaVendedores].map(v => `
         <button type="button" class="rel-chip${v === relVendedor ? ' ativa' : ''}"
           onclick="mudarVendedorRelatorio(${esc(JSON.stringify(v))})">${esc(v === '' ? 'Todos' : nomeVendedorRelatorio(v))}</button>`).join('')}
     </div>` : '';
@@ -6433,8 +6441,9 @@ function renderizarRelatorio() {
     <div class="rel-resumo-sub">${d.nClientes} cliente(s) · ${qtdTexto(d.unidades)} unidade(s)</div>`;
 
   if (!pedidos.length) {
-    el.innerHTML = htmlFonte + opcoesVendedor + htmlFila + htmlPendentes +
-      `<div class="rel-vazio">Nenhum pedido entregue neste período${usuario.perfil==='vendedor' ? ' (seus pedidos)' : ''}.</div>`;
+    const deQuem = usuario.perfil === 'vendedor' ? ' (seus pedidos)' : (relVendedor ? ` de ${nomeVendedorRelatorio(relVendedor)}` : '');
+    el.innerHTML = htmlFonte + opcoesVendedor + htmlResumo + htmlFila + htmlPendentes +
+      `<div class="rel-vazio">Nenhum pedido entregue neste período${esc(deQuem)}.</div>`;
     return;
   }
 
