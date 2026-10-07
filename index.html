@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=80" as="script">
+<link rel="preload" href="app.js?v=81" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -595,6 +595,7 @@ body.offline #app{padding-top:54px}
 .rel-resumo span{display:block;font-size:9.5px;font-weight:700;color:var(--c3);
   letter-spacing:.8px;text-transform:uppercase;margin-top:2px}
 .rel-resumo .rel-laranja b{color:#f4a04a}
+.rel-resumo-sub{margin:-8px 0 14px;text-align:center;font-size:11.5px;color:var(--c3)}
 
 /* Seções e linhas */
 .rel-secao{margin-top:16px}
@@ -608,6 +609,11 @@ body.offline #app{padding-top:54px}
 .rel-linha-nome small{color:var(--c3);font-size:11px;margin-left:4px;white-space:nowrap}
 .rel-linha-qtd{font-weight:800;color:var(--creme,var(--c1));white-space:nowrap;font-variant-numeric:tabular-nums}
 .rel-linha-valor{font-weight:700;color:var(--o1);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rel-bloco{border-bottom:1px solid rgba(200,150,12,.08)}
+.rel-bloco .rel-linha{border-bottom:0;padding-bottom:2px}
+.rel-linha-sub{padding:0 0 8px;font-size:11.5px;line-height:1.45;color:var(--c3);overflow-wrap:anywhere}
+.rel-pago{color:#7ec850}
+.rel-a-receber{color:#f4a04a}
 
 /* Alerta de pedidos sem baixa (recolhido) */
 .rel-alerta{background:rgba(192,57,43,.1);border:1px solid rgba(192,57,43,.45);
@@ -2271,6 +2277,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=80"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>
