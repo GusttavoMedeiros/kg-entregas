@@ -26,6 +26,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     if(u.pathname.startsWith('/auth/'))return route.fulfill({json:{}});
     if(u.pathname.includes('historico_precos')){await pause(u.searchParams.get('produto_id')==='eq.1'?450:40);return route.fulfill({json:[]});}
     if(u.pathname.includes('historico_pedidos'))return route.fulfill({json:[]});
+    if(u.pathname.includes('acertos_comissao'))return route.fulfill({json:[]});
     if(req.method()==='GET'){
      const table=u.pathname.split('/').pop();if(falharLista&&table==='pedidos'){falharLista=false;return route.fulfill({status:503,json:{erro:'Falha simulada'}});}
      let rows=({pedidos,clientes,produtos})[table];if(!rows)return route.fulfill({status:404,json:{erro:'Rota de teste não implementada'}});
@@ -103,13 +104,14 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    // A quinzena iniciada no dia 16 não pode aparentar estar quebrada por
    // cair numa metade do mês vazia. O período móvel de 15 dias deve mostrar
    // uma entrega recente e atualizar o rótulo da aba.
-   await p.evaluate(()=>{
-    todosOsPedidos.push({id:999,cliente_id:1,cliente_nome:'Cliente quinzena',status:'entregue',
-      data_entregue_em:dataHojeBrasil(),valor:1,vendedor:'vendedor',itens:[{nome:'Teste',qtd:1,preco_unit:1}]});
-    mudarTipoRelatorio('quinzenal',document.querySelectorAll('#abas-relatorio .aba')[1]);
-   });
+   // O relatório confere com o servidor: a entrega de hoje entra na base simulada do servidor.
+   const hojeBr=await p.evaluate(()=>dataHojeBrasil());
+   pedidos.push({id:999,cliente_id:1,clientes:{nome:'Cliente quinzena'},status:'entregue',status_pagamento:'pago',data_entrega:hojeBr,data_entregue_em:hojeBr,
+     valor:1,vendedor:'vendedor',forma_pagamento:'avista',itens_pedido:[{id:99,produto_id:1,nome:'Teste',qtd:1,preco_unit:1,preco_catalogo:1}]});
+   await p.evaluate(async()=>{await atualizarFonteRelatorio();mudarTipoRelatorio('quinzenal',document.querySelectorAll('#abas-relatorio .aba')[1]);});
    assert.match(await p.locator('#rel-periodo-label').innerText(),/Quinzena/);
-   assert.match(await p.locator('#relatorio-conteudo').innerText(),/PEDIDOS ENTREGUES/i);
+   assert.match(await p.locator('#relatorio-conteudo').innerText(),/ENTREGAS DO PERÍODO/i);
+   assert.doesNotMatch(await p.locator('#relatorio-conteudo').innerText(),/Não foi possível consultar os acertos/);
    await p.evaluate(()=>imprimirRelatorio());await p.waitForSelector('#via-pdf-canvas');
    assert.equal(await p.locator('#via-overlay').evaluate(e=>getComputedStyle(e).display), 'flex');
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));

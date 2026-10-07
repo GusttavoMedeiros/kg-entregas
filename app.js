@@ -78,7 +78,8 @@ function toast(msg, tipo) {
   const texto = (msg == null ? '' : String(msg));
   if (!tipo) {
     const t = texto.toLowerCase();
-    if (/^❌|erro|falh|inválid|invalid|incorret|não pode|nao pode|obrigatóri/.test(t)) tipo = 'erro';
+    // "Pedido não salvo", "A entrega não foi desfeita": a negação vem antes do teste de sucesso.
+    if (/^❌|erro|falh|inválid|invalid|incorret|n[ãa]o (pode|p[ôo]de|foi|salv|atualiz|exclu|consegui)|obrigatóri/.test(t)) tipo = 'erro';
     else if (/^✅|^🎉|sucesso|salvo|atualizad|conclu[ií]|exclu[ií]d|removid/.test(t)) tipo = 'ok';
     else tipo = 'info';
   }
@@ -2270,7 +2271,6 @@ function cobrarTodosAtrasados() {
   // Abre modal com lista de clientes para cobrar
   const lista = Object.values(porCliente).sort((a,b)=>b.total-a.total);
   const html = `
-    <div class="modal-titulo">📲 Cobrar Atrasados (${lista.length} cliente${lista.length>1?'s':''})</div>
     <div style="margin-bottom:14px;color:var(--c2);font-size:13px">
       Clique no botão de WhatsApp ao lado de cada cliente para enviar a cobrança personalizada.
     </div>
@@ -2293,9 +2293,14 @@ function cobrarTodosAtrasados() {
             : `<span style="font-size:11px;color:var(--c3)">Sem WhatsApp</span>`}
         </div>`;
     }).join('')}
-    <button class="btn-secundario mt-12" onclick="fecharModal('modal-detalhe-pedido')">Fechar</button>
   `;
-  document.getElementById('detalhe-pedido-titulo').textContent = '';
+  // A janela é a mesma do detalhe do pedido: sem o pedido anterior, nem os botões dele
+  // (via, desfazer entrega), nem a atualização automática que traria o pedido de volta.
+  const modal = document.getElementById('modal-detalhe-pedido');
+  delete modal.dataset.registroId;
+  const acoesVia = document.getElementById('detalhe-pedido-acoes-via');
+  if (acoesVia) acoesVia.innerHTML = '';
+  document.getElementById('detalhe-pedido-titulo').textContent = `📲 Cobrar Atrasados (${lista.length} cliente${lista.length>1?'s':''})`;
   document.getElementById('detalhe-pedido-conteudo').innerHTML = html;
   abrirModal('modal-detalhe-pedido');
 }
@@ -2802,7 +2807,7 @@ function montarCardProduto(p, isAdmin, termoBusca = '') {
       custoMargemHtml = `
         <div class="produto-custo-info">
           <span class="custo-val">Custo: ${moeda(custo)}</span>
-          <span class="${cls}">+${pct.toFixed(0)}% (${moeda(lucro)})</span>
+          <span class="${cls}">${pct >= 0 ? '+' : ''}${pct.toFixed(0)}% (${moeda(lucro)})</span>
         </div>`;
     } else {
       custoMargemHtml = `
@@ -7019,7 +7024,7 @@ async function imprimirRelatorio() {
     if (loadingEl) loadingEl.remove();
     window.__viaLoadingEl = null;
     if (papel) papel.innerHTML = `<div class="via-erro">❌ ${esc(e.message)}<br><br>Tente novamente ou atualize o aplicativo.</div>`;
-    alert('Não foi possível gerar o PDF do relatório: ' + e.message);
+    toast('Não foi possível gerar o PDF do relatório: ' + e.message, 'erro');
   }
 }
 
