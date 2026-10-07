@@ -120,3 +120,12 @@ Agora:
 - A escolha em andamento não se perde quando a tela atualiza sozinha, e não passa para outro cliente.
 
 Impacto no relatório de comissão: nenhum. O relatório usa `data_entregue_em`, não a data do pagamento. Sem mudança no banco de dados.
+
+## Backup antes de limpar pedidos (07/10/2026)
+
+Antes, para apagar todo o histórico bastava digitar LIMPAR e confirmar. Agora:
+- O botão de apagar nasce travado. O passo 1 é **baixar uma cópia de segurança**: uma planilha (`.csv`, abre no Excel, uma linha por item, com o nome do cliente) e um arquivo completo (`.json`, com os itens, pronto para restaurar).
+- A cópia sempre vem do **servidor**. Se estiver sem internet, se o servidor não responder ou se vier do cache, a cópia é recusada.
+- Se houver entrega feita sem internet ainda não enviada, a limpeza é bloqueada até o envio.
+- A limpeza apaga **somente os pedidos que estão na cópia**; um pedido criado depois dela é preservado.
+- A cópia vale para uma limpeza só. Sem mudança no banco de dados.

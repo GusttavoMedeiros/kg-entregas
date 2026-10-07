@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=79" as="script">
+<link rel="preload" href="app.js?v=80" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -836,6 +836,12 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
   transition:background .15s,border-color .15s}
 .btn-zona-perigo:hover{background:rgba(192,57,43,.2);border-color:#e05a4e}
 .btn-zona-perigo:active{transform:scale(.98)}
+.btn-zona-perigo:disabled{opacity:.45;cursor:not-allowed}
+.reset-passo{background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:var(--r);padding:14px;margin-bottom:14px}
+.reset-passo-titulo{font-size:13px;font-weight:800;color:var(--o1);margin-bottom:6px}
+.reset-passo-texto{font-size:12px;color:var(--c2);line-height:1.5;margin-bottom:10px}
+.reset-backup-status{margin-top:10px;font-size:12px;line-height:1.5;color:#f4a04a;overflow-wrap:anywhere}
+.reset-backup-status.ok{color:#7ec850;font-weight:700}
 .btn-zona-perigo:disabled{opacity:.5;cursor:not-allowed}
 
 .alerta-perigo{background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.35);
@@ -2243,13 +2249,20 @@ body.modal-aberto{overflow:hidden;touch-action:none}
       </div>
     </div>
 
+    <div class="reset-passo">
+      <div class="reset-passo-titulo">Passo 1 — Cópia de segurança (obrigatória)</div>
+      <div class="reset-passo-texto">Baixa uma cópia de todos os pedidos, direto do servidor: uma planilha (.csv, abre no Excel) e um arquivo completo (.json). Guarde os dois.</div>
+      <button type="button" class="btn-secundario" id="btn-backup-reset" onclick="baixarBackupReset()">💾 Baixar cópia dos pedidos</button>
+      <div id="reset-backup-status" class="reset-backup-status" role="status" aria-live="polite">Ainda não há cópia. O botão de apagar só libera depois dela.</div>
+    </div>
+
     <div class="campo">
-      <label style="color:#e05a4e">Para confirmar, digite <b>LIMPAR</b> abaixo:</label>
+      <label style="color:#e05a4e">Passo 2 — Para confirmar, digite <b>LIMPAR</b> abaixo:</label>
       <input type="text" id="confirma-reset" placeholder="Digite LIMPAR" autocomplete="off"
              style="border-color:#e05a4e;text-transform:uppercase">
     </div>
 
-    <button class="btn-zona-perigo" id="btn-confirmar-reset" onclick="executarResetPedidos()">
+    <button class="btn-zona-perigo" id="btn-confirmar-reset" onclick="executarResetPedidos()" disabled>
       🗑️ Sim, apagar tudo definitivamente
     </button>
     <button class="btn-secundario mt-8" onclick="fecharModal('modal-reset')">Cancelar</button>
@@ -2258,6 +2271,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=79"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>
