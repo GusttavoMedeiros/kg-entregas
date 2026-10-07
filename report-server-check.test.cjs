@@ -123,7 +123,7 @@ test('Entrega não enviada aparece à parte, fora do total e fora dos "sem baixa
 
 test('PDF avisa sobre entregas não enviadas', () => {
   const pdf = trecho('async function gerarPdfRelatorio(', '// Gera PDF do relatório e mostra');
-  assert.match(pdf, /const \{ pendentes, naFila, d \} = montarRelatorio\(\)/);
+  assert.match(pdf, /const \{ pendentes, naFila, d(, [\w, ]+)? \} = montarRelatorio\(\)/);
   assert.match(pdf, /ainda não chegaram ao servidor e estão FORA do total/);
   assert.match(pdf, /Entregas não enviadas ao servidor/);
   assert.match(pdf, /ATENÇÃO: este relatório foi gerado SEM conferir com o servidor/);
