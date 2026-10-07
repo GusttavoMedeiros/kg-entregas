@@ -2303,22 +2303,127 @@ function cobrarTodosAtrasados() {
 // ============================================================
 // RESET HISTÓRICO DE PEDIDOS (admin only, dupla confirmação)
 // ============================================================
+// Cópia de segurança obrigatória: o reset só apaga os pedidos que estão na
+// cópia baixada, e a cópia vem do servidor (nunca da memória do aparelho).
+let resetBackup = null; // { ids:[...], nome, quando }
+
+function csvCelula(v) {
+  let s = v == null ? '' : String(v);
+  // Texto que começa com = + - @ viraria fórmula no Excel.
+  if (/^[=+\-@\t\r]/.test(s) && typeof v === 'string') s = "'" + s;
+  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+const csvNumero = n => (n == null || n === '' || Number.isNaN(Number(n))) ? '' : Number(n).toFixed(2).replace('.', ',');
+
+// Uma linha por item do pedido (pedido sem itens vira uma linha só), em planilha.
+function montarCsvBackup(pedidos) {
+  const cab = ['Pedido', 'Cliente', 'Vendedor', 'Status', 'Data entrega prevista', 'Data entregue', 'Forma de pagamento',
+    'Pagamento', 'Forma de pagamento real', 'Data pagamento', 'Vencimento', 'Valor do pedido', 'Produto', 'Qtd pedida',
+    'Qtd entregue', 'Preço unitário', 'Subtotal', 'Observação'];
+  const linhas = [cab];
+  for (const p of pedidos) {
+    const base = [p.id, p.clientes?.nome || p.cliente_nome || '', p.vendedor, p.status, p.data_entrega, p.data_entregue_em,
+      p.forma_pagamento, p.status_pagamento, p.forma_pagamento_real, p.data_pagamento, p.data_vencimento];
+    const itens = p.itens_pedido || p.itens || [];
+    if (!itens.length) { linhas.push([...base, csvNumero(p.valor), '', '', '', '', '', p.observacao]); continue; }
+    for (const i of itens) {
+      linhas.push([...base, csvNumero(p.valor), i.nome, i.qtd_pedida ?? i.qtd, i.qtd, csvNumero(i.preco_unit),
+        csvNumero(Number(i.qtd) * Number(i.preco_unit)), p.observacao]);
+    }
+  }
+  // BOM + ponto e vírgula: o Excel em português abre direto, com acentos.
+  return '﻿' + linhas.map(l => l.map(csvCelula).join(';')).join('\r\n');
+}
+
+function montarBackupPedidos(pedidos, quando = new Date()) {
+  const stamp = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
+    .format(quando).replace(/[^\d]/g, '').replace(/^(\d{8})/, '$1-');
+  const nome = `kg-backup-pedidos-${stamp}`;
+  const ids = pedidos.map(p => Number(p.id)).filter(Number.isSafeInteger);
+  const json = JSON.stringify({ gerado_em: quando.toISOString(), tabela: 'pedidos', total: pedidos.length, pedidos }, null, 1);
+  return { nome, ids, json, csv: montarCsvBackup(pedidos) };
+}
+
+function baixarArquivoTexto(nomeArquivo, conteudo, tipo) {
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function atualizarEstadoReset() {
+  const qtd = document.getElementById('reset-qtd-pedidos');
+  const status = document.getElementById('reset-backup-status');
+  const btn = document.getElementById('btn-confirmar-reset');
+  if (qtd) qtd.textContent = resetBackup ? resetBackup.ids.length : todosOsPedidos.length;
+  if (status) {
+    status.className = 'reset-backup-status' + (resetBackup ? ' ok' : '');
+    status.textContent = resetBackup
+      ? `✓ Cópia baixada (${resetBackup.ids.length} pedidos): ${resetBackup.nome}.csv e .json. Confira que os 2 arquivos estão no aparelho.`
+      : 'Ainda não há cópia. O botão de apagar só libera depois dela.';
+  }
+  if (btn) btn.disabled = !resetBackup;
+}
+
 function abrirModalReset() {
   if (usuario?.perfil !== 'admin') {
     toast('Apenas o admin pode executar essa ação.');
     return;
   }
-  // Mostra quantidade no modal
-  const qtd = todosOsPedidos.length;
-  document.getElementById('reset-qtd-pedidos').textContent = qtd;
+  resetBackup = null;
   document.getElementById('confirma-reset').value = '';
+  atualizarEstadoReset();
   abrirModal('modal-reset');
+}
+
+async function baixarBackupReset() {
+  if (salvando) return;
+  if (usuario?.perfil !== 'admin') { toast('Apenas o admin pode executar essa ação.'); return; }
+  const btn = document.getElementById('btn-backup-reset');
+  salvando = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparando cópia…'; }
+  try {
+    let pedidos = todosOsPedidos;
+    if (!MODO_DEMO) {
+      if (!navigator.onLine) { toast('Sem internet. A cópia precisa vir do servidor; conecte-se e tente de novo.'); return; }
+      await processarFilaOffline();
+      if (lerFilaOffline().some(a => !a.falha && acaoOfflinePertenceAoUsuario(a))) {
+        toast('Há entregas feitas sem internet que ainda não foram enviadas. Aguarde o envio antes de limpar.');
+        return;
+      }
+      const res = await listarTodos('pedidos', '*,clientes(nome),itens_pedido(*)');
+      if (!res.ok) { toast('Não consegui buscar os pedidos no servidor: ' + (res.erro || 'erro desconhecido')); return; }
+      if (res.deCache) { toast('O servidor não respondeu; a cópia seria dos dados antigos. Tente de novo.'); return; }
+      pedidos = res.dados;
+    }
+    if (!pedidos.length) { toast('Não há pedidos para apagar.'); return; }
+    const copia = montarBackupPedidos(pedidos);
+    baixarArquivoTexto(copia.nome + '.csv', copia.csv, 'text/csv;charset=utf-8');
+    setTimeout(() => baixarArquivoTexto(copia.nome + '.json', copia.json, 'application/json'), 500);
+    resetBackup = { ids: copia.ids, nome: copia.nome, quando: new Date() };
+    atualizarEstadoReset();
+    toast(`✓ Cópia de ${copia.ids.length} pedidos baixada. Se o navegador perguntar, permita os 2 downloads.`);
+  } catch (e) {
+    console.error('Erro ao gerar cópia:', e);
+    toast('Erro ao gerar a cópia: ' + e.message);
+  } finally {
+    salvando = false;
+    if (btn) { btn.disabled = false; btn.textContent = resetBackup ? '💾 Baixar a cópia de novo' : '💾 Baixar cópia dos pedidos'; }
+  }
 }
 
 async function executarResetPedidos() {
   if (salvando) return;
   if (usuario?.perfil !== 'admin') {
     toast('Apenas o admin pode executar essa ação.');
+    return;
+  }
+  if (!resetBackup) {
+    toast('Baixe a cópia de segurança primeiro (passo 1).');
     return;
   }
 
@@ -2329,18 +2434,20 @@ async function executarResetPedidos() {
     return;
   }
 
-  // CONFIRMAÇÃO 2: prompt nativo do navegador
-  const qtd = todosOsPedidos.length;
-  const idsConfirmados = todosOsPedidos.map(p => Number(p.id)).filter(Number.isSafeInteger);
+  // Só apaga o que está na cópia: pedido criado depois dela é preservado.
+  const idsConfirmados = [...resetBackup.ids];
+  const qtd = idsConfirmados.length;
   if (qtd === 0) {
     toast('Não há pedidos para apagar.');
     fecharModal('modal-reset');
     return;
   }
+
+  // CONFIRMAÇÃO 2
   const ok = await confirmar(
     `⚠️ ÚLTIMA CONFIRMAÇÃO\n\n` +
     `Você vai apagar ${qtd} pedido(s) PERMANENTEMENTE.\n\n` +
-    `Esta ação não pode ser desfeita.\n\n` +
+    `A cópia "${resetBackup.nome}" (.csv e .json) já foi baixada.\n\n` +
     `Tem certeza absoluta?`
   );
   if (!ok) return;
@@ -2352,8 +2459,8 @@ async function executarResetPedidos() {
 
   try {
     if (!MODO_DEMO) {
-      // O servidor apaga somente o conjunto exibido nas confirmações. Pedidos
-      // criados simultaneamente em outro aparelho são preservados.
+      // O servidor apaga somente os pedidos da cópia. Pedidos criados
+      // simultaneamente em outro aparelho são preservados.
       const resPed = await apiSupabase('rpc/limpar_pedidos','POST',{ p_ids:idsConfirmados });
       if (!resPed.ok) {
         toast('Erro ao apagar pedidos.\n\nDetalhes: ' + (resPed.erro || 'desconhecido'));
@@ -2371,6 +2478,7 @@ async function executarResetPedidos() {
     const idsApagados = new Set(idsConfirmados);
     todosOsPedidos = todosOsPedidos.filter(p => !idsApagados.has(Number(p.id)));
     idsConfirmados.forEach(limparChecklist);
+    resetBackup = null;
 
     fecharModal('modal-reset');
 
@@ -2382,7 +2490,7 @@ async function executarResetPedidos() {
     toast('Erro inesperado ao resetar: ' + e.message);
   } finally {
     salvando = false;
-    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Sim, apagar tudo definitivamente'; }
+    if (btn) { btn.textContent = '🗑️ Sim, apagar tudo definitivamente'; btn.disabled = !resetBackup; }
   }
 }
 
