@@ -37,17 +37,17 @@ assert.ok(isTrueType(nunitoHead) || isOpenType(nunitoHead), 'Nunito.ttf não é 
 // ===== 2) index.html mantém o primeiro carregamento leve =====
 const html = fs.readFileSync('index.html', 'utf8');
 assert.doesNotMatch(html, /<script[^>]+vendor\/(?:pdf|jspdf)/, 'PDF não deve bloquear o login');
-assert.match(html, /app\.js\?v=81/, 'app.js?v=81 esperado (versão nova do cache)');
+assert.match(html, /app\.js\?v=82/, 'app.js?v=82 esperado (versão nova do cache)');
 assert.match(html, /id="via-papel"/, 'container #via-papel presente');
 
 // ===== 3) Service Worker registra novos arquivos =====
 const sw = fs.readFileSync('sw.js', 'utf8');
-assert.match(sw, /kg-v58/, 'sw.js deve estar na versão v58');
+assert.match(sw, /kg-v59/, 'sw.js deve estar na versão v59');
 assert.match(sw, /vendor\/pdf\.min\.js/, 'sw.js não cacheia pdf.min.js');
 assert.match(sw, /vendor\/pdf\.worker\.min\.js/, 'sw.js não cacheia pdf.worker.min.js');
 assert.match(sw, /vendor\/Cinzel\.ttf/, 'sw.js não cacheia Cinzel.ttf');
 assert.match(sw, /vendor\/Nunito\.ttf/, 'sw.js não cacheia Nunito.ttf');
-assert.match(sw, /app\.js\?v=81/);
+assert.match(sw, /app\.js\?v=82/);
 
 // ===== 4) app.js: estrutura das funções da via =====
 const app = fs.readFileSync('app.js', 'utf8');
@@ -91,12 +91,14 @@ assert.match(app, /head:\s*\[\['Qtd', 'Produto', 'Unitário', 'Subtotal'\]\]/);
 assert.match(app, /destaque apenas com contorno/, 'total da via não deve usar bloco de tinta');
 
 // ===== 10) Layout defensivo: splitTextToSize em campos que podem ser longos =====
-assert.match(app, /doc\.splitTextToSize\(c\.endereco, cW\)/);
-assert.match(app, /doc\.splitTextToSize\(p\.observacao, cW\)/);
+// Quebra de linha passa por quebrar(), que usa a fonte reserva quando o texto tem símbolo fora da fonte.
+assert.match(app, /quebrar\(c\.endereco, cW\)/);
+assert.match(app, /quebrar\(p\.observacao, cW\)/);
 
 // ===== 11) Paginação: cabeçalho/rodapé em todas páginas =====
-assert.match(app, /didDrawPage:/);
-assert.match(app, /drawRodape/);
+// Rodapé e cabeçalho das páginas seguintes são desenhados no fim, com o total de páginas certo.
+assert.match(app, /drawRodape\(i, totalPaginas\)/);
+assert.doesNotMatch(app.slice(app.indexOf('async function gerarPdfViaPedido'), app.indexOf('async function gerarViaPedido')), /didDrawPage/);
 
 // ===== 12) PDF.js renderiza no canvas (a grande mudança) =====
 assert.match(app, /window\.pdfjsLib/, 'app.js checa se PDF.js está disponível');
