@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=83" as="script">
+<link rel="preload" href="app.js?v=84" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -456,6 +456,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .bloco-pagto-label{display:block;font-size:12px;font-weight:700;letter-spacing:.6px;
   text-transform:uppercase;color:var(--o1);margin-bottom:10px}
 .pagto-recebido-grupo{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+/* Número ímpar de botões: o último ocupa a linha inteira em vez de ficar sozinho num canto. */
+.pagto-recebido-grupo>.pagto-recebido:last-child:nth-child(odd){grid-column:1/-1}
 .pagto-recebido{background:rgba(10,26,16,.65);border:1px solid var(--ol);border-radius:11px;
   padding:13px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
   font-family:'Nunito',sans-serif;transition:all .18s;color:var(--c1);text-align:center}
@@ -2067,6 +2069,10 @@ body.modal-aberto{overflow:hidden;touch-action:none}
           <span class="pagto-recebido-icone">💳</span>
           <span class="pagto-recebido-label">PIX / Cartão</span>
         </button>
+        <button type="button" class="pagto-recebido pagto-pago" data-valor="cheque" onclick="selecionarPagamentoRecebido('cheque')">
+          <span class="pagto-recebido-icone">📝</span>
+          <span class="pagto-recebido-label">Cheque</span>
+        </button>
         <button type="button" class="pagto-recebido pagto-pendente" data-valor="pendente" onclick="selecionarPagamentoRecebido('pendente')">
           <span class="pagto-recebido-icone">⏰</span>
           <span class="pagto-recebido-label">Vai pagar depois</span>
@@ -2277,6 +2283,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=83"></script>
+<script src="app.js?v=84"></script>
 </body>
 </html>
