@@ -3301,7 +3301,7 @@ function renderizarFinanceiro(filtro) {
         <div>
           <div class="cliente-nome">${esc(c.nome)}</div>
           <div class="cliente-info">${info}</div>
-          ${totalD>0?`<div style="font-size:13px;color:#e05a4e;font-weight:700;margin-top:3px">${moeda(totalD)} devidos</div>`:''}
+          ${totalD>0?`<div style="font-size:13px;color:var(--kg-perigo);font-weight:700;margin-top:3px">${moeda(totalD)} devidos</div>`:''}
         </div>
         ${badge}
       </div>`;
@@ -3323,9 +3323,9 @@ const FIN_FORMAS = { dinheiro: 'Dinheiro', pix: 'PIX / Cartão', cheque: 'Cheque
 const FIN_ICONES = { dinheiro: '💵', pix: '💳', cheque: '📝' };
 
 function statusPedidoAberto(p) {
-  if (isPagamentoAtrasado(p)) return '<span style="color:#e05a4e;font-weight:700">⚠ Atrasado</span>';
-  if (p.status_pagamento === 'recusado') return '<span style="color:#ee7d6f;font-weight:700">✗ Cliente não pagou na entrega</span>';
-  if (p.status !== 'entregue') return '<span style="color:#f4a04a;font-weight:700">📦 Ainda não entregue</span>';
+  if (isPagamentoAtrasado(p)) return '<span style="color:var(--kg-perigo);font-weight:700">⚠ Atrasado</span>';
+  if (p.status_pagamento === 'recusado') return '<span style="color:var(--kg-perigo);font-weight:700">✗ Cliente não pagou na entrega</span>';
+  if (p.status !== 'entregue') return '<span style="color:var(--kg-atencao);font-weight:700">📦 Ainda não entregue</span>';
   return '';
 }
 
@@ -3366,7 +3366,7 @@ function verFinanceiroCliente(id) {
         <span class="fin-pedido-corpo">
           <span class="flex-entre">
             <span style="font-size:13px;color:var(--creme)">${esc(p.descricao)}</span>
-            <span style="font-size:14px;font-weight:700;color:#e05a4e">${moeda(p.valor)}</span>
+            <span style="font-size:14px;font-weight:700;color:var(--kg-perigo)">${moeda(p.valor)}</span>
           </span>
           <span style="display:block;font-size:12px;color:var(--c3);margin-top:3px">
             Pedido nº ${esc(p.id)} · Venc.: ${dataBR(p.data_vencimento)} ${statusPedidoAberto(p) ? '· ' + statusPedidoAberto(p) : ''}
@@ -3699,7 +3699,7 @@ function atualizarParcelas() {
   const info = document.getElementById('prazo-info-venc');
   if (info) {
     if (duplicados.size > 0) {
-      info.style.color = '#e05a4e';
+      info.style.color = 'var(--kg-perigo)';
       info.textContent = `⚠ Não pode repetir o prazo (${[...duplicados].join(', ')} dias). Cada parcela precisa ter um prazo diferente.`;
     } else if (valores.length > 1) {
       info.style.color = '';
@@ -4615,17 +4615,17 @@ async function verDetalheProduto(id) {
       </div>
       <div class="historico-resumo-linha">
         <span class="historico-resumo-label">💰 Preço de venda</span>
-        <span class="historico-resumo-valor" style="color:#7ec850">${moeda(preco)}</span>
+        <span class="historico-resumo-valor" style="color:var(--kg-sucesso)">${moeda(preco)}</span>
       </div>
       <div class="historico-resumo-linha">
         <span class="historico-resumo-label">📦 Preço de custo</span>
-        <span class="historico-resumo-valor" style="color:#f4a04a">${custo > 0 ? moeda(custo) : 'Não cadastrado'}</span>
+        <span class="historico-resumo-valor" style="color:var(--kg-atencao)">${custo > 0 ? moeda(custo) : 'Não cadastrado'}</span>
       </div>`;
   if (lucro != null) {
     // Define a cor diretamente baseado na classe
-    let corLucro = '#7ec850'; // bom (verde)
-    if (classeLucro === 'lucro-negativo') corLucro = '#ee7d6f';
-    else if (classeLucro === 'lucro-baixo') corLucro = '#f4a04a';
+    let corLucro = 'var(--kg-sucesso)'; // bom (verde)
+    if (classeLucro === 'lucro-negativo') corLucro = 'var(--kg-perigo)';
+    else if (classeLucro === 'lucro-baixo') corLucro = 'var(--kg-atencao)';
     resumoHtml += `
       <div class="historico-resumo-linha">
         <span class="historico-resumo-label">📈 Margem de lucro</span>
@@ -5543,10 +5543,10 @@ function verDetalhePedido(id) {
   const itensHtml = p.itens?.length
     ? p.itens.map(i=>`
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--ol)">
-          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}${i.qtd_pedida > i.qtd ? ` <small style="color:#f4a04a">(pedido: ${esc(i.qtd_pedida)})</small>` : ''}</span>
+          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}${i.qtd_pedida > i.qtd ? ` <small style="color:var(--kg-atencao)">(pedido: ${esc(i.qtd_pedida)})</small>` : ''}</span>
           <span style="font-size:13px;color:var(--o1);font-weight:700">${moeda(i.preco_unit*i.qtd)}</span>
         </div>`).join('') + (p.itens.some(i => i.qtd_pedida > i.qtd)
-      ? '<div style="font-size:12px;color:#f4a04a;padding:8px 0">⚠ Entrega parcial: o que faltou foi cancelado e o cliente paga só o que recebeu.</div>' : '')
+      ? '<div style="font-size:12px;color:var(--kg-atencao);padding:8px 0">⚠ Entrega parcial: o que faltou foi cancelado e o cliente paga só o que recebeu.</div>' : '')
     : `<div style="font-size:13px;color:var(--c2);padding:8px 0">${esc(p.descricao)}</div>`;
 
   const pagtoTxt = formatarPagamento(p);
@@ -5560,11 +5560,11 @@ function verDetalhePedido(id) {
     if (foiPago(p)) {
       const formaReal = ({ dinheiro: 'Dinheiro', pix: 'PIX/Cartão', cheque: 'Cheque' })[p.forma_pagamento_real] || '';
       const dataPgto = p.data_pagamento ? ` em ${dataBR(p.data_pagamento)}` : '';
-      statusPagtoLinha = `<div style="font-size:12px;color:#7ec850;margin-bottom:4px;font-weight:700">✓ Pago${formaReal?' ('+formaReal+')':''}${dataPgto}</div>`;
+      statusPagtoLinha = `<div style="font-size:12px;color:var(--kg-sucesso);margin-bottom:4px;font-weight:700">✓ Pago${formaReal?' ('+formaReal+')':''}${dataPgto}</div>`;
     } else if (p.status_pagamento === 'recusado') {
-      statusPagtoLinha = `<div style="font-size:12px;color:#ee7d6f;margin-bottom:4px;font-weight:700">✗ Cliente não pagou</div>`;
+      statusPagtoLinha = `<div style="font-size:12px;color:var(--kg-perigo);margin-bottom:4px;font-weight:700">✗ Cliente não pagou</div>`;
     } else {
-      statusPagtoLinha = `<div style="font-size:12px;color:#f4a04a;margin-bottom:4px;font-weight:700">⏰ Aguardando pagamento</div>`;
+      statusPagtoLinha = `<div style="font-size:12px;color:var(--kg-atencao);margin-bottom:4px;font-weight:700">⏰ Aguardando pagamento</div>`;
     }
   }
 

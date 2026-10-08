@@ -1,0 +1,54 @@
+/* KG Agropet — camada de cores (carregada por último).
+   Objetivo: menos tons soltos e mais leitura. Antes havia 4 vermelhos, 3
+   verdes, 2 laranjas e 3 azuis diferentes; agora cada significado tem um tom
+   só (tokens em design-tokens.css). Verde-escuro e dourado continuam sendo a
+   marca; as cores de estado aparecem só onde informam algo. */
+
+:root {
+  /* Os nomes antigos passam a apontar para a paleta nova. */
+  --gn: var(--kg-sucesso);  --gnb: rgba(var(--kg-sucesso-rgb), .12);
+  --am: var(--kg-atencao);  --amb: rgba(var(--kg-atencao-rgb), .12);
+  --rm: var(--kg-perigo);   --rmb: rgba(var(--kg-perigo-rgb), .12);
+  --az: var(--kg-info);     --azb: rgba(var(--kg-info-rgb), .12);
+
+  /* Texto secundário um pouco mais claro: "por vendedor", datas e legendas
+     estavam apagados demais no celular ao sol. */
+  --c2: rgba(251,248,240,.74);
+  --c3: rgba(251,248,240,.62);
+
+  /* Cartões: um degrau mais claros que o fundo, para separar melhor. */
+  --gc: linear-gradient(150deg, rgba(30,70,51,.95), rgba(12,34,24,.97));
+}
+
+/* Etiquetas de estado: mesmo desenho para todas (fundo .12, borda .32). */
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro {
+  background: rgba(var(--kg-sucesso-rgb), .12);
+  color: var(--kg-sucesso);
+  border: 1px solid rgba(var(--kg-sucesso-rgb), .32);
+}
+.badge-pendente, .badge-pag-pendente, .badge-devendo {
+  background: rgba(var(--kg-atencao-rgb), .12);
+  color: var(--kg-atencao);
+  border: 1px solid rgba(var(--kg-atencao-rgb), .32);
+}
+.badge-atrasado, .badge-pag-recusado, .badge-low {
+  background: rgba(var(--kg-perigo-rgb), .12);
+  color: var(--kg-perigo);
+  border: 1px solid rgba(var(--kg-perigo-rgb), .34);
+}
+.badge-racao {
+  background: rgba(var(--kg-info-rgb), .12);
+  color: var(--kg-info);
+  border: 1px solid rgba(var(--kg-info-rgb), .32);
+}
+
+/* "Novo pedido": o "+" agora é texto e segue a cor escura do botão dourado. */
+.atalho-card.atalho-novo .atalho-icone {
+  font-family: var(--ios-font);
+  font-size: 34px;
+  font-weight: 300;
+  line-height: .9;
+  color: #102317;
+  filter: none;
+  text-shadow: none;
+}

@@ -14,4 +14,15 @@
   --kg-border-gold: rgba(239,190,48,.30);
   --kg-focus-ring: 0 0 0 4px rgba(239,190,48,.16);
   --kg-shadow-elevated: 0 16px 40px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.045);
+  /* Cores de estado: um tom só para cada significado, ajustado para o fundo
+     verde-escuro (contraste de texto acima de 7:1). Use var(--kg-perigo) para
+     texto e rgba(var(--kg-perigo-rgb), .12) para fundos e bordas. */
+  --kg-sucesso-rgb: 95,211,141;
+  --kg-atencao-rgb: 245,177,76;
+  --kg-perigo-rgb: 255,138,125;
+  --kg-info-rgb: 107,184,242;
+  --kg-sucesso: rgb(var(--kg-sucesso-rgb));
+  --kg-atencao: rgb(var(--kg-atencao-rgb));
+  --kg-perigo: rgb(var(--kg-perigo-rgb));
+  --kg-info: rgb(var(--kg-info-rgb));
 }
