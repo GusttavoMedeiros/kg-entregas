@@ -1475,10 +1475,13 @@ function posicionarIndicadorNav(id, animar = true) {
   const btn = id ? document.getElementById(`nav-${id}`) : nav?.querySelector('.nav-item.ativo');
   if (!nav || !indicador || !btn) return;
 
+  // Posição dentro da barra (no computador a barra é lateral e pode rolar)
   const navRect = nav.getBoundingClientRect();
   const btnRect = btn.getBoundingClientRect();
-  const x = Math.max(0, btnRect.left - navRect.left);
+  const x = Math.max(0, btnRect.left - navRect.left - nav.clientLeft + nav.scrollLeft);
+  const y = Math.max(0, btnRect.top - navRect.top - nav.clientTop + nav.scrollTop);
   indicador.style.setProperty('--nav-indicator-x', `${x}px`);
+  indicador.style.setProperty('--nav-indicator-y', `${y}px`);
   indicador.style.setProperty('--nav-indicator-w', `${btnRect.width}px`);
   indicador.style.setProperty('--nav-indicator-h', `${btnRect.height}px`);
 
@@ -1496,11 +1499,60 @@ function reposicionarIndicadorNav() {
   if (window.matchMedia('(min-width: 900px)').matches) {
     nav?.classList.remove('nav-recolhida');
     navOculta = false;
-    return;
   }
   const ativo = document.querySelector('#nav-bottom .nav-item.ativo');
   if (ativo) posicionarIndicadorNav(ativo.id.replace(/^nav-/, ''), false);
 }
+
+// Gota "gooey" atrás da aba ativa dos grupos de abas (Pendentes/Entregues/Todas,
+// catálogo, financeiro, relatório, lista/rota). Um só lugar cuida de todos:
+// observa a troca da classe "ativa" (feita em vários pontos do app) e o tamanho
+// do grupo (tela que aparece, giro do celular). O visual fica no CSS.
+const GRUPOS_ABAS = '.abas, .resumo-entregador-abas';
+
+function posicionarGotaAba(grupo, animar = true) {
+  const gota = grupo.querySelector(':scope > .aba-gota');
+  const ativa = grupo.querySelector(':scope > .aba.ativa, :scope > .aba-rota.ativa');
+  if (!gota || !ativa || !ativa.offsetWidth) return; // grupo escondido: espera aparecer
+  gota.style.setProperty('--gx', `${ativa.offsetLeft}px`);
+  gota.style.setProperty('--gy', `${ativa.offsetTop}px`);
+  gota.style.setProperty('--gw', `${ativa.offsetWidth}px`);
+  gota.style.setProperty('--gh', `${ativa.offsetHeight}px`);
+  if (animar && grupo.classList.contains('gota-pronta')) return;
+  // Primeira vez (ou depois de mudar de tamanho): aparece no lugar, sem viajar
+  grupo.classList.remove('gota-pronta');
+  requestAnimationFrame(() => requestAnimationFrame(() => grupo.classList.add('gota-pronta')));
+}
+
+function iniciarGotasAbas() {
+  if (typeof MutationObserver === 'undefined') return;
+  const pendentes = new Set();
+  let agendado = false;
+  const agendar = (grupo, animar) => {
+    pendentes.add(grupo); grupo._gotaAnimar = (grupo._gotaAnimar ?? true) && animar;
+    if (agendado) return;
+    agendado = true;
+    requestAnimationFrame(() => {
+      agendado = false;
+      pendentes.forEach(g => { posicionarGotaAba(g, g._gotaAnimar); g._gotaAnimar = undefined; });
+      pendentes.clear();
+    });
+  };
+  const redimensionou = typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver(entradas => entradas.forEach(e => agendar(e.target, false)))
+    : null;
+  document.querySelectorAll(GRUPOS_ABAS).forEach(grupo => {
+    if (grupo.querySelector(':scope > .aba-gota')) return;
+    grupo.insertAdjacentHTML('afterbegin', '<span class="aba-gota" aria-hidden="true"></span>');
+    grupo.classList.add('com-gota');
+    new MutationObserver(regs => { if (regs.some(r => r.target !== grupo)) agendar(grupo, true); })
+      .observe(grupo, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    redimensionou?.observe(grupo);
+    agendar(grupo, false);
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarGotasAbas);
+else iniciarGotasAbas();
 
 function atualizarVisibilidadeNav() {
   navScrollRaf = 0;
