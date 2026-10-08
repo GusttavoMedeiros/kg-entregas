@@ -2529,20 +2529,49 @@ function renderizarEntregas(filtro) {
     }
   }
 
-  // Ordena
-  lista.sort((a,b) => (a.data_entrega||'').localeCompare(b.data_entrega||''));
+  // Ordena: pendentes pela data mais próxima; entregues pelas mais recentes
+  // (assim, com a lista paginada, o que importa aparece primeiro)
+  const dt = p => p.data_entrega || '';
+  lista.sort((a,b) => {
+    const ea = a.status === 'entregue', eb = b.status === 'entregue';
+    if (ea !== eb) return ea ? 1 : -1;
+    return ea ? dt(b).localeCompare(dt(a)) : dt(a).localeCompare(dt(b));
+  });
   const el = document.getElementById('lista-entregas');
   if (!lista.length) {
     el.innerHTML=`<div class="vazio"><div class="vazio-icone">📭</div><p>Nenhuma entrega aqui</p></div>`;
     return;
   }
 
-  // Modo rota: agrupa por bairro
+  // Modo rota: agrupa por bairro (entregador vê a rota inteira, sem paginar)
   if (modoEntregas === 'rota' && usuario.perfil === 'entregador') {
     el.innerHTML = renderizarRotaPorBairro(lista);
-  } else {
+  } else if (usuario.perfil === 'entregador') {
     el.innerHTML = lista.map(p => cardEntrega(p, true)).join('');
+  } else {
+    // Admin: lista em lotes ("Ver mais"), pois pode ter centenas de pedidos
+    const mostrar = lista.slice(0, entregasVisiveis);
+    const restantes = lista.length - mostrar.length;
+    el.innerHTML = mostrar.map(p => cardEntrega(p, true)).join('')
+      + (restantes > 0
+        ? `<button class="btn-ver-mais" onclick="verMaisEntregas()">
+             Ver mais ${Math.min(restantes, ENTREGAS_LOTE)}
+             <span class="ver-mais-cont">${restantes} restantes</span>
+           </button>`
+        : (lista.length > ENTREGAS_LOTE
+            ? `<div class="fim-lista">Todas as ${lista.length} entregas exibidas</div>` : ''));
   }
+}
+
+// Quantas entregas aparecem por vez na lista do admin (igual ao catálogo)
+const ENTREGAS_LOTE = 30;
+let entregasVisiveis = ENTREGAS_LOTE;
+
+function verMaisEntregas() {
+  entregasVisiveis += ENTREGAS_LOTE;
+  const y = window.scrollY;
+  renderizarEntregas(filtroEntregas);
+  window.scrollTo({ top: y, behavior: 'instant' }); // mantém a posição de leitura
 }
 
 // Endereço salvo: logradouro, número, bairro, município/UF, CEP.
@@ -2711,6 +2740,7 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
 function filtrarEntregas(filtro, btn) {
   document.querySelectorAll('#tela-entregas .aba').forEach(b => b.classList.remove('ativa'));
   btn.classList.add('ativa');
+  entregasVisiveis = ENTREGAS_LOTE; // trocar de aba recomeça do início
   renderizarEntregas(filtro);
 }
 
