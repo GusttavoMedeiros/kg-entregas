@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=88" as="script">
+<link rel="preload" href="app.js?v=89" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -1973,7 +1973,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     </div>
 
     <div class="campo"><label>Observação (opcional)</label>
-      <textarea id="pedido-obs" placeholder="Ex: Entregar pela manhã..."></textarea></div>
+      <textarea id="pedido-obs" maxlength="1000" placeholder="Ex: Entregar pela manhã..."></textarea></div>
     <button class="btn-primario mt-12" onclick="salvarPedido()">Salvar Pedido</button>
     <button class="btn-secundario mt-8" onclick="fecharModal('modal-pedido')">Cancelar</button>
   </div>
@@ -2046,7 +2046,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     <div class="separador">Observações internas</div>
     <div class="campo">
       <label>Anotações sobre o cliente (opcional)</label>
-      <textarea id="cliente-observacao" placeholder="Ex: Atende só de tarde, cliente parcelado, etc."></textarea>
+      <textarea id="cliente-observacao" maxlength="1000" placeholder="Ex: Atende só de tarde, cliente parcelado, etc."></textarea>
     </div>
 
     <button class="btn-primario mt-12" onclick="salvarCliente()">Salvar Cliente</button>
@@ -2097,7 +2097,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     </div>
 
     <div class="campo"><label>Observação (opcional)</label>
-      <textarea id="entrega-obs" placeholder="Ex: Recebeu o auxiliar..."></textarea></div>
+      <textarea id="entrega-obs" maxlength="1000" placeholder="Ex: Recebeu o auxiliar..."></textarea></div>
     <button class="btn-primario" onclick="confirmarEntrega()">✓ Confirmar Entrega</button>
     <button class="btn-secundario mt-8" onclick="fecharModal('modal-entrega')">Cancelar</button>
   </div>
@@ -2295,6 +2295,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=88"></script>
+<script src="app.js?v=89"></script>
 </body>
 </html>
