@@ -1,0 +1,129 @@
+/* KG Agropet — camada de cores (carregada por último).
+   Objetivo: menos tons soltos e mais leitura. Antes havia 4 vermelhos, 3
+   verdes, 2 laranjas e 3 azuis diferentes; agora cada significado tem um tom
+   só (tokens em design-tokens.css). Verde-escuro e dourado continuam sendo a
+   marca; as cores de estado aparecem só onde informam algo. */
+
+:root {
+  /* Os nomes antigos passam a apontar para a paleta nova. */
+  --gn: var(--kg-sucesso);  --gnb: rgba(var(--kg-sucesso-rgb), .12);
+  --am: var(--kg-atencao);  --amb: rgba(var(--kg-atencao-rgb), .12);
+  --rm: var(--kg-perigo);   --rmb: rgba(var(--kg-perigo-rgb), .12);
+  --az: var(--kg-info);     --azb: rgba(var(--kg-info-rgb), .12);
+
+  /* Texto secundário um pouco mais claro: "por vendedor", datas e legendas
+     estavam apagados demais no celular ao sol. */
+  --c2: rgba(251,248,240,.74);
+  --c3: rgba(251,248,240,.62);
+
+  /* Cartões: um degrau mais claros que o fundo, para separar melhor. */
+  --gc: linear-gradient(150deg, rgba(30,70,51,.95), rgba(12,34,24,.97));
+}
+
+/* Etiquetas de estado: mesmo desenho para todas (fundo .12, borda .32). */
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro {
+  background: rgba(var(--kg-sucesso-rgb), .12);
+  color: var(--kg-sucesso);
+  border: 1px solid rgba(var(--kg-sucesso-rgb), .32);
+}
+.badge-pendente, .badge-pag-pendente, .badge-devendo {
+  background: rgba(var(--kg-atencao-rgb), .12);
+  color: var(--kg-atencao);
+  border: 1px solid rgba(var(--kg-atencao-rgb), .32);
+}
+.badge-atrasado, .badge-pag-recusado, .badge-low {
+  background: rgba(var(--kg-perigo-rgb), .12);
+  color: var(--kg-perigo);
+  border: 1px solid rgba(var(--kg-perigo-rgb), .34);
+}
+.badge-racao {
+  background: rgba(var(--kg-info-rgb), .12);
+  color: var(--kg-info);
+  border: 1px solid rgba(var(--kg-info-rgb), .32);
+}
+
+/* "Novo pedido": o "+" agora é texto e segue a cor escura do botão dourado. */
+.atalho-card.atalho-novo .atalho-icone {
+  font-family: var(--ios-font);
+  font-size: 34px;
+  font-weight: 300;
+  line-height: .9;
+  color: #102317;
+  filter: none;
+  text-shadow: none;
+}
+
+/* ---------- Versão "mais forte" (pedido do dono, 2026-10-08) ----------
+   Mais cor onde ela informa: estado do pedido, cartões do painel e o
+   destaque de onde estou. Fundo e cartões com mais profundidade. */
+
+:root {
+  --gc: linear-gradient(150deg, rgba(36,84,61,.96), rgba(13,39,27,.97));
+}
+
+/* Fundo com brilho dourado no alto e verde-esmeralda embaixo, mais visíveis. */
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(226,172,40,.17), transparent 30rem),
+    radial-gradient(circle at 95% 95%, rgba(46,140,92,.28), transparent 36rem),
+    #06140d;
+}
+
+/* Cartões de pedido: faixa lateral mais grossa e um brilho da cor do estado. */
+.item-card.atrasado {
+  border-left: 4px solid var(--kg-perigo);
+  background: linear-gradient(90deg, rgba(var(--kg-perigo-rgb), .13), transparent 55%), var(--gc);
+}
+.item-card.pendente {
+  border-left: 4px solid var(--kg-atencao);
+  background: linear-gradient(90deg, rgba(var(--kg-atencao-rgb), .11), transparent 55%), var(--gc);
+}
+.item-card.entregue {
+  border-left: 4px solid var(--kg-sucesso);
+  background: linear-gradient(90deg, rgba(var(--kg-sucesso-rgb), .11), transparent 55%), var(--gc);
+}
+
+/* Cartões do painel: cada um tingido pela cor do que mostra. */
+.card-resumo::before { height: 3px; opacity: 1; }
+.card-resumo.card-faturamento {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-sucesso-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-sucesso-rgb), .26);
+}
+.card-resumo.card-receber {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-info-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-info-rgb), .26);
+}
+.card-resumo.card-atrasados {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-perigo-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-perigo-rgb), .28);
+}
+.card-resumo.card-clientes {
+  background: radial-gradient(circle at 100% 0, rgba(239,190,48,.20), transparent 65%), var(--gc);
+  border-color: rgba(239,190,48,.26);
+}
+
+/* Etiquetas mais vivas. */
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro,
+.badge-pendente, .badge-pag-pendente, .badge-devendo,
+.badge-atrasado, .badge-pag-recusado, .badge-low, .badge-racao { font-weight: 800; }
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro {
+  background: rgba(var(--kg-sucesso-rgb), .18); border-color: rgba(var(--kg-sucesso-rgb), .5);
+}
+.badge-pendente, .badge-pag-pendente, .badge-devendo {
+  background: rgba(var(--kg-atencao-rgb), .18); border-color: rgba(var(--kg-atencao-rgb), .5);
+}
+.badge-atrasado, .badge-pag-recusado, .badge-low {
+  background: rgba(var(--kg-perigo-rgb), .18); border-color: rgba(var(--kg-perigo-rgb), .52);
+}
+.badge-racao {
+  background: rgba(var(--kg-info-rgb), .18); border-color: rgba(var(--kg-info-rgb), .5);
+}
+
+/* Botões de ação coloridos com mais presença. */
+.btn-azul { background: rgba(var(--kg-info-rgb), .18); border-color: rgba(var(--kg-info-rgb), .45); }
+.btn-perigo { background: rgba(var(--kg-perigo-rgb), .16); border-color: rgba(var(--kg-perigo-rgb), .45); }
+.btn-sm { background: rgba(239,190,48,.14); border-color: rgba(239,190,48,.42); }
+
+/* Destaque de "onde estou" (gota) mais visível. */
+.nav-bottom.nav-indicator-ready .nav-indicator { opacity: .3; }
+.com-gota.gota-pronta > .aba-gota { opacity: .27; }
