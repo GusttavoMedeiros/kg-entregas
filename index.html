@@ -1566,9 +1566,18 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 </style>
 <link rel="stylesheet" href="styles/design-tokens.css?v=1">
 <link rel="stylesheet" href="ios-like.css?v=8">
-<link rel="stylesheet" href="styles/visual-polish.css?v=1">
+<link rel="stylesheet" href="styles/visual-polish.css?v=2">
 </head>
 <body>
+<!-- Filtro "gooey" do indicador da barra de navegação (styles/visual-polish.css) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="kg-goo" x="-5%" y="-40%" width="110%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="desfoque"/>
+      <feColorMatrix in="desfoque" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10"/>
+    </filter>
+  </defs>
+</svg>
 
 <!-- BANNER OFFLINE — aparece quando perde conexão -->
 <div id="banner-offline" class="banner-offline">
