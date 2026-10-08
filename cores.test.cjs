@@ -44,7 +44,7 @@ test('"Novo pedido" usa um + em texto (o emoji saía roxo sobre o dourado)', () 
 });
 
 test('A camada de cores carrega por último e entra no cache offline', () => {
-  const i = html.indexOf('styles/cores.css?v=1');
+  const i = html.indexOf('styles/cores.css?v=2');
   assert.ok(i > html.indexOf('styles/visual-polish.css') && i > html.indexOf('ios-like.css'));
-  assert.match(sw, /'\.\/styles\/cores\.css\?v=1'/);
+  assert.match(sw, /'\.\/styles\/cores\.css\?v=2'/);
 });

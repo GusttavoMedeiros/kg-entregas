@@ -52,3 +52,78 @@
   filter: none;
   text-shadow: none;
 }
+
+/* ---------- Versão "mais forte" (pedido do dono, 2026-10-08) ----------
+   Mais cor onde ela informa: estado do pedido, cartões do painel e o
+   destaque de onde estou. Fundo e cartões com mais profundidade. */
+
+:root {
+  --gc: linear-gradient(150deg, rgba(36,84,61,.96), rgba(13,39,27,.97));
+}
+
+/* Fundo com brilho dourado no alto e verde-esmeralda embaixo, mais visíveis. */
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(226,172,40,.17), transparent 30rem),
+    radial-gradient(circle at 95% 95%, rgba(46,140,92,.28), transparent 36rem),
+    #06140d;
+}
+
+/* Cartões de pedido: faixa lateral mais grossa e um brilho da cor do estado. */
+.item-card.atrasado {
+  border-left: 4px solid var(--kg-perigo);
+  background: linear-gradient(90deg, rgba(var(--kg-perigo-rgb), .13), transparent 55%), var(--gc);
+}
+.item-card.pendente {
+  border-left: 4px solid var(--kg-atencao);
+  background: linear-gradient(90deg, rgba(var(--kg-atencao-rgb), .11), transparent 55%), var(--gc);
+}
+.item-card.entregue {
+  border-left: 4px solid var(--kg-sucesso);
+  background: linear-gradient(90deg, rgba(var(--kg-sucesso-rgb), .11), transparent 55%), var(--gc);
+}
+
+/* Cartões do painel: cada um tingido pela cor do que mostra. */
+.card-resumo::before { height: 3px; opacity: 1; }
+.card-resumo.card-faturamento {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-sucesso-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-sucesso-rgb), .26);
+}
+.card-resumo.card-receber {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-info-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-info-rgb), .26);
+}
+.card-resumo.card-atrasados {
+  background: radial-gradient(circle at 100% 0, rgba(var(--kg-perigo-rgb), .20), transparent 65%), var(--gc);
+  border-color: rgba(var(--kg-perigo-rgb), .28);
+}
+.card-resumo.card-clientes {
+  background: radial-gradient(circle at 100% 0, rgba(239,190,48,.20), transparent 65%), var(--gc);
+  border-color: rgba(239,190,48,.26);
+}
+
+/* Etiquetas mais vivas. */
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro,
+.badge-pendente, .badge-pag-pendente, .badge-devendo,
+.badge-atrasado, .badge-pag-recusado, .badge-low, .badge-racao { font-weight: 800; }
+.badge-pago, .badge-entregue, .badge-em-dia, .badge-agro {
+  background: rgba(var(--kg-sucesso-rgb), .18); border-color: rgba(var(--kg-sucesso-rgb), .5);
+}
+.badge-pendente, .badge-pag-pendente, .badge-devendo {
+  background: rgba(var(--kg-atencao-rgb), .18); border-color: rgba(var(--kg-atencao-rgb), .5);
+}
+.badge-atrasado, .badge-pag-recusado, .badge-low {
+  background: rgba(var(--kg-perigo-rgb), .18); border-color: rgba(var(--kg-perigo-rgb), .52);
+}
+.badge-racao {
+  background: rgba(var(--kg-info-rgb), .18); border-color: rgba(var(--kg-info-rgb), .5);
+}
+
+/* Botões de ação coloridos com mais presença. */
+.btn-azul { background: rgba(var(--kg-info-rgb), .18); border-color: rgba(var(--kg-info-rgb), .45); }
+.btn-perigo { background: rgba(var(--kg-perigo-rgb), .16); border-color: rgba(var(--kg-perigo-rgb), .45); }
+.btn-sm { background: rgba(239,190,48,.14); border-color: rgba(239,190,48,.42); }
+
+/* Destaque de "onde estou" (gota) mais visível. */
+.nav-bottom.nav-indicator-ready .nav-indicator { opacity: .3; }
+.com-gota.gota-pronta > .aba-gota { opacity: .27; }
