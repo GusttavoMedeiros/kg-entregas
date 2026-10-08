@@ -102,26 +102,44 @@ select:focus-visible, textarea:focus-visible {
   }
 
   /* Um único destaque percorre os itens, preservando a leitura do estado
-     ativo e evitando o efeito de apagar/acender a barra inteira. */
+     ativo e evitando o efeito de apagar/acender a barra inteira.
+     Efeito "gooey": duas bolhas (::before vai na frente, ::after chega
+     atrasada) passam pelo filtro SVG #kg-goo (desfoque + corte de opacidade).
+     Quando estão perto, as bolhas se fundem e esticam como gota; ao chegar,
+     voltam a ser uma pílula só. O filtro só pega o indicador (camada de trás),
+     então ícones e textos continuam nítidos. */
   .nav-indicator {
     position: absolute;
     z-index: 0;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    filter: url(#kg-goo);
+    transition: opacity var(--kg-motion-fast) var(--kg-motion-ease);
+  }
+  .nav-indicator::before,
+  .nav-indicator::after {
+    content: '';
+    position: absolute;
     top: 5px;
     left: 0;
     width: var(--nav-indicator-w, 0px);
     height: var(--nav-indicator-h, 54px);
     border-radius: 18px;
-    pointer-events: none;
-    opacity: 0;
+    background: #efbe30;
     transform: translate3d(var(--nav-indicator-x, 0px), 0, 0);
-    background: linear-gradient(145deg, rgba(239,190,48,.22), rgba(239,190,48,.08));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 5px 16px rgba(0,0,0,.16);
-    transition:
-      transform var(--kg-motion-nav) var(--kg-motion-nav-ease),
-      width var(--kg-motion-nav) var(--kg-motion-nav-ease),
-      opacity var(--kg-motion-fast) var(--kg-motion-ease);
   }
-  .nav-bottom.nav-indicator-ready .nav-indicator { opacity: 1; }
+  .nav-bottom.nav-indicator-ready .nav-indicator::before {
+    transition:
+      transform 360ms var(--kg-motion-nav-ease),
+      width 360ms var(--kg-motion-nav-ease);
+  }
+  .nav-bottom.nav-indicator-ready .nav-indicator::after {
+    transition:
+      transform 640ms cubic-bezier(.34,1.3,.5,1) 40ms,
+      width 640ms cubic-bezier(.34,1.3,.5,1) 40ms;
+  }
+  .nav-bottom.nav-indicator-ready .nav-indicator { opacity: .2; }
   .nav-item { z-index: 1; background: transparent; }
   .nav-item.ativo { background: transparent; }
   .nav-item.ativo::before { display: none; }
@@ -145,7 +163,9 @@ select:focus-visible, textarea:focus-visible {
     transform: none !important;
   }
   .nav-bottom { transition: none !important; }
-  .nav-indicator { transition: none !important; }
+  .nav-indicator { transition: none !important; filter: none; }
+  .nav-indicator::before, .nav-indicator::after { transition: none !important; }
+  .nav-indicator::after { display: none; }
 }
 
 html.modo-economico .tela.ativa,
@@ -159,10 +179,10 @@ html.modo-economico .nav-bottom {
   transition-duration: var(--kg-motion-fast);
 }
 
-html.modo-economico .nav-indicator {
-  transition-duration: var(--kg-motion-fast);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 2px 8px rgba(0,0,0,.14);
-}
+/* Modo econômico: sem filtro SVG (custa GPU); vira uma pílula simples e rápida. */
+html.modo-economico .nav-indicator { filter: none; }
+html.modo-economico .nav-indicator::before { transition-duration: var(--kg-motion-fast); }
+html.modo-economico .nav-indicator::after { display: none; }
 
 @media (max-width: 899px) {
   html.modo-economico .nav-item.ativo { background: transparent; }
