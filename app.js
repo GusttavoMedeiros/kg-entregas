@@ -1845,7 +1845,7 @@ async function sincronizarDados() {
     // Hash de produtos e clientes: detecta EDIÇÕES, não só adições/remoções.
     // (Antes comparava por length — preço editado pelo admin não aparecia
     //  na tela do vendedor até a quantidade de itens mudar.)
-    const hashProduto = (p) => `${p.id}|${p.nome}|${p.preco}|${p.preco_custo||''}|${p.categoria||''}`;
+    const hashProduto = (p) => `${p.id}|${p.nome}|${p.preco}|${p.preco_custo||''}|${p.categoria||''}|${p.peso_kg ?? ''}|${p.produto_principal_id ?? ''}`;
     const hashCliente = (c) => `${c.id}|${c.nome}|${c.responsavel||''}|${c.whatsapp||''}|${c.endereco||''}|${c.email||''}|${c.cnpj_cpf||''}|${c.tipo_pessoa||''}|${c.inscricao_estadual||''}|${c.observacao||''}`;
     const mudou =
       novosPedidos.map(hashPedido).join('\n') !== todosOsPedidos.map(hashPedido).join('\n') ||
@@ -2842,7 +2842,7 @@ function verMaisCatalogo() {
 
 function _pintarCatalogo(manterScroll) {
   const filtro = filtroCatalogo;
-  let lista = filtro==='todos' ? todosOsProdutos.slice() : todosOsProdutos.filter(p => p.categoria===filtro);
+  let lista = todosOsProdutos.filter(p => !p.produto_principal_id && (filtro==='todos' || p.categoria===filtro));
   lista.sort((a,b) => a.nome.localeCompare(b.nome));
   const el = document.getElementById('lista-catalogo');
   const isAdmin = usuario.perfil==='admin';
@@ -2874,6 +2874,11 @@ function _pintarCatalogo(manterScroll) {
 }
 
 // Helper para montar card de produto (usado em renderizar e buscar)
+function textoPesoProduto(p) {
+  const peso = Number(p.peso_kg);
+  return Number.isFinite(peso) && peso > 0 ? `${peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg/un.` : '';
+}
+
 function montarCardProduto(p, isAdmin, termoBusca = '') {
   const custo = Number(p.preco_custo) || 0;
   const preco = Number(p.preco) || 0;
@@ -2918,6 +2923,7 @@ function montarCardProduto(p, isAdmin, termoBusca = '') {
       </div>
       <div class="produto-meta">
         <span class="produto-preco">${moeda(preco)}</span>
+        ${textoPesoProduto(p) ? `<span>${esc(textoPesoProduto(p))}</span>` : ''}
       </div>
       ${custoMargemHtml}
       ${botoesAdmin}
@@ -2933,7 +2939,7 @@ function filtrarCatalogo(filtro, btn) {
 function _buscarProdutoImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBusca(t, p.nome, p.categoria || '')
+    !p.produto_principal_id && matchBusca(t, p.nome, p.categoria || '', textoPesoProduto(p))
   );
   const el = document.getElementById('lista-catalogo');
   if (!lista.length) {
@@ -2950,7 +2956,7 @@ function _buscarProdutoImpl(termo) {
 function _buscarProdutoModalImpl(termo) {
   const t = termo || '';
   const lista = todosOsProdutos.filter(p =>
-    matchBusca(t, p.nome, p.categoria || '')
+    !p.produto_principal_id && matchBusca(t, p.nome, p.categoria || '', textoPesoProduto(p))
   );
   const el = document.getElementById('lista-produto-modal');
   if (!lista.length) {
@@ -2966,7 +2972,7 @@ function _buscarProdutoModalImpl(termo) {
                   background:rgba(10,26,16,.5);border:1px solid var(--ol);border-radius:10px;margin-bottom:6px">
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--creme)">${nomeHtml}</div>
-          <div style="font-size:12px;color:var(--o1)">${moeda(p.preco)} ${jaAdicionado}</div>
+          <div style="font-size:12px;color:var(--o1)">${moeda(p.preco)}${textoPesoProduto(p) ? ` · ${esc(textoPesoProduto(p))}` : ''} ${jaAdicionado}</div>
         </div>
         <button class="btn-azul" onclick="adicionarAoCarrinho(${p.id})">+ Adicionar</button>
       </div>`;
@@ -3047,7 +3053,7 @@ function renderizarCarrinho() {
     return `
       <div class="carrinho-item">
         <div class="carrinho-info">
-          <div class="carrinho-nome">${esc(c.produto.nome)}</div>
+          <div class="carrinho-nome">${esc(c.produto.nome)}${textoPesoProduto(c.produto) ? ` · ${esc(textoPesoProduto(c.produto))}` : ''}</div>
           <div class="carrinho-preco-unit">${precoVisual}</div>
           <button class="btn-ajustar-preco ${ajustado ? 'preco-mudou' : ''}" onclick="abrirAjustePreco(${idx})">
             ✏️ ${ajustado ? 'Preço ajustado' : 'Ajustar preço'}
@@ -4776,7 +4782,8 @@ function formatarPrecoItemPedido(item) {
   const precoUnitario = Number.isFinite(precoInformado) ? precoInformado : 0;
   const pesoEncontrado = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
   const pesoExtraido = pesoEncontrado ? Number(pesoEncontrado[1].replace(',', '.')) : 0;
-  const pesoKg = Number.isFinite(pesoExtraido) && pesoExtraido > 0 ? pesoExtraido : null;
+  const pesoSalvo = Number(item?.peso_unitario_kg);
+  const pesoKg = Number.isFinite(pesoSalvo) && pesoSalvo > 0 ? pesoSalvo : (Number.isFinite(pesoExtraido) && pesoExtraido > 0 ? pesoExtraido : null);
   const valorPorKgCalculado = pesoKg && Number.isFinite(precoInformado) ? precoUnitario / pesoKg : null;
   const valorPorKg = Number.isFinite(valorPorKgCalculado) ? valorPorKgCalculado : null;
   const subtotalCalculado = precoUnitario * quantidade;
@@ -6468,10 +6475,7 @@ function ordenarPedidosRelatorio(a, b, data) {
   return (Number(a.id) || 0) - (Number(b.id) || 0);
 }
 
-// Agrega os números do período. A comissão é paga por unidade de cada
-// produto, então o centro do relatório é "quanto de cada produto foi
-// entregue". Produtos saem dos próprios itens dos pedidos: um produto
-// cadastrado hoje aparece sozinho assim que for entregue, sem lista fixa.
+// Agrega as entregas e separa pesos históricos de estimativas do catálogo atual.
 function calcularDadosRelatorio(pedidos, catalogo = []) {
   // Soma em centavos para o total bater exatamente com a soma das linhas.
   const centavos = v => Math.round((Number(v) || 0) * 100);
@@ -6479,25 +6483,49 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
   const recebidoC = pedidos.filter(p => foiPago(p)).reduce((s, p) => s + centavos(p.valor), 0);
 
   // Nome atual do catálogo (produto renomeado continua somando junto).
-  const nomeCatalogo = new Map(catalogo.map(p => [Number(p.id), p.nome]));
-  const chaveProduto = i => (i.produto_id != null && i.produto_id !== '')
-    ? `id:${i.produto_id}` : `nome:${i.nome || i.produto_nome || 'Produto'}`;
-  const nomeProduto = i => nomeCatalogo.get(Number(i.produto_id)) || i.nome || i.produto_nome || 'Produto';
+  const produtoCatalogo = new Map(catalogo.map(p => [Number(p.id), p]));
+  const produtoPrincipal = i => {
+    const produto = produtoCatalogo.get(Number(i.produto_id));
+    return produtoCatalogo.get(Number(produto?.produto_principal_id)) || produto;
+  };
+  const pesoItem = i => {
+    const registrado = Number(i.peso_unitario_kg);
+    const atual = Number(produtoPrincipal(i)?.peso_kg);
+    return Number.isFinite(registrado) && registrado > 0 ? registrado : (Number.isFinite(atual) && atual > 0 ? atual : null);
+  };
+  const chaveProduto = i => ((i.produto_id != null && i.produto_id !== '')
+    ? `id:${produtoPrincipal(i)?.id ?? i.produto_id}` : `nome:${i.nome || i.produto_nome || 'Produto'}`) + `|peso:${pesoItem(i) ?? ''}`;
+  const nomeProduto = i => {
+    const p = produtoPrincipal(i);
+    const nome = p?.nome || i.nome || i.produto_nome || 'Produto';
+    const peso = pesoItem(i);
+    const noNome = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+    return peso && (!noNome || Number(noNome[1].replace(',', '.')) !== peso)
+      ? `${nome} · ${peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg` : nome;
+  };
   const ordemNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' });
 
   const porProduto = new Map();
   const clientesDistintos = new Set();
   const entregas = [];
-  let unidadesC = 0;
+  let unidadesC = 0, pesoConfirmado = 0, pesoEstimado = 0, itensSemPeso = 0, pedidosSemItens = 0;
   pedidos.forEach(p => {
     const cliente = p.cliente_nome || 'Cliente';
     const chaveCliente = p.cliente_id != null && p.cliente_id !== '' ? `id:${p.cliente_id}` : `nome:${cliente}`;
     clientesDistintos.add(chaveCliente);
     const itensEntrega = [];
+    if (!p.itens?.length) pedidosSemItens++;
     (p.itens || []).forEach(i => {
       const chave = chaveProduto(i);
       const nome = nomeProduto(i);
       const qtd = Number(i.qtd) || 0;
+      if (qtd > 0) {
+        const registrado = Number(i.peso_unitario_kg);
+        const atual = Number(produtoPrincipal(i)?.peso_kg);
+        if (Number.isFinite(registrado) && registrado > 0) pesoConfirmado += registrado * qtd;
+        else if (Number.isFinite(atual) && atual > 0) pesoEstimado += atual * qtd;
+        else itensSemPeso++;
+      }
       const valorC = Math.round((Number(i.preco_unit) || 0) * qtd * 100);
       if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0, clientes: new Map() });
       const prod = porProduto.get(chave);
@@ -6521,7 +6549,18 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
     .sort(ordemNome);
 
   return { total: totalC / 100, recebido: recebidoC / 100, aReceber: (totalC - recebidoC) / 100,
-    nPedidos: pedidos.length, nClientes: clientesDistintos.size, unidades: unidadesC / 100, produtos, entregas };
+    nPedidos: pedidos.length, nClientes: clientesDistintos.size, unidades: unidadesC / 100, produtos, entregas,
+    pesoConfirmado, pesoEstimado, itensSemPeso, pedidosSemItens };
+}
+
+function textoPesoRelatorio(d) {
+  const kg = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + ' kg';
+  const total = d.pesoConfirmado + d.pesoEstimado;
+  const partes = [!total && (d.itensSemPeso || d.pedidosSemItens) ? 'Peso não informado' : `Peso ${d.itensSemPeso || d.pedidosSemItens ? 'parcial' : 'total'}: ${kg(total)}`];
+  if (d.pesoEstimado) partes.push(`${kg(d.pesoEstimado)} estimados pelo peso atual do cadastro`);
+  if (d.itensSemPeso) partes.push(`${d.itensSemPeso} item(ns) sem peso`);
+  if (d.pedidosSemItens) partes.push(`${d.pedidosSemItens} pedido(s) sem itens detalhados`);
+  return partes.join(' · ');
 }
 
 // "Ana (10), Bruno (5)": para quem cada produto foi entregue.
@@ -6665,12 +6704,12 @@ function htmlAcertoRelatorio(r) {
     const quando = dataHoraAcerto(acerto.registrado_em);
     const base = `${qtdTexto(Number(acerto.unidades) || 0)} un · ${moeda(Number(acerto.total) || 0)}`;
     if (!difAcerto.mudancas.length) {
-      html += `<div class="rel-acerto ok">✓ Acerto registrado em ${esc(quando)}: <b>${esc(base)}</b>. Nada mudou desde então.</div>`;
+      html += `<div class="rel-acerto ok">✓ Acerto registrado em ${esc(quando)}: <b>${esc(base)}</b>. Unidades e valores não mudaram. Este registro não acompanha alterações de peso.</div>`;
     } else {
       html += `
       <details class="rel-alerta rel-acerto-mudou" open>
         <summary><b>⚠ Mudou depois do acerto de ${esc(quando)}</b><span>${esc(textoDiferencaAcerto(difAcerto))}</span></summary>
-        <div class="rel-alerta-texto">No acerto: <b>${esc(base)}</b>. Acerte a diferença no próximo pagamento${admin ? ' e registre o acerto de novo' : ''}.</div>
+        <div class="rel-alerta-texto">No acerto: <b>${esc(base)}</b>. Acerte a diferença no próximo pagamento${admin ? ' e registre o acerto de novo' : ''}. Este registro não acompanha alterações de peso.</div>
         ${difAcerto.mudancas.map(m => `
           <div class="rel-linha">
             <span class="rel-linha-nome">${esc(m.cliente)} <small>nº ${esc(m.id)}</small>
@@ -6708,9 +6747,10 @@ async function registrarAcertoRelatorio() {
   const emAndamento = r.fim >= fmt(new Date());
   const ok = await confirmar(
     `${nomeVendedorRelatorio(vendedor)} — ${r.label}\n\n` +
-    `${doVendedor.length} pedido(s) · ${qtdTexto(unidades)} unidade(s) · ${moeda(total)}\n\n` +
+    `${doVendedor.length} pedido(s) · ${qtdTexto(unidades)} unidade(s) · ${moeda(total)}\n` +
+    `${textoPesoRelatorio(calcularDadosRelatorio(doVendedor, todosOsProdutos))}\n\n` +
     (emAndamento ? 'Atenção: este período ainda não terminou. O que for entregue depois vai aparecer como mudança.\n\n' : '') +
-    'Depois de registrar, qualquer mudança neste período (devolução, correção, entrega lançada depois) aparece em destaque no relatório.',
+    'Depois de registrar, alterações nas unidades e valores aparecem no relatório. Este registro não acompanha alterações de peso.',
     { titulo: r.acerto ? 'Registrar novo acerto?' : 'Registrar acerto da comissão?', okLabel: 'Registrar acerto' });
   if (!ok) return;
   _registrandoAcerto = true;
@@ -6816,7 +6856,7 @@ function renderizarRelatorio() {
       <div><b>${d.nPedidos}</b><span>Pedidos</span></div>
       <div class="${d.aReceber > 0 ? 'rel-laranja' : ''}"><b>${moeda(d.aReceber)}</b><span>A receber</span></div>
     </div>
-    <div class="rel-resumo-sub">${d.nClientes} cliente(s) · ${qtdTexto(d.unidades)} unidade(s)</div>`;
+    <div class="rel-resumo-sub">${d.nClientes} cliente(s) · ${qtdTexto(d.unidades)} unidade(s)<br>${esc(textoPesoRelatorio(d))}</div>`;
   const htmlAcerto = htmlAcertoRelatorio(rel);
 
   if (!pedidos.length) {
@@ -7011,7 +7051,11 @@ async function gerarPdfRelatorio(ini, fim, label) {
     doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(6.5); doc.setTextColor(...CINZA);
     doc.text(c[0].toUpperCase(), cx + cardW / 2, y + 11.5, { align: 'center' });
   });
-  y += 23;
+  y += 19;
+  const linhaPeso = doc.splitTextToSize(textoPesoRelatorio(d), cW);
+  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(8); doc.setTextColor(...CINZA);
+  doc.text(linhaPeso.map(seguro), mL, y);
+  y += linhaPeso.length * 4 + 5;
 
   // Acerto de comissão já registrado para este período: o que mudou depois.
   if (acerto) {
@@ -7020,14 +7064,15 @@ async function gerarPdfRelatorio(ini, fim, label) {
     if (!difAcerto.mudancas.length) {
       garantirEspaco(10);
       doc.setFont(FONT_NUNITO, 'bold'); doc.setFontSize(8.5); doc.setTextColor(...VERDE);
-      doc.text(seguro(`Acerto registrado em ${quando}: ${base}. Nada mudou desde então.`), mL, y);
-      y += 8;
+      const texto = doc.splitTextToSize(`Acerto registrado em ${quando}: ${base}. Unidades e valores não mudaram. Este registro não acompanha alterações de peso.`, cW);
+      doc.text(texto.map(seguro), mL, y);
+      y += texto.length * 4 + 4;
     } else {
       tituloSecao(`Mudou depois do acerto de ${quando}: ${textoDiferencaAcerto(difAcerto)}`, LARANJA);
       tabela({
         head: [['Pedido', 'Cliente', 'O que mudou']],
         body: difAcerto.mudancas.map(m => [String(m.id), m.cliente, textoMudancaAcerto(m)]),
-        foot: [[{ content: `No acerto: ${base}. Acerte a diferença no próximo pagamento.`, colSpan: 3 }]],
+        foot: [[{ content: `No acerto: ${base}. Acerte a diferença no próximo pagamento. Este registro não acompanha alterações de peso.`, colSpan: 3 }]],
         headStyles: { ...estiloTabela.headStyles, textColor: LARANJA },
         columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 62 } },
       });
