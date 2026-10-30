@@ -10,7 +10,7 @@ assert.ok(inicio >= 0 && fim > inicio, 'helper de preço não encontrado');
 const contexto = {
   moeda: valor => `R$ ${(Number(valor) || 0).toFixed(2).replace('.', ',')}`,
 };
-vm.runInNewContext(app.slice(inicio, fim), contexto);
+vm.runInNewContext(app.slice(app.indexOf('function dadosPesoItem('), app.indexOf('function renderizarCarrinho(')) + app.slice(inicio, fim), contexto);
 const formatar = contexto.formatarPrecoItemPedido;
 
 const saco20 = formatar({ nome: 'Ração X 20kg', qtd: 2, preco_unit: 65 });
@@ -23,6 +23,8 @@ assert.equal(formatar({ nome: 'Ração 10,1kg', qtd: 1, preco_unit: 50.5 }).valo
 assert.equal(formatar({ nome: 'Ração 10.1 kg', qtd: 1, preco_unit: 20.2 }).valorPorKg, 2);
 assert.equal(formatar({ nome: 'Milho', qtd: 1, preco_unit: 90, peso_unitario_kg: 60 }).valorPorKg, 1.5);
 assert.equal(formatar({ nome: 'Milho 30kg', qtd: 1, preco_unit: 90, peso_unitario_kg: 60 }).valorPorKg, 1.5);
+assert.equal(formatar({ nome: 'Milho', qtd: 2, preco_unit: 90, peso_unitario_kg: 60 }).textoPeso, '60 kg por unidade - 120 kg');
+assert.equal(formatar({ nome: 'Mistura 50KG', qtd: 3, preco_unit: 90 }, [{peso_kg:40}]).textoPeso, '50 kg por unidade - 150 kg (estimado)');
 
 const semPeso = formatar({ produto_nome: 'Produto Y', qtd: '2', preco_unit: '28' });
 assert.equal(semPeso.textoUnidade, 'Unid.: R$ 28,00');
@@ -52,6 +54,7 @@ contexto.obterSaudacao = () => 'Bom dia';
 contexto.dataBR = data => data.split('-').reverse().join('/');
 contexto.toast = () => {};
 contexto.todosOsClientes = [{ id: 1, responsavel: 'Maria', whatsapp: '81999990000' }];
+contexto.todosOsProdutos = [];
 contexto.todosOsPedidos = [{
   id: 42,
   cliente_id: 1,
@@ -73,8 +76,8 @@ vm.runInNewContext(app.slice(inicioWhatsapp, fimWhatsapp), contexto);
 contexto.enviarPedidoWhatsApp(42);
 
 const mensagem = decodeURIComponent(contexto.urlAberta.split('text=')[1]);
-assert.match(mensagem, /2x Ração 20kg\nUnid\.\/kg: R\$ 3,00 \| Saco: R\$ 60,00 \| Subtotal: R\$ 120,00/);
-assert.match(mensagem, /2x Produto Y\nUnid\.: R\$ 28,00 \| Subtotal: R\$ 56,00/);
+assert.match(mensagem, /2x Ração 20kg\n20 kg por unidade - 40 kg \(estimado\)\nUnid\.\/kg: R\$ 3,00 \| Saco: R\$ 60,00 \| Subtotal: R\$ 120,00/);
+assert.match(mensagem, /2x Produto Y\nPeso não informado\nUnid\.: R\$ 28,00 \| Subtotal: R\$ 56,00/);
 assert.match(mensagem, /\*Pedido nº 42\*[\s\S]*\*Total do pedido: R\$ 176,00\*/);
 assert.match(mensagem, /Pagamento: Boleto 30 dias[\s\S]*Entrega prevista: 28\/08\/2026[\s\S]*Entregue em: 30\/08\/2026[\s\S]*Vencimento: 27\/09\/2026[\s\S]*Observação: Entregar pela manhã/);
 

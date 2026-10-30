@@ -103,7 +103,7 @@ test('Entrega não enviada aparece à parte, fora do total e fora dos "sem baixa
     trecho('function dataBR(', 'function badgeCategoria(') +
     trecho('function foiPago(', '// Detecta se o pedido') +
     trecho('function pedidosBaseRelatorio(', 'function abrirModalRelatorio(') +
-    trecho('// Filtra somente pedidos', '// Gera o Blob do PDF'), contexto);
+    trecho('function dadosPesoItem(', 'function resumoPeso(') + trecho('// Filtra somente pedidos', '// Gera o Blob do PDF'), contexto);
 
   const r = contexto.montarRelatorio();
   assert.equal(r.d.total, 30, 'entrega não enviada fica fora do total');

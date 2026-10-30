@@ -105,7 +105,7 @@ test('consulta CNPJ antiga não preenche documento trocado durante a rede',async
 
 test('nomes iguais a propriedades de Object não quebram totais dos relatórios',()=>{
  const c={foiPago:()=>false,dataRealEntrega:p=>p.data_entregue_em};
- vm.runInNewContext(trecho('function calcularDadosRelatorio(', 'function renderizarRelatorio('),c);
+ vm.runInNewContext(trecho('function dadosPesoItem(', 'function resumoPeso(')+trecho('function calcularDadosRelatorio(', 'function renderizarRelatorio('),c);
  const dados=c.calcularDadosRelatorio([{valor:20,cliente_nome:'constructor',itens:[{nome:'__proto__',qtd:2,preco_unit:10}]}]);
  assert.equal(dados.produtos[0].nome,'__proto__');assert.equal(dados.produtos[0].valor,20);
  assert.equal(dados.produtos[0].qtd,2);assert.equal(dados.total,20);

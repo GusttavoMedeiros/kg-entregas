@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const app = fs.readFileSync('app.js', 'utf8');
 const c = { foiPago: () => false, dataRealEntrega: () => '' };
-vm.runInNewContext(app.slice(app.indexOf('function calcularDadosRelatorio('), app.indexOf('// "Ana (10)')), c);
+vm.runInNewContext(app.slice(app.indexOf('function dadosPesoItem('), app.indexOf('function resumoPeso(')) + app.slice(app.indexOf('function calcularDadosRelatorio('), app.indexOf('// "Ana (10)')), c);
 
 test('relatório distingue peso registrado, estimado e ausente sem alterar pedidos', () => {
   const catalogo = [{id: 1, nome: 'Milho', peso_kg: 60}, {id: 2, nome: 'Milho', peso_kg: 30},
@@ -27,4 +27,13 @@ test('relatório distingue peso registrado, estimado e ausente sem alterar pedid
   assert.ok(d.produtos.some(p => p.nome === 'Milho · 60 kg'));
   assert.ok(d.produtos.some(p => p.nome === 'Milho · 30 kg'));
   assert.equal(JSON.stringify(pedidos), antes);
+});
+
+test('peso no pedido antigo prevalece sobre cadastro alterado e aparece por produto', () => {
+  const pedidos = [{id: 1, itens: [{produto_id: 73, nome: 'Mistura Bovina 50KG', qtd: 3}]}];
+  const d = c.calcularDadosRelatorio(pedidos, [{id: 73, nome: 'Mistura Prime', peso_kg: 40}]);
+  assert.equal(d.pesoEstimado, 150);
+  assert.equal(d.produtos[0].nome, 'Mistura Bovina 50KG');
+  assert.equal(c.textoPesoProdutoRelatorio(d.produtos[0]), '150 kg (inclui estimativa)');
+  assert.match(c.textoPesoRelatorio(d), /Peso total: 150 kg.*estimados/);
 });

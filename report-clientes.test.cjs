@@ -12,7 +12,7 @@ const trecho = (a, b) => app.slice(app.indexOf(a), app.indexOf(b, app.indexOf(a)
 function ambiente() {
   const c = { foiPago: p => p.status_pagamento === 'pago', dataRealEntrega: p => p.data_entregue_em, Map, Set, Number, Math };
   vm.createContext(c);
-  vm.runInContext(trecho('function calcularDadosRelatorio(', 'function dataRealEntregaCurta(') +
+  vm.runInContext(trecho('function dadosPesoItem(', 'function resumoPeso(') + trecho('function calcularDadosRelatorio(', 'function dataRealEntregaCurta(') +
     trecho('function qtdTexto(', 'function textoFonteRelatorio('), c);
   return c;
 }
