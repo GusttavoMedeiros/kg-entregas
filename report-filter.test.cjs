@@ -6,7 +6,7 @@ const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const inicioHelper = app.indexOf('function dataRealEntrega');
 const fimHelper = app.indexOf('\n}\n', inicioHelper) + 2;
 const inicio = app.indexOf('function pedidosDoRelatorio');
-const fim = app.indexOf('// Agrega os números', inicio);
+const fim = app.indexOf('// Agrega as entregas', inicio);
 const contexto = {
   usuario: { perfil: 'vendedor', login: 'vendedor1' },
   todosOsPedidos: [

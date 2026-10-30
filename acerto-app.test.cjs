@@ -141,7 +141,7 @@ test('Tela: sem mudanças mostra o acerto em verde; com mudanças, o aviso e a l
   c.relFonteTeste.acertos.push(acertoDe(ini, fim, [{ id: 1, cliente: 'Ana', unidades: 10, valor: 100 }, { id: 2, cliente: 'Bruno', unidades: 5, valor: 50 }]));
   c.renderizarRelatorio();
   let html = c.el('relatorio-conteudo').innerHTML;
-  assert.match(html, /✓ Acerto registrado em 01\/10\/2026 às 12:20: <b>15 un · R\$ 150,00<\/b>\. Nada mudou desde então\./);
+  assert.match(html, /✓ Acerto registrado em 01\/10\/2026 às 12:20: <b>15 un · R\$ 150,00<\/b>\. Unidades e valores não mudaram\./);
   assert.match(html, /Registrar novo acerto · Vendedor/);
   assert.doesNotMatch(html, /Mudou depois do acerto/);
 
@@ -192,7 +192,7 @@ test('Tela: botão só para o admin, só com vendedor definido e com o servidor 
   const hv = v.el('relatorio-conteudo').innerHTML;
   assert.doesNotMatch(hv, /rel-btn-acerto/);
   assert.match(hv, /Mudou depois do acerto/);
-  assert.match(hv, /Acerte a diferença no próximo pagamento\.<\/div>/, 'sem "registre de novo" para o vendedor');
+  assert.match(hv, /Acerte a diferença no próximo pagamento\. Este registro não acompanha alterações de peso\.<\/div>/, 'sem "registre de novo" para o vendedor');
 
   // Acertos não consultados: aviso discreto, sem botão.
   const f = ambiente();
@@ -220,7 +220,7 @@ test('Registrar: confirma com o resumo, chama o banco e mostra o acerto na hora'
   assert.deepEqual(JSON.parse(JSON.stringify(c.chamadas[0])), { tabela: 'rpc/registrar_acerto', metodo: 'POST',
     corpo: { p_vendedor: 'vendedor', p_tipo: 'mensal', p_ini: ini, p_fim: fim } });
   assert.equal(c.toasts.at(-1), '✓ Acerto registrado.');
-  assert.match(c.el('relatorio-conteudo').innerHTML, /Nada mudou desde então/);
+  assert.match(c.el('relatorio-conteudo').innerHTML, /Unidades e valores não mudaram/);
 
   // Servidor tinha outra coisa (outro aparelho mudou no meio tempo): avisa.
   c.respostaRpc = { ok: true, dados: acertoDe(ini, fim, [{ id: 1, cliente: 'Ana', unidades: 10, valor: 100 }], { registrado_em: new Date(Date.now() + 1000).toISOString() }) };
@@ -261,7 +261,7 @@ test('PDF mostra a situação do acerto logo depois do resumo', () => {
   const pdf = trecho('async function gerarPdfRelatorio(', '// Gera PDF do relatório e mostra');
   assert.match(pdf, /const \{ pendentes, naFila, d, acerto, difAcerto \} = montarRelatorio\(\)/);
   const bloco = pdf.slice(pdf.indexOf('if (acerto) {'), pdf.indexOf('// Pedidos sem baixa de entrega'));
-  assert.match(bloco, /Nada mudou desde então/);
+  assert.match(bloco, /Unidades e valores não mudaram/);
   assert.match(bloco, /tituloSecao\(`Mudou depois do acerto de \$\{quando\}: \$\{textoDiferencaAcerto\(difAcerto\)\}`, LARANJA\)/);
   assert.match(bloco, /textoMudancaAcerto\(m\)/);
   assert.ok(pdf.indexOf('if (acerto) {') > pdf.indexOf("['A receber', moeda(d.aReceber)]"), 'depois do resumo');

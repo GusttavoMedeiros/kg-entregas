@@ -55,6 +55,16 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   await p.goto(`http://127.0.0.1:${server.address().port}`);
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
+  if(perfil!=='entregador') {
+   assert.match(await p.evaluate(()=>montarCardProduto(todosOsProdutos.find(x=>x.id===1),false)), /15 kg\/un\./);
+   await p.evaluate(()=>{todosOsProdutos.push({id:999,nome:'Duplicado de teste',produto_principal_id:1});});
+   await p.evaluate(()=>abrirModalNovoPedido());
+   assert.match(await p.locator('#lista-produto-modal').innerText(), /15 kg\/un\./);
+   assert.doesNotMatch(await p.locator('#lista-produto-modal').innerText(), /Duplicado de teste/);
+   await p.evaluate(()=>{adicionarAoCarrinho(1);});
+   assert.match(await p.locator('#carrinho-lista').innerText(), /15 kg\/un\./);
+   await p.evaluate(()=>{fecharModal('modal-pedido');todosOsProdutos=todosOsProdutos.filter(x=>x.id!==999);});
+  }
   if(largura<900){
    await p.evaluate(()=>{document.body.style.minHeight='2000px';document.documentElement.scrollTop=0;document.body.scrollTop=0;window.scrollTo(0,0);window.dispatchEvent(new Event('scroll'));});
    await p.waitForFunction(()=>!document.getElementById('nav-bottom').classList.contains('nav-recolhida'));

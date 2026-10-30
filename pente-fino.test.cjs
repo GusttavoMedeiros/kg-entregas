@@ -76,7 +76,7 @@ test('"Cobrar atrasados" não herda o pedido aberto antes', () => {
 test('Catálogo: margem negativa sai "-17%", sem "+-"', () => {
   const c = { mostrarMargem: true, moeda: v => `R$ ${v.toFixed(2)}`, esc: s => String(s), badgeCategoria: () => '',
     highlightBusca: s => s };
-  vm.runInNewContext(trecho('function montarCardProduto(', 'function filtrarCatalogo('), c);
+  vm.runInNewContext(trecho('function textoPesoProduto(', 'function filtrarCatalogo('), c);
   const negativa = c.montarCardProduto({ id: 1, nome: 'Milho', preco: 50, preco_custo: 60 }, true);
   assert.match(negativa, /-17% \(R\$ -10\.00\)/);
   assert.doesNotMatch(negativa, /\+-/);

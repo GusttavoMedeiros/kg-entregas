@@ -21,6 +21,8 @@ assert.equal(saco20.textoSubtotal, 'Subtotal: R$ 130,00');
 assert.equal(formatar({ nome: 'Ração 40 KG', qtd: 1, preco_unit: 200 }).valorPorKg, 5);
 assert.equal(formatar({ nome: 'Ração 10,1kg', qtd: 1, preco_unit: 50.5 }).valorPorKg, 5);
 assert.equal(formatar({ nome: 'Ração 10.1 kg', qtd: 1, preco_unit: 20.2 }).valorPorKg, 2);
+assert.equal(formatar({ nome: 'Milho', qtd: 1, preco_unit: 90, peso_unitario_kg: 60 }).valorPorKg, 1.5);
+assert.equal(formatar({ nome: 'Milho 30kg', qtd: 1, preco_unit: 90, peso_unitario_kg: 60 }).valorPorKg, 1.5);
 
 const semPeso = formatar({ produto_nome: 'Produto Y', qtd: '2', preco_unit: '28' });
 assert.equal(semPeso.textoUnidade, 'Unid.: R$ 28,00');
