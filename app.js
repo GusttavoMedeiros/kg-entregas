@@ -3536,6 +3536,7 @@ async function marcarPagoCliente() {
 // MODAL NOVO PEDIDO
 // ============================================================
 let chaveNovoPedido = null;
+let versaoPedidoEdicao = null;
 function abrirModalNovoPedido(idEdit) {
   if (carregandoDados) { toast('Aguarde o carregamento das informações.'); return; }
   if (!idEdit) chaveNovoPedido = crypto.randomUUID();
@@ -3555,6 +3556,7 @@ function abrirModalNovoPedido(idEdit) {
     if (!podeEditarPedido(p)) { toast('Você não tem permissão para editar este pedido.'); return; }
 
     pedidoEmEdicao = p;
+    versaoPedidoEdicao = p.versao;
     document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
     document.getElementById('pedido-data-entrega').value    = p.data_entrega || hoje;
     document.getElementById('pedido-cliente').value         = p.cliente_id || '';
@@ -3840,7 +3842,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   const idEdit = pedidoEmEdicao?.id || null;
   const dados = { cliente_id, data_entrega, data_vencimento: data_vencimento || null,
     observacao: obs, forma_pagamento, prazo_dias: prazo_dias || null,
-    prazos_boleto: prazos_boleto || null };
+    prazos_boleto: prazos_boleto || null, ...(idEdit ? { versao: versaoPedidoEdicao } : {}) };
   let salvo = { ...dados, id: idEdit || Date.now(), descricao, valor, itens,
     status:'pendente', vendedor:usuario.login };
   if (!MODO_DEMO) {
@@ -4171,10 +4173,12 @@ function atualizarResumoEntrega() {
   }
 }
 
+let versaoEntrega = null;
 function abrirModalEntrega(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
   pedidoSelecionado = p;
+  versaoEntrega = p.versao;
 
   // Verifica se este pedido precisa de confirmação de pagamento
   // Só para À VISTA e CHEQUE (boleto tem prazo, paga depois)
@@ -4324,6 +4328,7 @@ async function confirmarEntrega() {
   try {
     const payload = {
       ...dadosEntregaConcluida(),
+      acao_id: crypto.randomUUID(), versao: versaoEntrega,
       observacao: obs,
       status_pagamento,
       forma_pagamento_real,
@@ -5946,7 +5951,7 @@ async function alterarFilaOffline(alterar) {
 }
 
 async function adicionarNaFilaOffline(acao) {
-  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now(), acaoId:crypto.randomUUID() };
+  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now(), acaoId:acao.payload?.acao_id || crypto.randomUUID() };
   await alterarFilaOffline(fila => {
     const repetida = fila.findIndex(a => a.tipo === nova.tipo && a.pedidoId === nova.pedidoId &&
       (a.usuarioLogin || null) === nova.usuarioLogin);

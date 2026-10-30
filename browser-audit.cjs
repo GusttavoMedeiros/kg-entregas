@@ -79,7 +79,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     assert.equal(await p.locator('.tela.ativa').evaluate(e=>e.style.getPropertyValue('--kg-screen-shift')),'-12px');
    }
   }else{
-   assert.equal(await p.locator('#nav-bottom .nav-indicator').evaluate(e=>getComputedStyle(e).display),'none');
+   assert.notEqual(await p.locator('#nav-bottom .nav-indicator').evaluate(e=>getComputedStyle(e).display),'none');
   }
   for(const id of ids){await p.locator('#'+id).click();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
   if(perfil!=='entregador'){

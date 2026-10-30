@@ -65,7 +65,7 @@ test('Entrega de pedido pré-pago preserva recebimento no modo offline', async (
     let payload;
     const pedido = { id: 1, status: 'pendente', status_pagamento: 'pago', forma_pagamento: forma,
       forma_pagamento_real: 'pix', data_pagamento: '2026-09-01' };
-    const c = { salvando: false, pedidoSelecionado: pedido, todosOsPedidos: [pedido],
+    const c = { salvando: false, pedidoSelecionado: pedido, todosOsPedidos: [pedido], versaoEntrega: 1, crypto: require('node:crypto').webcrypto,
       usuario: { perfil: 'admin' }, MODO_DEMO: false, navigator: { onLine: false },
       document: { getElementById: () => ({ value: '' }), querySelector: () => ({ dataset: { precisaPagamento: '0' } }), querySelectorAll: () => [] },
       dadosEntregaConcluida: () => ({ status: 'entregue', data_entregue_em: '2026-09-09' }),
