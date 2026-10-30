@@ -2776,6 +2776,7 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
         ${badge}
       </div>
       ${conteudoLinha}
+      <div class="item-sub">${resumoPeso(p.itens)}</div>
       ${enderecoHtml}
       <div class="flex-entre" style="margin-top:6px">
         <div>${vendedorHtml}</div>
@@ -3005,9 +3006,25 @@ function alterarQtdCarrinho(idx, delta) {
   buscarProdutoModal(termo);
 }
 
+function resumoPeso(itens) {
+  if (!itens?.length) return 'Peso: não informado';
+  let total = 0, faltam = 0;
+  for (const item of itens) {
+    const peso = Number(item.peso_unitario_kg ?? item.produto?.peso_kg);
+    const qtd = Number(item.qtd);
+    if (!Number.isFinite(peso) || peso <= 0 || !Number.isFinite(qtd) || qtd <= 0) faltam++;
+    else total += peso * qtd;
+  }
+  const valor = total.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  if (faltam === itens.length) return 'Peso: não informado';
+  return faltam ? `Peso parcial: ${valor} kg · ${faltam} item(ns) sem peso` : `Peso total: ${valor} kg`;
+}
+
 function renderizarCarrinho() {
   const el = document.getElementById('carrinho-lista');
   const totalEl = document.getElementById('carrinho-total');
+  const pesoEl = document.getElementById('carrinho-peso');
+  if (pesoEl) pesoEl.textContent = resumoPeso(carrinho);
   if (!carrinho.length) {
     el.innerHTML=`<div style="padding:12px;text-align:center;font-size:13px;color:var(--c3)">Nenhum produto adicionado ainda</div>`;
     totalEl.textContent = 'R$ 0,00';
@@ -3536,6 +3553,7 @@ async function marcarPagoCliente() {
 // MODAL NOVO PEDIDO
 // ============================================================
 let chaveNovoPedido = null;
+let versaoPedidoEdicao = null;
 function abrirModalNovoPedido(idEdit) {
   if (carregandoDados) { toast('Aguarde o carregamento das informações.'); return; }
   if (!idEdit) chaveNovoPedido = crypto.randomUUID();
@@ -3555,6 +3573,7 @@ function abrirModalNovoPedido(idEdit) {
     if (!podeEditarPedido(p)) { toast('Você não tem permissão para editar este pedido.'); return; }
 
     pedidoEmEdicao = p;
+    versaoPedidoEdicao = p.versao;
     document.getElementById('modal-pedido-titulo').textContent = 'Editar Pedido';
     document.getElementById('pedido-data-entrega').value    = p.data_entrega || hoje;
     document.getElementById('pedido-cliente').value         = p.cliente_id || '';
@@ -3840,7 +3859,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   const idEdit = pedidoEmEdicao?.id || null;
   const dados = { cliente_id, data_entrega, data_vencimento: data_vencimento || null,
     observacao: obs, forma_pagamento, prazo_dias: prazo_dias || null,
-    prazos_boleto: prazos_boleto || null };
+    prazos_boleto: prazos_boleto || null, ...(idEdit ? { versao: versaoPedidoEdicao } : {}) };
   let salvo = { ...dados, id: idEdit || Date.now(), descricao, valor, itens,
     status:'pendente', vendedor:usuario.login };
   if (!MODO_DEMO) {
@@ -4171,10 +4190,12 @@ function atualizarResumoEntrega() {
   }
 }
 
+let versaoEntrega = null;
 function abrirModalEntrega(id) {
   const p = todosOsPedidos.find(x=>x.id===id);
   if (!p) return;
   pedidoSelecionado = p;
+  versaoEntrega = p.versao;
 
   // Verifica se este pedido precisa de confirmação de pagamento
   // Só para À VISTA e CHEQUE (boleto tem prazo, paga depois)
@@ -4324,6 +4345,7 @@ async function confirmarEntrega() {
   try {
     const payload = {
       ...dadosEntregaConcluida(),
+      acao_id: crypto.randomUUID(), versao: versaoEntrega,
       observacao: obs,
       status_pagamento,
       forma_pagamento_real,
@@ -4443,11 +4465,12 @@ function abrirModalProduto(id) {
     document.getElementById('produto-nome').value     = p.nome;
     document.getElementById('produto-categoria').value= p.categoria;
     document.getElementById('produto-preco').value    = p.preco;
+    document.getElementById('produto-peso').value = p.peso_kg ?? '';
     document.getElementById('produto-custo').value    = (p.preco_custo != null) ? p.preco_custo : '';
   } else {
     produtoSelecionado = null;
     document.getElementById('produto-id').value='';
-    ['produto-nome','produto-preco','produto-custo'].forEach(i=>{ document.getElementById(i).value=''; });
+    ['produto-nome','produto-preco','produto-custo','produto-peso'].forEach(i=>{ document.getElementById(i).value=''; });
     document.getElementById('produto-categoria').value='Ração';
   }
   atualizarMargemModal();
@@ -4488,18 +4511,21 @@ async function salvarProduto() {
   const preco_custo = (custoStr.trim() === '' || isNaN(parseFloat(custoStr)))
     ? null
     : Math.max(0, parseFloat(custoStr));
+  const pesoStr = document.getElementById('produto-peso').value.trim().replace(',','.');
+  const peso_kg = pesoStr === '' ? null : Number(pesoStr);
   const idEdit    = document.getElementById('produto-id').value;
 
   if (!nome) { toast('Informe o nome do produto.'); return; }
+  if (peso_kg !== null && (!Number.isFinite(peso_kg) || peso_kg <= 0 || peso_kg >= 1000000)) { toast('Informe um peso válido em kg.'); return; }
   if (!Number.isFinite(preco) || preco <= 0 || (preco_custo != null && !Number.isFinite(preco_custo))) { toast('Informe preços válidos.'); return; }
 
   salvando = true;
   botaoSalvando('salvarProduto', true, 'Salvar Produto');
   try {
-    let salvo = { id: Number(idEdit) || Date.now(), nome, categoria, preco, preco_custo };
+    let salvo = { id: Number(idEdit) || Date.now(), nome, categoria, preco, preco_custo, peso_kg };
     if (!MODO_DEMO) {
       const res = await apiSupabase('rpc/salvar_produto','POST', {
-        p_produto: { nome, categoria, preco, preco_custo }, p_id: Number(idEdit) || null,
+        p_produto: { nome, categoria, preco, preco_custo, peso_kg }, p_id: Number(idEdit) || null,
       });
       if (!res.ok || !res.dados?.id) {
         toast('Produto não salvo. Tente novamente.\n\n' + (res.erro || 'Sem resposta do servidor.'));
@@ -5602,6 +5628,7 @@ function verDetalhePedido(id) {
     ${blocoAjustes}
     <div class="separador">Itens</div>
     ${itensHtml}
+    <div style="font-size:13px;color:var(--c2);padding:8px 0">${resumoPeso(p.itens)}</div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
       <span style="font-size:14px;font-weight:700;color:var(--creme)">Total</span>
       <span style="font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1)">${moeda(p.valor)}</span>
@@ -5946,7 +5973,7 @@ async function alterarFilaOffline(alterar) {
 }
 
 async function adicionarNaFilaOffline(acao) {
-  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now(), acaoId:crypto.randomUUID() };
+  const nova = { ...acao, usuarioLogin: usuario?.login || null, ts: Date.now(), acaoId:acao.payload?.acao_id || crypto.randomUUID() };
   await alterarFilaOffline(fila => {
     const repetida = fila.findIndex(a => a.tipo === nova.tipo && a.pedidoId === nova.pedidoId &&
       (a.usuarioLogin || null) === nova.usuarioLogin);
