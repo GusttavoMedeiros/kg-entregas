@@ -88,7 +88,7 @@ contra o banco operacional.
 ## Publicação realizada e conferida
 
 A nova interface exige a migração
-`supabase/migrations/20260908154035_atomic_orders_and_restricted_costs.sql`.
+`supabase/migrations/20260908160059_atomic_orders_and_restricted_costs.sql`.
 Ela copia os custos para a tabela protegida antes de remover a coluna antiga.
 
 1. Backup dos seis conjuntos de dados e metadados do esquema salvo localmente,

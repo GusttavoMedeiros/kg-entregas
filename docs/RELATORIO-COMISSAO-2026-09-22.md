@@ -94,7 +94,7 @@ combinada: **o que não chegou é cancelado e o cliente paga só o que recebeu**
 - Funciona sem internet: a entrega parcial fica na fila com as quantidades e é
   enviada depois pela mesma função.
 
-**Banco de dados** (`supabase/migrations/20260928170000_partial_delivery.sql`), só
+**Banco de dados** (`supabase/migrations/20260928193319_partial_delivery.sql`), só
 acréscimos: coluna `itens_pedido.qtd_pedida` (vazia nos pedidos existentes), função
 `concluir_entrega_parcial` e um ajuste no gatilho do entregador, que continua sem
 poder mudar valor ou itens por conta própria (só a função nova pode, dentro da sua

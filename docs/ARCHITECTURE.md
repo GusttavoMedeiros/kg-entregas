@@ -24,3 +24,5 @@ Novos componentes visuais devem entrar em `styles/` antes de qualquer extração
 ## Restauração
 
 O estado aprovado antes do redesign está protegido no tag remoto `backup/pre-visual-2026-09-16`. Para voltar, crie uma branch a partir desse tag e publique uma nova versão; isso gera um commit reversível e não exige alterar o banco.
+
+A estrutura de referência para criar um ambiente vazio está em `supabase/baseline/`; as migrações em `supabase/migrations/` correspondem ao histórico registrado no Supabase.

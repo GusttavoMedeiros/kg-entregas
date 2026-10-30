@@ -14,14 +14,14 @@ const fatia = (texto, inicio, fimMarcador) => {
   assert.ok(f >= 0, 'fim não encontrado: ' + fimMarcador);
   return texto.slice(i, f + fimMarcador.length);
 };
-const CHEQUE = '20261007180000_cheque_forma_real.sql';
+const CHEQUE = '20261007174556_cheque_forma_real.sql';
 
 // Banco como está em produção ANTES do cheque (migrations anteriores aplicadas).
 async function bancoAntesDoCheque() {
   const db = new PGlite();
-  const harden = lerMigration('20260813152904_harden_auth_and_data.sql');
-  const rls = lerMigration('20260813153429_optimize_rls_policies.sql');
-  const atomica = lerMigration('20260908154035_atomic_orders_and_restricted_costs.sql');
+  const harden = lerMigration('20260813153351_harden_auth_and_data.sql');
+  const rls = lerMigration('20260813153543_optimize_rls_policies.sql');
+  const atomica = lerMigration('20260908160059_atomic_orders_and_restricted_costs.sql');
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create schema private;
@@ -49,8 +49,8 @@ async function bancoAntesDoCheque() {
   await db.exec(fatia(rls, 'create or replace function public.restringir_update_entregador()', '$$;'));
   await db.exec(fatia(harden, 'drop trigger if exists pedidos_restringir_update_entregador', 'restringir_update_entregador();'));
   await db.exec(fatia(atomica, 'create or replace function private.validar_total_pedido()', 'itens_total_consistente after insert or update or delete on public.itens_pedido\n  deferrable initially deferred for each row execute function private.validar_total_pedido();'));
-  await db.exec(lerMigration('20260909185425_preserve_prepaid_delivery.sql'));
-  await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+  await db.exec(lerMigration('20260909190930_preserve_prepaid_delivery.sql'));
+  await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
   return db;
 }
 
@@ -166,6 +166,6 @@ test('Migração do cheque só muda a lista de formas: corpo das funções igual
   const cheque = lerMigration(CHEQUE);
   const corpo = (sql, nome) => norm(fatia(sql, 'create or replace function public.' + nome + '(', 'end; $$;'));
   const volta = t => t.replace("('dinheiro','pix','cheque')", "('dinheiro','pix')");
-  assert.equal(volta(corpo(cheque, 'concluir_entrega')), corpo(lerMigration('20260909185425_preserve_prepaid_delivery.sql'), 'concluir_entrega'));
-  assert.equal(volta(corpo(cheque, 'concluir_entrega_parcial')), corpo(lerMigration('20260928170000_partial_delivery.sql'), 'concluir_entrega_parcial'));
+  assert.equal(volta(corpo(cheque, 'concluir_entrega')), corpo(lerMigration('20260909190930_preserve_prepaid_delivery.sql'), 'concluir_entrega'));
+  assert.equal(volta(corpo(cheque, 'concluir_entrega_parcial')), corpo(lerMigration('20260928193319_partial_delivery.sql'), 'concluir_entrega_parcial'));
 });

@@ -22,15 +22,15 @@ test('Postgres: pagamento antecipado preservado em RPC, retry e UPDATE direto', 
       );
       insert into pedidos values (1,'pendente','pago',null,null,'pix','2026-09-01','vendedor');
     `);
-    const anterior = fs.readFileSync('supabase/migrations/20260908154035_atomic_orders_and_restricted_costs.sql', 'utf8');
+    const anterior = fs.readFileSync('supabase/migrations/20260908160059_atomic_orders_and_restricted_costs.sql', 'utf8');
     const inicio = anterior.indexOf('create or replace function public.concluir_entrega(');
     await db.exec(anterior.slice(inicio, anterior.indexOf('end; $$;', inicio) + 'end; $$;'.length));
     const payload = { status_pagamento: 'pendente', data_entregue_em: '2026-09-09' };
     let resposta = await db.query('select concluir_entrega(1,$1::jsonb) as pedido', [JSON.stringify(payload)]);
     assert.equal(resposta.rows[0].pedido.status_pagamento, 'pendente', 'Reproduz a falha anterior');
 
-    await db.exec(fs.readFileSync('supabase/migrations/20260909185425_preserve_prepaid_delivery.sql', 'utf8'));
-    const rls = fs.readFileSync('supabase/migrations/20260813153429_optimize_rls_policies.sql', 'utf8');
+    await db.exec(fs.readFileSync('supabase/migrations/20260909190930_preserve_prepaid_delivery.sql', 'utf8'));
+    const rls = fs.readFileSync('supabase/migrations/20260813153543_optimize_rls_policies.sql', 'utf8');
     for (const policy of ['pedidos_select', 'pedidos_update']) {
       const start = rls.indexOf('create policy ' + policy);
       await db.exec(rls.slice(start, rls.indexOf(';', start) + 1));

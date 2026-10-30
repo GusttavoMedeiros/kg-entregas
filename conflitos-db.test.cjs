@@ -8,11 +8,11 @@ const { bancoAtual, pedidos, quem, dados, completa, parcial, hojeBrasil, linha, 
 async function preparar() {
   const db = await bancoAtual();
   await db.exec('create table public.produtos (id bigint primary key, nome text, preco numeric); grant select on public.produtos to authenticated;');
-  const rls = lerMigration('20260813153429_optimize_rls_policies.sql');
+  const rls = lerMigration('20260813153543_optimize_rls_policies.sql');
   for (const p of ['itens_insert', 'itens_delete']) await db.exec(fatia(rls, 'create policy ' + p, ';'));
   await db.exec('grant usage, select on all sequences in schema public to authenticated');
   await db.exec(lerMigration(NOVA));
-  await db.exec(lerMigration('20261030165247_conflitos_pedidos.sql'));
+  await db.exec(lerMigration('../tests/fixtures/20261030165247_conflitos_pedidos.sql'));
   await pedidos(db);
   return db;
 }
@@ -77,7 +77,7 @@ test('migração conserva pedidos e itens existentes', async () => {
     await pedidos(db);
     const antes = (await db.query('select id, cliente_id, descricao, valor, status, vendedor from public.pedidos order by id')).rows;
     const itens = (await db.query('select * from public.itens_pedido order by id')).rows;
-    await db.exec(lerMigration('20261030165247_conflitos_pedidos.sql'));
+    await db.exec(lerMigration('../tests/fixtures/20261030165247_conflitos_pedidos.sql'));
     assert.deepEqual((await db.query('select id, cliente_id, descricao, valor, status, vendedor from public.pedidos order by id')).rows, antes);
     assert.deepEqual((await db.query('select * from public.itens_pedido order by id')).rows, itens);
     assert.ok((await db.query('select versao from public.pedidos')).rows.every(p => Number(p.versao) === 1));
@@ -94,7 +94,7 @@ test('peso: migração preserva pedidos e peso do item não muda ao editar o pro
       grant select, insert, update on public.produtos, public.produto_custos, public.historico_precos to authenticated;
       insert into public.produtos(id,nome,preco) values (1,'Milho',10)`);
     const antes = (await db.query('select id, descricao, valor, status from public.pedidos order by id')).rows;
-    await db.exec(lerMigration('20261030170027_peso_pedido.sql'));
+    await db.exec(lerMigration('../tests/fixtures/20261030170027_peso_pedido.sql'));
     assert.deepEqual((await db.query('select id, descricao, valor, status from public.pedidos order by id')).rows, antes);
     assert.ok((await db.query('select peso_unitario_kg from public.itens_pedido')).rows.every(i => i.peso_unitario_kg === null));
     await quem(db, 'admin');

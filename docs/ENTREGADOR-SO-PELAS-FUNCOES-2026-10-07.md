@@ -9,7 +9,7 @@ aplicativo, com o login do entregador) ainda conseguia:
 - gravar data de entrega antiga (por exemplo num mês já acertado de comissão) — isso valia até pelas funções;
 - gravar data de pagamento antiga ou no futuro.
 
-## Regra nova (migração `20261007200000_entregador_so_pelas_funcoes.sql`)
+## Regra nova (migração `20261007180359_entregador_so_pelas_funcoes.sql`)
 Só para o perfil **entregador**:
 - qualquer alteração em `pedidos` precisa vir de `concluir_entrega` ou `concluir_entrega_parcial`
   (as funções marcam o pedido com `kg.concluir_entrega` só durante o próprio UPDATE; a API não

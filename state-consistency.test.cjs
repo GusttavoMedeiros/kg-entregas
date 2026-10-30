@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync('app.js','utf8').replace(/\r\n/g,'\n');
 const html = fs.readFileSync('index.html','utf8').replace(/\r\n/g,'\n');
 const migration = fs.readFileSync(
-  'supabase/migrations/20260912140943_realtime_and_safe_order_reset.sql','utf8'
+  'supabase/migrations/20260912142308_realtime_and_safe_order_reset.sql','utf8'
 );
 const trecho = (inicio,fim) => app.slice(app.indexOf(inicio),app.indexOf(fim,app.indexOf(inicio)));
 

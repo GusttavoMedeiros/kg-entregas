@@ -19,7 +19,7 @@ test('Banco: observação acima de 1000 caracteres é recusada em pedidos e clie
       insert into public.pedidos values (1, 'ok'), (2, null);
       insert into public.clientes values (1, repeat('x', 45));
     `);
-    await db.exec(fs.readFileSync('supabase/migrations/20261008120000_limite_observacao.sql', 'utf8'));
+    await db.exec(fs.readFileSync('supabase/migrations/20261008162300_limite_observacao.sql', 'utf8'));
     await db.exec(`insert into public.pedidos values (3, repeat('é', 1000)), (4, ''), (5, null)`);
     await db.exec(`insert into public.clientes values (2, repeat('é', 1000))`);
     for (const tabela of ['pedidos', 'clientes']) {

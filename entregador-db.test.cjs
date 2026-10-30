@@ -14,15 +14,15 @@ const fatia = (texto, inicio, fimMarcador) => {
   assert.ok(f >= 0, 'fim não encontrado: ' + fimMarcador);
   return texto.slice(i, f + fimMarcador.length);
 };
-const NOVA = '20261007200000_entregador_so_pelas_funcoes.sql';
+const NOVA = '20261007180359_entregador_so_pelas_funcoes.sql';
 
 // Banco como está em produção hoje (até a migração do cheque).
 async function bancoAtual() {
   const db = new PGlite();
-  const harden = lerMigration('20260813152904_harden_auth_and_data.sql');
-  const rls = lerMigration('20260813153429_optimize_rls_policies.sql');
-  const atomica = lerMigration('20260908154035_atomic_orders_and_restricted_costs.sql');
-  const dataReal = lerMigration('20260828165707_add_actual_delivery_date.sql');
+  const harden = lerMigration('20260813153351_harden_auth_and_data.sql');
+  const rls = lerMigration('20260813153543_optimize_rls_policies.sql');
+  const atomica = lerMigration('20260908160059_atomic_orders_and_restricted_costs.sql');
+  const dataReal = lerMigration('20260828165945_add_actual_delivery_date.sql');
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create schema private;
@@ -50,10 +50,10 @@ async function bancoAtual() {
   await db.exec(dataReal.slice(dataReal.indexOf('create or replace function private.definir_data_entrega_real()')));
   await db.exec(fatia(atomica, 'create or replace function private.proteger_pagamento_vendedor()', 'execute function private.proteger_pagamento_vendedor();'));
   await db.exec(fatia(atomica, 'create or replace function private.validar_total_pedido()', 'itens_total_consistente after insert or update or delete on public.itens_pedido\n  deferrable initially deferred for each row execute function private.validar_total_pedido();'));
-  await db.exec(lerMigration('20260909185425_preserve_prepaid_delivery.sql'));
-  await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+  await db.exec(lerMigration('20260909190930_preserve_prepaid_delivery.sql'));
+  await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
   await db.exec(fatia(harden, 'add constraint pedidos_forma_pagamento_real_check', "'pix'))").replace(/^/, 'alter table public.pedidos ') + ';');
-  await db.exec(lerMigration('20261007180000_cheque_forma_real.sql'));
+  await db.exec(lerMigration('20261007174556_cheque_forma_real.sql'));
   await db.exec('grant execute on all functions in schema private to authenticated;');
   return db;
 }
@@ -225,7 +225,7 @@ test('Postgres: nenhum pedido existente muda e as permissões das funções fica
 
 test('Migração: funções iguais às do cheque, só com a marca antes e depois do UPDATE', () => {
   const norm = t => t.replace(/\s+/g, ' ').trim();
-  const nova = lerMigration(NOVA), cheque = lerMigration('20261007180000_cheque_forma_real.sql');
+  const nova = lerMigration(NOVA), cheque = lerMigration('20261007174556_cheque_forma_real.sql');
   const sem = t => t.replace(/ *-- Marca, só para este UPDATE[^\n]*\n *-- entregador recusa[^\n]*\n/g, '')
     .replace(/ *perform pg_catalog\.set_config\('kg\.concluir_entrega', (p_id::text|''), true\);\n/g, '');
   for (const nome of ['concluir_entrega', 'concluir_entrega_parcial']) {
