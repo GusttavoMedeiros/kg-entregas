@@ -4455,6 +4455,22 @@ async function excluirPedido(id) {
 // ============================================================
 // MODAL PRODUTO (admin)
 // ============================================================
+function lerPrecoProduto(texto) {
+  const valor = String(texto).trim();
+  if (!valor) return null;
+  let normal = valor;
+  if (/^[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?$/.test(valor)) normal = valor.replace(/\./g, '').replace(',', '.');
+  else if (/^\d+(?:[,.]\d{1,2})?$/.test(valor)) normal = valor.replace(',', '.');
+  else return NaN;
+  const numero = Number(normal);
+  return Number.isFinite(numero) ? numero : NaN;
+}
+
+function formatarPrecoProduto(campo) {
+  const valor = lerPrecoProduto(campo.value);
+  if (valor !== null && Number.isFinite(valor)) campo.value = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function abrirModalProduto(id) {
   document.getElementById('modal-produto-titulo').textContent = id ? 'Editar Produto' : 'Novo Produto';
   if (id) {
@@ -4465,25 +4481,37 @@ function abrirModalProduto(id) {
     document.getElementById('produto-nome').value     = p.nome;
     document.getElementById('produto-categoria').value= p.categoria;
     document.getElementById('produto-preco').value    = p.preco;
+    formatarPrecoProduto(document.getElementById('produto-preco'));
     document.getElementById('produto-peso').value = p.peso_kg ?? '';
     document.getElementById('produto-custo').value    = (p.preco_custo != null) ? p.preco_custo : '';
+    formatarPrecoProduto(document.getElementById('produto-custo'));
+    document.getElementById('produto-sem-custo').checked = p.preco_custo == null;
   } else {
     produtoSelecionado = null;
+    document.getElementById('produto-sem-custo').checked = false;
     document.getElementById('produto-id').value='';
     ['produto-nome','produto-preco','produto-custo','produto-peso'].forEach(i=>{ document.getElementById(i).value=''; });
     document.getElementById('produto-categoria').value='Ração';
   }
-  atualizarMargemModal();
+  alternarCustoProduto();
   abrirModal('modal-produto');
+}
+
+function alternarCustoProduto() {
+  const semCusto = document.getElementById('produto-sem-custo').checked;
+  const campo = document.getElementById('produto-custo');
+  campo.disabled = semCusto;
+  document.getElementById('produto-custo-aviso').hidden = !(semCusto && campo.value.trim());
+  atualizarMargemModal();
 }
 
 // Calcula e mostra a margem em tempo real no modal de cadastro/edição
 function atualizarMargemModal() {
-  const preco = parseFloat((document.getElementById('produto-preco').value || '0').replace(',','.')) || 0;
-  const custo = parseFloat((document.getElementById('produto-custo').value || '0').replace(',','.')) || 0;
+  const preco = lerPrecoProduto(document.getElementById('produto-preco').value) || 0;
+  const custo = lerPrecoProduto(document.getElementById('produto-custo').value) || 0;
   const info = document.getElementById('margem-info');
   if (!info) return;
-  if (!custo || !preco) { info.classList.remove('visivel'); info.innerHTML = ''; return; }
+  if (document.getElementById('produto-sem-custo').checked || !custo || !preco) { info.classList.remove('visivel'); info.innerHTML = ''; return; }
   const lucro = preco - custo;
   const pct = custo > 0 ? (lucro / custo * 100) : 0;
   // Classifica visualmente
@@ -4504,20 +4532,16 @@ async function salvarProduto() {
   if (salvando) return;
   const nome      = document.getElementById('produto-nome').value.trim();
   const categoria = document.getElementById('produto-categoria').value;
-  const precoStr  = document.getElementById('produto-preco').value.replace(',','.');
-  const preco     = Math.max(0, parseFloat(precoStr) || 0);
-  const custoStr  = document.getElementById('produto-custo').value.replace(',','.');
-  // Custo é opcional — null se vazio
-  const preco_custo = (custoStr.trim() === '' || isNaN(parseFloat(custoStr)))
-    ? null
-    : Math.max(0, parseFloat(custoStr));
+  const preco = lerPrecoProduto(document.getElementById('produto-preco').value);
+  const preco_custo = document.getElementById('produto-sem-custo').checked
+    ? null : lerPrecoProduto(document.getElementById('produto-custo').value);
   const pesoStr = document.getElementById('produto-peso').value.trim().replace(',','.');
   const peso_kg = pesoStr === '' ? null : Number(pesoStr);
   const idEdit    = document.getElementById('produto-id').value;
 
   if (!nome) { toast('Informe o nome do produto.'); return; }
   if (peso_kg !== null && (!Number.isFinite(peso_kg) || peso_kg <= 0 || peso_kg >= 1000000)) { toast('Informe um peso válido em kg.'); return; }
-  if (!Number.isFinite(preco) || preco <= 0 || (preco_custo != null && !Number.isFinite(preco_custo))) { toast('Informe preços válidos.'); return; }
+  if (!Number.isFinite(preco) || preco <= 0 || (preco_custo != null && (!Number.isFinite(preco_custo) || preco_custo < 0))) { toast('Informe preços válidos.'); return; }
 
   salvando = true;
   botaoSalvando('salvarProduto', true, 'Salvar Produto');
