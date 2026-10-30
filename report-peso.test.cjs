@@ -21,7 +21,7 @@ test('relatório distingue peso registrado, estimado e ausente sem alterar pedid
   assert.equal(d.pesoEstimado, 300);
   assert.equal(d.itensSemPeso, 1);
   assert.equal(d.pedidosSemItens, 1);
-  assert.match(c.textoPesoRelatorio(d), /Peso parcial: 410 kg.*300 kg estimados.*1 item\(ns\) sem peso.*1 pedido\(s\) sem itens/);
+  assert.equal(c.textoPesoRelatorio(d), 'Peso parcial: 410 kg (aproximado) · 1 item(ns) sem peso · 1 pedido(s) sem itens detalhados');
   assert.equal(d.produtos.find(p => p.nome === 'Farelo · 50 kg').qtd, 3);
   assert.ok(d.produtos.some(p => p.nome === 'Milho · 55 kg'));
   assert.ok(d.produtos.some(p => p.nome === 'Milho · 60 kg'));
@@ -34,6 +34,6 @@ test('peso no pedido antigo prevalece sobre cadastro alterado e aparece por prod
   const d = c.calcularDadosRelatorio(pedidos, [{id: 73, nome: 'Mistura Prime', peso_kg: 40}]);
   assert.equal(d.pesoEstimado, 150);
   assert.equal(d.produtos[0].nome, 'Mistura Bovina 50KG');
-  assert.equal(c.textoPesoProdutoRelatorio(d.produtos[0]), '150 kg (inclui estimativa)');
-  assert.match(c.textoPesoRelatorio(d), /Peso total: 150 kg.*estimados/);
+  assert.equal(c.textoPesoProdutoRelatorio(d.produtos[0]), '150 kg (aproximado)');
+  assert.equal(c.textoPesoRelatorio(d), 'Peso total: 150 kg (aproximado)');
 });
