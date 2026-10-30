@@ -132,7 +132,11 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     assert.match(await p.locator('#detalhe-produto-conteudo').innerText(),/30,00/);
     await p.evaluate(()=>fecharModal('modal-detalhe-produto'));
     await p.evaluate(()=>abrirModalProduto());
-    await p.locator('#produto-peso').fill('15');await p.locator('#produto-nome').fill('Produto novo teste');await p.locator('#produto-preco').fill('40');await p.locator('#produto-custo').fill('25');
+    await p.locator('#produto-peso').fill('15');await p.locator('#produto-nome').fill('Produto novo teste');
+    await p.locator('#produto-preco').fill('40');await p.locator('#produto-preco').press('Tab');assert.equal(await p.locator('#produto-preco').inputValue(),'40,00');
+    await p.locator('#produto-custo').fill('25');await p.locator('#produto-custo').press('Tab');assert.equal(await p.locator('#produto-custo').inputValue(),'25,00');
+    await p.locator('#produto-sem-custo').check();assert.equal(await p.locator('#produto-custo').isDisabled(),true);assert.equal(await p.locator('#produto-custo-aviso').isVisible(),true);
+    await p.locator('#produto-sem-custo').uncheck();assert.equal(await p.locator('#produto-custo').inputValue(),'25,00');
     await p.locator('button[onclick="salvarProduto()"]').click();await p.waitForFunction(()=>!salvando&&todosOsProdutos.length===3);
     assert.equal(produtos[2].preco,40);assert.equal(produtos[2].peso_kg,15);
    }
