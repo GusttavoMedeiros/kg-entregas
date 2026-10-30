@@ -5,3 +5,5 @@ A migração `20261030165247_conflitos_pedidos.sql` e o aplicativo atualizado pr
 Após a migração, versões antigas do aplicativo não conseguem editar pedidos ou concluir entregas, pois não enviam versão e identificador. Atualize os aparelhos. Uma entrega antiga ainda na fila é preservada e recusada para conferência pelo administrador; não a descarte sem comparar com o pedido e o recebimento. A versão anterior do aplicativo não é uma reversão compatível com a migração.
 
 O repositório ainda não contém o esquema inicial completo das tabelas. Não gere uma migração inicial a partir dos esquemas simplificados dos testes; obtenha e confira o esquema real em um ambiente isolado.
+
+A migração `20261030170027_peso_pedido.sql` acrescenta campos opcionais de peso, sem preencher nem alterar os itens existentes. Cadastre o peso por unidade dos produtos para os novos pedidos; pedidos antigos permanecem com peso não informado até serem editados. O peso é registrado no item ao salvar o pedido.

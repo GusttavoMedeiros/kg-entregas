@@ -10,7 +10,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
  for(const [perfil,largura,movimento,economia] of [['admin',360,'no-preference',false],['vendedor',320,'no-preference',true],['entregador',390,'reduce',false],['admin',1280,'no-preference',false]]){
   const itens=[{id:1,produto_id:1,nome:'Ração + (Teste)',qtd:2,preco_unit:10,preco_catalogo:20},{id:2,produto_id:1,nome:'Ração + (Teste)',qtd:2,preco_unit:20,preco_catalogo:20}];
   const clientes=[{id:1,nome:'Cliente teste',whatsapp:'81999999999',cnpj_cpf:'11144477735',tipo_pessoa:'fisica',endereco:'Rua A, 1, Centro, Recife, PE'}];
-  const produtos=[{id:1,nome:'Ração + (Teste)',preco:20,categoria:'Ração',produto_custos:{preco_custo:10}},{id:2,nome:'Milho',preco:30,categoria:'Agropecuário',produto_custos:{preco_custo:15}}];
+  const produtos=[{id:1,nome:'Ração + (Teste)',preco:20,peso_kg:15,categoria:'Ração',produto_custos:{preco_custo:10}},{id:2,nome:'Milho',preco:30,categoria:'Agropecuário',produto_custos:{preco_custo:15}}];
   const pedidos=[{id:1,cliente_id:1,clientes:{nome:'Cliente teste'},itens_pedido:itens,valor:60,status:'pendente',data_entrega:'2026-09-01',data_vencimento:'2026-09-01',forma_pagamento:'avista',vendedor:'vendedor'},
    {id:2,cliente_id:1,clientes:{nome:'Cliente teste'},itens_pedido:[{...itens[0],qtd:1}],valor:10,status:'entregue',status_pagamento:'pago',data_entrega:'2026-08-01',data_entregue_em:'2026-09-13',data_pagamento:'2026-09-13',forma_pagamento:'avista',vendedor:'vendedor'}];
   const context=await browser.newContext({viewport:{width:largura,height:800},reducedMotion:movimento,serviceWorkers:'block'});
@@ -84,7 +84,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   for(const id of ids){await p.locator('#'+id).click();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
   if(perfil!=='entregador'){
    await p.evaluate(()=>abrirModalNovoPedido(1));
-   assert.equal(await p.locator('.carrinho-item').count(),2);assert.match(await p.locator('#carrinho-total').innerText(),/60,00/);
+   assert.equal(await p.locator('.carrinho-item').count(),2);assert.match(await p.locator('#carrinho-total').innerText(),/60,00/);assert.match(await p.locator('#carrinho-peso').innerText(),/60 kg/);
    await p.locator('.qtd-input').nth(1).fill('3');await p.locator('.qtd-input').nth(1).press('Tab');
    assert.match(await p.locator('#carrinho-total').innerText(),/80,00/);
    await p.locator('button[onclick="salvarPedido()"]').click();await p.waitForFunction(()=>!salvando&&!document.getElementById('modal-pedido').classList.contains('aberto'));
@@ -132,9 +132,9 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     assert.match(await p.locator('#detalhe-produto-conteudo').innerText(),/30,00/);
     await p.evaluate(()=>fecharModal('modal-detalhe-produto'));
     await p.evaluate(()=>abrirModalProduto());
-    await p.locator('#produto-nome').fill('Produto novo teste');await p.locator('#produto-preco').fill('40');await p.locator('#produto-custo').fill('25');
+    await p.locator('#produto-peso').fill('15');await p.locator('#produto-nome').fill('Produto novo teste');await p.locator('#produto-preco').fill('40');await p.locator('#produto-custo').fill('25');
     await p.locator('button[onclick="salvarProduto()"]').click();await p.waitForFunction(()=>!salvando&&todosOsProdutos.length===3);
-    assert.equal(produtos[2].preco,40);
+    assert.equal(produtos[2].preco,40);assert.equal(produtos[2].peso_kg,15);
    }
   }else{
    await p.locator('.check-item').first().click();await p.evaluate(()=>abrirModalEntrega(1));
