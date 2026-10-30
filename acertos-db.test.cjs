@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { PGlite } = require('@electric-sql/pglite');
 
 const lerMigration = nome => fs.readFileSync('supabase/migrations/' + nome, 'utf8').replace(/\r\n/g, '\n');
-const MIGRACAO = '20261007210000_acertos_comissao.sql';
+const MIGRACAO = '20261007184032_acertos_comissao.sql';
 
 async function banco() {
   const db = new PGlite();

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 const app = fs.readFileSync('app.js', 'utf8').replace(/\r\n/g, '\n');
 const migration = fs.readFileSync(
-  'supabase/migrations/20260828165707_add_actual_delivery_date.sql',
+  'supabase/migrations/20260828165945_add_actual_delivery_date.sql',
   'utf8',
 );
 

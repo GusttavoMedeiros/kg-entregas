@@ -17,9 +17,9 @@ const fatia = (texto, inicio, fimMarcador, incluirFim = true) => {
 
 async function bancoComRegrasAtuais() {
   const db = new PGlite();
-  const harden = lerMigration('20260813152904_harden_auth_and_data.sql');
-  const rls = lerMigration('20260813153429_optimize_rls_policies.sql');
-  const atomica = lerMigration('20260908154035_atomic_orders_and_restricted_costs.sql');
+  const harden = lerMigration('20260813153351_harden_auth_and_data.sql');
+  const rls = lerMigration('20260813153543_optimize_rls_policies.sql');
+  const atomica = lerMigration('20260908160059_atomic_orders_and_restricted_costs.sql');
   await db.exec(`
     create role anon; create role authenticated;
     create schema private;
@@ -48,7 +48,7 @@ async function bancoComRegrasAtuais() {
   await db.exec(fatia(rls, 'create or replace function public.restringir_update_entregador()', '$$;'));
   await db.exec(fatia(harden, 'drop trigger if exists pedidos_restringir_update_entregador', 'restringir_update_entregador();'));
   await db.exec(fatia(atomica, 'create or replace function private.validar_total_pedido()', 'itens_total_consistente after insert or update or delete on public.itens_pedido\n  deferrable initially deferred for each row execute function private.validar_total_pedido();'));
-  await db.exec(lerMigration('20260909185425_preserve_prepaid_delivery.sql'));
+  await db.exec(lerMigration('20260909190930_preserve_prepaid_delivery.sql'));
   return db;
 }
 
@@ -80,7 +80,7 @@ test('Postgres: entrega parcial reduz itens, recalcula o valor e guarda o pedido
     await assert.rejects(db.exec("update public.pedidos set valor=1, status='entregue' where id=1"), /entregador só pode concluir/);
     await db.exec('reset role');
 
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     assert.deepEqual((await db.query('select count(*)::int n from public.itens_pedido where qtd_pedida is not null')).rows[0], { n: 0 }, 'pedidos existentes ficam intactos');
 
     const ids = await novoPedido(db);
@@ -106,7 +106,7 @@ test('Postgres: entrega parcial reduz itens, recalcula o valor e guarda o pedido
 test('Postgres: entrega parcial em vários itens e reenvio idempotente', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     const ids = await novoPedido(db);
     await quem(db, 'admin');
     const itens = [{ id: ids.milho, qtd_entregue: 9 }, { id: ids.farelo, qtd_entregue: 3 }];
@@ -124,7 +124,7 @@ test('Postgres: entrega parcial em vários itens e reenvio idempotente', async (
 test('Postgres: entrega completa pela função nova não marca quantidade pedida', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     const ids = await novoPedido(db);
     await quem(db, 'entregador');
     const { r } = (await parcial(db, 1, [{ id: ids.milho, qtd_entregue: 10 }, { id: ids.farelo, qtd_entregue: 4 }])).rows[0];
@@ -137,7 +137,7 @@ test('Postgres: entrega completa pela função nova não marca quantidade pedida
 test('Postgres: entrega parcial recusa dados inválidos e não altera nada', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     const ids = await novoPedido(db);
     await quem(db, 'entregador');
     const ok = [{ id: ids.milho, qtd_entregue: 5 }, { id: ids.farelo, qtd_entregue: 2 }];
@@ -169,7 +169,7 @@ test('Postgres: entrega parcial recusa dados inválidos e não altera nada', asy
 test('Postgres: pedido pago adiantado não aceita entrega parcial, mas aceita completa', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     const ids = await novoPedido(db, { status_pagamento: 'pago', forma_pagamento_real: 'pix', data_pagamento: '2026-09-01' });
     for (const role of ['entregador', 'admin']) {
       await quem(db, role);
@@ -188,7 +188,7 @@ test('Postgres: pedido pago adiantado não aceita entrega parcial, mas aceita co
 test('Postgres: recebimento no ato da entrega parcial e permissões', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     const ids = await novoPedido(db);
     const itens = [{ id: ids.milho, qtd_entregue: 5 }, { id: ids.farelo, qtd_entregue: 4 }];
     for (const role of ['vendedor', 'anon-sem-perfil']) {
@@ -207,7 +207,7 @@ test('Postgres: recebimento no ato da entrega parcial e permissões', async () =
 test('Postgres: a nova permissão não abre brechas para o entregador', async () => {
   const db = await bancoComRegrasAtuais();
   try {
-    await db.exec(lerMigration('20260928170000_partial_delivery.sql'));
+    await db.exec(lerMigration('20260928193319_partial_delivery.sql'));
     await novoPedido(db);
     await quem(db, 'entregador');
     // Continua sem poder mexer em valor, descrição ou itens direto na tabela.
@@ -228,7 +228,7 @@ test('Postgres: a nova permissão não abre brechas para o entregador', async ()
 });
 
 test('Migration de entrega parcial: escopo mínimo e sem apagar dados', () => {
-  const sql = lerMigration('20260928170000_partial_delivery.sql');
+  const sql = lerMigration('20260928193319_partial_delivery.sql');
   assert.match(sql, /add column qtd_pedida integer;/);
   assert.match(sql, /security definer set search_path = ''/);
   assert.match(sql, /revoke all on function public\.concluir_entrega_parcial\(bigint,jsonb,jsonb\) from public, anon;/);

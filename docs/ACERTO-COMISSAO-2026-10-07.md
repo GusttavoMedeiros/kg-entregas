@@ -24,7 +24,7 @@ e mostrar em destaque o que mudou depois dele, para acertar a diferença no pró
 - O vendedor vê a situação do próprio acerto (sem o botão). O PDF traz o mesmo aviso logo após o resumo.
 - Se todos os pedidos acertados saírem do período, o vendedor continua no filtro e o aviso aparece.
 
-## Banco (migração `20261007210000_acertos_comissao.sql`)
+## Banco (migração `20261007184032_acertos_comissao.sql`)
 Aditiva: tabela nova `acertos_comissao` (vazia) e função nova `registrar_acerto`. Nenhum pedido é alterado.
 - Leitura: admin vê todos; vendedor só os dele; entregador nenhum.
 - Ninguém grava, altera ou apaga direto pela API; só a função grava, e só para o admin.

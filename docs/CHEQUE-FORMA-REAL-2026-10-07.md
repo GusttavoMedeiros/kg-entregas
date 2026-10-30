@@ -7,7 +7,7 @@ cliente pagou com **cheque**, ao lado de dinheiro e PIX / Cartão. Cheque **cont
 
 Antes, um cheque recebido tinha de ser anotado como "dinheiro", o que escondia a origem do dinheiro.
 
-## Banco (migração `20261007180000_cheque_forma_real.sql`)
+## Banco (migração `20261007174556_cheque_forma_real.sql`)
 Aditiva — não altera nenhum pedido existente:
 - `pedidos_forma_pagamento_real_check` passa a aceitar `dinheiro`, `pix` e `cheque`.
 - `concluir_entrega` e `concluir_entrega_parcial` recriadas **idênticas** às de produção
