@@ -3022,7 +3022,7 @@ function dadosPesoItem(item, catalogo = []) {
   const produto = item?.produto || catalogo.find(p => Number(p.id) === Number(item?.produto_id));
   const principal = catalogo.find(p => Number(p.id) === Number(produto?.produto_principal_id)) || produto;
   const atual = Number(principal?.peso_kg);
-  return Number.isFinite(atual) && atual > 0 ? { peso: atual, estimado: !item?.produto } : { peso: null, estimado: false };
+  return Number.isFinite(atual) && atual > 0 ? { peso: atual, estimado: !item?.produto || item?.nome != null } : { peso: null, estimado: false };
 }
 
 function resumoPeso(itens, catalogo = []) {
@@ -3046,7 +3046,7 @@ function renderizarCarrinho() {
   const el = document.getElementById('carrinho-lista');
   const totalEl = document.getElementById('carrinho-total');
   const pesoEl = document.getElementById('carrinho-peso');
-  if (pesoEl) pesoEl.textContent = resumoPeso(carrinho);
+  if (pesoEl) pesoEl.textContent = resumoPeso(carrinho, todosOsProdutos);
   if (!carrinho.length) {
     el.innerHTML=`<div style="padding:12px;text-align:center;font-size:13px;color:var(--c3)">Nenhum produto adicionado ainda</div>`;
     totalEl.textContent = 'R$ 0,00';
@@ -3060,6 +3060,7 @@ function renderizarCarrinho() {
     const ajustado = Math.abs(precoUnit - precoCat) > 0.001;
     const subtotal = precoUnit * c.qtd;
     total += subtotal;
+    const peso = dadosPesoItem(c, todosOsProdutos).peso;
 
     // Visual do preço: se ajustado, mostra original riscado + novo
     const precoVisual = ajustado
@@ -3069,9 +3070,9 @@ function renderizarCarrinho() {
     return `
       <div class="carrinho-item">
         <div class="carrinho-info">
-          <div class="carrinho-nome">${esc(c.produto.nome)}${textoPesoProduto(c.produto) ? ` · ${esc(textoPesoProduto(c.produto))}` : ''}</div>
+          <div class="carrinho-nome">${esc(c.nome || c.produto.nome)}${peso ? ` · ${esc(textoPesoProduto({peso_kg:peso}))}` : ''}</div>
           <div class="carrinho-preco-unit">${precoVisual}</div>
-          <div class="carrinho-preco-unit">${esc(resumoPeso([c]))}</div>
+          <div class="carrinho-preco-unit">${esc(resumoPeso([c], todosOsProdutos))}</div>
           <button class="btn-ajustar-preco ${ajustado ? 'preco-mudou' : ''}" onclick="abrirAjustePreco(${idx})">
             ✏️ ${ajustado ? 'Preço ajustado' : 'Ajustar preço'}
           </button>
@@ -3636,6 +3637,8 @@ function abrirModalNovoPedido(idEdit) {
       } else {
         carrinho.push({
           produto,
+          nome: it.nome || it.produto_nome || '',
+          peso_unitario_kg: it.peso_unitario_kg,
           qtd: Number(it.qtd) || 0,
           preco_unit: precoUnit,
           preco_catalogo: precoCat,

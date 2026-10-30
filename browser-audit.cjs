@@ -55,6 +55,20 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   await p.goto(`http://127.0.0.1:${server.address().port}`);
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
+  if(perfil==='admin') {
+   await p.evaluate(()=>{
+    todosOsProdutos.push({id:997,nome:'Farelo',preco:100,peso_kg:50}, {id:998,nome:'Farelo 50KG',preco:100,produto_principal_id:997}, {id:996,nome:'Mistura',preco:90,peso_kg:40});
+    todosOsPedidos.push({id:999,cliente_id:1,status:'pendente',vendedor:'admin',data_entrega:'2026-09-01',itens:[
+     {produto_id:998,nome:'Farelo 50KG',qtd:9,preco_unit:100},
+     {produto_id:996,nome:'Mistura 50KG',qtd:2,preco_unit:90,peso_unitario_kg:20}
+    ]});
+    abrirModalNovoPedido(999);
+   });
+   assert.match(await p.locator('#carrinho-peso').innerText(), /Peso total: 490 kg.*450 kg estimados/);
+   assert.match(await p.locator('#carrinho-lista').innerText(), /Peso total: 450 kg.*450 kg estimados/);
+   assert.match(await p.locator('#carrinho-lista').innerText(), /Peso total: 40 kg/);
+   await p.evaluate(()=>{fecharModal('modal-pedido');todosOsPedidos=todosOsPedidos.filter(x=>x.id!==999);todosOsProdutos=todosOsProdutos.filter(x=>![996,997,998].includes(x.id));});
+  }
   if(perfil!=='entregador') {
    assert.match(await p.evaluate(()=>montarCardProduto(todosOsProdutos.find(x=>x.id===1),false)), /15 kg\/un\./);
    await p.evaluate(()=>{todosOsProdutos.push({id:999,nome:'Duplicado de teste',produto_principal_id:1});});
