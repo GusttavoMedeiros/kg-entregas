@@ -135,7 +135,14 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     await p.locator('#produto-peso').fill('15');await p.locator('#produto-nome').fill('Produto novo teste');
     await p.locator('#produto-preco').fill('40');await p.locator('#produto-preco').press('Tab');assert.equal(await p.locator('#produto-preco').inputValue(),'40,00');
     await p.locator('#produto-custo').fill('25');await p.locator('#produto-custo').press('Tab');assert.equal(await p.locator('#produto-custo').inputValue(),'25,00');
+    const opcaoCusto = await p.locator('.produto-sem-custo').evaluate(e => {
+     const caixa = e.querySelector('input').getBoundingClientRect(), texto = e.querySelector('span').getBoundingClientRect(), area = e.getBoundingClientRect();
+     return {largura: caixa.width, distancia: texto.left - caixa.right, cabe: texto.right <= area.right, altura: e.offsetHeight};
+    });
+    assert.ok(opcaoCusto.largura <= 24 && opcaoCusto.distancia >= 0 && opcaoCusto.distancia <= 16 && opcaoCusto.cabe && opcaoCusto.altura >= 44, JSON.stringify(opcaoCusto));
+    await p.screenshot({path:path.join(require('node:os').tmpdir(),`kg-produto-${largura}.png`)});
     await p.locator('#produto-sem-custo').check();assert.equal(await p.locator('#produto-custo').isDisabled(),true);assert.equal(await p.locator('#produto-custo-aviso').isVisible(),true);
+    await p.screenshot({path:path.join(require('node:os').tmpdir(),`kg-produto-sem-custo-${largura}.png`)});
     await p.locator('#produto-sem-custo').uncheck();assert.equal(await p.locator('#produto-custo').inputValue(),'25,00');
     await p.locator('button[onclick="salvarProduto()"]').click();await p.waitForFunction(()=>!salvando&&todosOsProdutos.length===3);
     assert.equal(produtos[2].preco,40);assert.equal(produtos[2].peso_kg,15);

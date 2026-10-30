@@ -1,5 +1,29 @@
 /* Refinamento visual incremental. Não contém regras de negócio. */
 
+.produto-sem-custo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  border: 1px solid var(--ol);
+  border-radius: 10px;
+  background: rgba(10,26,16,.35);
+  color: var(--c1);
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+#modal-produto .produto-sem-custo input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  accent-color: var(--o1);
+}
+#produto-custo:disabled { opacity: .55; cursor: not-allowed; }
+
 button, a, input, select, textarea { outline-offset: 3px; }
 button:focus-visible, a:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible {
