@@ -64,8 +64,8 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     ]});
     abrirModalNovoPedido(999);
    });
-   assert.match(await p.locator('#carrinho-peso').innerText(), /Peso total: 490 kg.*450 kg estimados/);
-   assert.match(await p.locator('#carrinho-lista').innerText(), /Peso total: 450 kg.*450 kg estimados/);
+   assert.equal(await p.locator('#carrinho-peso').innerText(), 'Peso total: 490 kg (aproximado)');
+   assert.match(await p.locator('#carrinho-lista').innerText(), /Peso total: 450 kg \(aproximado\)/);
    assert.match(await p.locator('#carrinho-lista').innerText(), /Peso total: 40 kg/);
    await p.evaluate(()=>{fecharModal('modal-pedido');todosOsPedidos=todosOsPedidos.filter(x=>x.id!==999);todosOsProdutos=todosOsProdutos.filter(x=>![996,997,998].includes(x.id));});
   }
@@ -144,6 +144,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     URL.revokeObjectURL(gerado.url);return texto;
    });
    assert.match(textoRelatorioPdf, /Peso total:.*kg/);assert.match(textoRelatorioPdf, /15 kg/);
+   assert.doesNotMatch(textoRelatorioPdf, /estimad|estimativa/i);
    assert.equal(await p.locator('#via-overlay').evaluate(e=>getComputedStyle(e).display), 'flex');
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
    await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-report-${perfil}-${largura}.png`)});
@@ -155,6 +156,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     URL.revokeObjectURL(gerado.url);return texto;
    });
    assert.match(textoPedidoPdf, /15 kg por unidade/);assert.match(textoPedidoPdf, /Peso total:.*kg/);
+   assert.doesNotMatch(textoPedidoPdf, /estimad|estimativa/i);
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
    await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-order-${perfil}-${largura}.png`)});
    await p.waitForFunction(()=>getComputedStyle(document.getElementById('via-btn-whatsapp')).display !== 'none');

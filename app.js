@@ -3036,8 +3036,7 @@ function resumoPeso(itens, catalogo = []) {
   }
   const valor = total.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
   if (faltam === itens.length) return 'Peso: não informado';
-  const partes = [faltam ? `Peso parcial: ${valor} kg` : `Peso total: ${valor} kg`];
-  if (estimado) partes.push(`${estimado.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg estimados`);
+  const partes = [`Peso ${faltam ? 'parcial' : 'total'}: ${valor} kg${estimado ? ' (aproximado)' : ''}`];
   if (faltam) partes.push(`${faltam} item(ns) sem peso`);
   return partes.join(' · ');
 }
@@ -4809,7 +4808,7 @@ function formatarPrecoItemPedido(item, catalogo = []) {
 
   return {
     nome, quantidade, precoUnitario, subtotal, pesoKg, valorPorKg,
-    textoPeso: pesoKg && quantidade > 0 ? `${formatarKg(pesoKg)} por unidade - ${formatarKg(pesoKg * quantidade)}${estimado ? ' (estimado)' : ''}` : 'Peso não informado',
+    textoPeso: pesoKg && quantidade > 0 ? `${formatarKg(pesoKg)} por unidade${quantidade === 1 ? '' : ` - ${formatarKg(pesoKg * quantidade)}`}${estimado ? ' (aproximado)' : ''}` : 'Peso não informado',
     textoUnidade: valorPorKg == null ? `Unid.: ${moeda(precoUnitario)}` : `Unid./kg: ${moeda(valorPorKg)}`,
     textoEmbalagem: valorPorKg == null ? '' : `Saco: ${moeda(precoUnitario)}`,
     textoSubtotal: `Subtotal: ${moeda(subtotal)}`,
@@ -6583,8 +6582,7 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
 function textoPesoRelatorio(d) {
   const kg = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + ' kg';
   const total = d.pesoConfirmado + d.pesoEstimado;
-  const partes = [!total && (d.itensSemPeso || d.pedidosSemItens) ? 'Peso não informado' : `Peso ${d.itensSemPeso || d.pedidosSemItens ? 'parcial' : 'total'}: ${kg(total)}`];
-  if (d.pesoEstimado) partes.push(`${kg(d.pesoEstimado)} estimados pelo nome do pedido ou cadastro atual`);
+  const partes = [!total && (d.itensSemPeso || d.pedidosSemItens) ? 'Peso não informado' : `Peso ${d.itensSemPeso || d.pedidosSemItens ? 'parcial' : 'total'}: ${kg(total)}${d.pesoEstimado ? ' (aproximado)' : ''}`];
   if (d.itensSemPeso) partes.push(`${d.itensSemPeso} item(ns) sem peso`);
   if (d.pedidosSemItens) partes.push(`${d.pedidosSemItens} pedido(s) sem itens detalhados`);
   return partes.join(' · ');
@@ -6592,7 +6590,7 @@ function textoPesoRelatorio(d) {
 
 function textoPesoProdutoRelatorio(p) {
   if (p.semPeso) return 'Peso não informado';
-  return `${p.peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg${p.pesoEstimado ? ' (inclui estimativa)' : ''}`;
+  return `${p.peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg${p.pesoEstimado ? ' (aproximado)' : ''}`;
 }
 
 // "Ana (10), Bruno (5)": para quem cada produto foi entregue.
