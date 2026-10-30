@@ -26,6 +26,7 @@ function ambiente({ perfil = 'admin', login = perfil } = {}) {
   };
   vm.createContext(c);
   vm.runInContext(
+    trecho('function dadosPesoItem(', 'function resumoPeso(') +
     trecho('const fmt = d =>', 'function badgeCategoria(') +
     trecho('function foiPago(', '// Detecta se o pedido') +
     trecho('const PDF_FONTE_TEM', 'function _registrarFontesPdf(') +

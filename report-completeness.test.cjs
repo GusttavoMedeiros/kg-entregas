@@ -40,6 +40,7 @@ const contexto = {
   calcularJanelaRelatorio: () => ({ ini: '2026-09-01', fim: '2026-09-30', label: 'Setembro de 2026' }),
 };
 vm.runInNewContext(
+  trecho('function dadosPesoItem(', 'function resumoPeso(') +
   trecho('function dataRealEntrega', 'function dadosEntregaConcluida') +
   trecho('function dataBR(', 'function badgeCategoria(') +
   trecho('function foiPago(', '// Detecta se o pedido') +

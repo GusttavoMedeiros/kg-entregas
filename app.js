@@ -2776,7 +2776,7 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
         ${badge}
       </div>
       ${conteudoLinha}
-      <div class="item-sub">${resumoPeso(p.itens)}</div>
+      <div class="item-sub">${esc(resumoPeso(p.itens, todosOsProdutos))}</div>
       ${enderecoHtml}
       <div class="flex-entre" style="margin-top:6px">
         <div>${vendedorHtml}</div>
@@ -3012,18 +3012,34 @@ function alterarQtdCarrinho(idx, delta) {
   buscarProdutoModal(termo);
 }
 
-function resumoPeso(itens) {
+function dadosPesoItem(item, catalogo = []) {
+  const registrado = Number(item?.peso_unitario_kg);
+  if (Number.isFinite(registrado) && registrado > 0) return { peso: registrado, estimado: false };
+  const nome = String(item?.nome || item?.produto_nome || '');
+  const encontrado = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+  const doNome = encontrado ? Number(encontrado[1].replace(',', '.')) : 0;
+  if (Number.isFinite(doNome) && doNome > 0) return { peso: doNome, estimado: true };
+  const produto = item?.produto || catalogo.find(p => Number(p.id) === Number(item?.produto_id));
+  const principal = catalogo.find(p => Number(p.id) === Number(produto?.produto_principal_id)) || produto;
+  const atual = Number(principal?.peso_kg);
+  return Number.isFinite(atual) && atual > 0 ? { peso: atual, estimado: !item?.produto } : { peso: null, estimado: false };
+}
+
+function resumoPeso(itens, catalogo = []) {
   if (!itens?.length) return 'Peso: não informado';
-  let total = 0, faltam = 0;
+  let total = 0, faltam = 0, estimado = 0;
   for (const item of itens) {
-    const peso = Number(item.peso_unitario_kg ?? item.produto?.peso_kg);
+    const { peso, estimado: ehEstimado } = dadosPesoItem(item, catalogo);
     const qtd = Number(item.qtd);
     if (!Number.isFinite(peso) || peso <= 0 || !Number.isFinite(qtd) || qtd <= 0) faltam++;
-    else total += peso * qtd;
+    else { total += peso * qtd; if (ehEstimado) estimado += peso * qtd; }
   }
   const valor = total.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
   if (faltam === itens.length) return 'Peso: não informado';
-  return faltam ? `Peso parcial: ${valor} kg · ${faltam} item(ns) sem peso` : `Peso total: ${valor} kg`;
+  const partes = [faltam ? `Peso parcial: ${valor} kg` : `Peso total: ${valor} kg`];
+  if (estimado) partes.push(`${estimado.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg estimados`);
+  if (faltam) partes.push(`${faltam} item(ns) sem peso`);
+  return partes.join(' · ');
 }
 
 function renderizarCarrinho() {
@@ -3055,6 +3071,7 @@ function renderizarCarrinho() {
         <div class="carrinho-info">
           <div class="carrinho-nome">${esc(c.produto.nome)}${textoPesoProduto(c.produto) ? ` · ${esc(textoPesoProduto(c.produto))}` : ''}</div>
           <div class="carrinho-preco-unit">${precoVisual}</div>
+          <div class="carrinho-preco-unit">${esc(resumoPeso([c]))}</div>
           <button class="btn-ajustar-preco ${ajustado ? 'preco-mudou' : ''}" onclick="abrirAjustePreco(${idx})">
             ✏️ ${ajustado ? 'Preço ajustado' : 'Ajustar preço'}
           </button>
@@ -4774,16 +4791,14 @@ function pagamentoSemEmoji(p) {
 }
 
 // Usa sempre o preço efetivamente cobrado e reconhece pesos como 20kg, 20 KG e 10,1 kg.
-function formatarPrecoItemPedido(item) {
+function formatarPrecoItemPedido(item, catalogo = []) {
   const nome = String(item?.nome || item?.produto_nome || '').trim();
   const quantidadeInformada = Number(item?.qtd);
   const precoInformado = Number(item?.preco_unit);
   const quantidade = Number.isFinite(quantidadeInformada) ? quantidadeInformada : 0;
   const precoUnitario = Number.isFinite(precoInformado) ? precoInformado : 0;
-  const pesoEncontrado = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
-  const pesoExtraido = pesoEncontrado ? Number(pesoEncontrado[1].replace(',', '.')) : 0;
-  const pesoSalvo = Number(item?.peso_unitario_kg);
-  const pesoKg = Number.isFinite(pesoSalvo) && pesoSalvo > 0 ? pesoSalvo : (Number.isFinite(pesoExtraido) && pesoExtraido > 0 ? pesoExtraido : null);
+  const { peso: pesoKg, estimado } = dadosPesoItem(item, catalogo);
+  const formatarKg = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + ' kg';
   const valorPorKgCalculado = pesoKg && Number.isFinite(precoInformado) ? precoUnitario / pesoKg : null;
   const valorPorKg = Number.isFinite(valorPorKgCalculado) ? valorPorKgCalculado : null;
   const subtotalCalculado = precoUnitario * quantidade;
@@ -4791,6 +4806,7 @@ function formatarPrecoItemPedido(item) {
 
   return {
     nome, quantidade, precoUnitario, subtotal, pesoKg, valorPorKg,
+    textoPeso: pesoKg && quantidade > 0 ? `${formatarKg(pesoKg)} por unidade - ${formatarKg(pesoKg * quantidade)}${estimado ? ' (estimado)' : ''}` : 'Peso não informado',
     textoUnidade: valorPorKg == null ? `Unid.: ${moeda(precoUnitario)}` : `Unid./kg: ${moeda(valorPorKg)}`,
     textoEmbalagem: valorPorKg == null ? '' : `Saco: ${moeda(precoUnitario)}`,
     textoSubtotal: `Subtotal: ${moeda(subtotal)}`,
@@ -5129,10 +5145,10 @@ async function gerarPdfViaPedido(id) {
   // ========== TABELA DE ITENS ==========
   const itens = (p.itens && p.itens.length)
     ? p.itens.map(i => {
-        const d = formatarPrecoItemPedido(i);
+        const d = formatarPrecoItemPedido(i, todosOsProdutos);
         return [
           String(d.quantidade),
-          d.nome + (Number(i.qtd_pedida) > Number(i.qtd) ? ` (pediu ${i.qtd_pedida})` : ''),
+          d.nome + (Number(i.qtd_pedida) > Number(i.qtd) ? ` (pediu ${i.qtd_pedida})` : '') + '\n' + d.textoPeso,
           moeda(d.precoUnitario),
           moeda(d.subtotal),
         ];
@@ -5250,6 +5266,12 @@ async function gerarPdfViaPedido(id) {
   });
 
   let yAfterTable = doc.lastAutoTable.finalY + 8;
+
+  const linhasPeso = quebrar(resumoPeso(p.itens, todosOsProdutos), cW);
+  if (yAfterTable + linhasPeso.length * 4.2 > pageH - mB - 28) { doc.addPage(); yAfterTable = mT + 18; }
+  doc.setFont(FONT_NUNITO, 'normal'); doc.setFontSize(9); doc.setTextColor(...COR.verdeTexto);
+  escrever(linhasPeso, mL, yAfterTable);
+  yAfterTable += linhasPeso.length * 4.2 + 6;
 
   // TOTAL — destaque apenas com contorno, para gastar pouca tinta.
   if (yAfterTable > pageH - mB - 28) {
@@ -5568,14 +5590,15 @@ function enviarPedidoWhatsApp(id) {
 
   const itensTxt = (p.itens?.length)
     ? p.itens.map(i => {
-      const d = formatarPrecoItemPedido(i);
-      return `• ${d.quantidade}x ${d.nome}\n${[d.textoUnidade, d.textoEmbalagem, d.textoSubtotal].filter(Boolean).join(' | ')}`;
+      const d = formatarPrecoItemPedido(i, todosOsProdutos);
+      return `• ${d.quantidade}x ${d.nome}\n${d.textoPeso}\n${[d.textoUnidade, d.textoEmbalagem, d.textoSubtotal].filter(Boolean).join(' | ')}`;
     }).join('\n\n')
     : `• ${p.descricao || ''}`;
   const observacao = String(p.observacao || '').trim();
   const detalhes = [
     `*Pedido nº ${p.id}*`,
     `*Total do pedido: ${moeda(p.valor)}*`,
+    resumoPeso(p.itens, todosOsProdutos),
     p.forma_pagamento ? `Pagamento: ${pagamentoSemEmoji(p)}` : '',
     p.data_entrega ? `Entrega prevista: ${dataBR(p.data_entrega)}` : '',
     p.status === 'entregue' && p.data_entregue_em ? `Entregue em: ${dataBR(p.data_entregue_em)}` : '',
@@ -5600,7 +5623,7 @@ function verDetalhePedido(id) {
   const itensHtml = p.itens?.length
     ? p.itens.map(i=>`
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--ol)">
-          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}${i.qtd_pedida > i.qtd ? ` <small style="color:var(--kg-atencao)">(pedido: ${esc(i.qtd_pedida)})</small>` : ''}</span>
+          <span style="font-size:13px;color:var(--creme)">${i.qtd}x ${esc(i.nome||i.produto_nome||'')}${i.qtd_pedida > i.qtd ? ` <small style="color:var(--kg-atencao)">(pedido: ${esc(i.qtd_pedida)})</small>` : ''}<br><small style="color:var(--c2)">${esc(formatarPrecoItemPedido(i, todosOsProdutos).textoPeso)}</small></span>
           <span style="font-size:13px;color:var(--o1);font-weight:700">${moeda(i.preco_unit*i.qtd)}</span>
         </div>`).join('') + (p.itens.some(i => i.qtd_pedida > i.qtd)
       ? '<div style="font-size:12px;color:var(--kg-atencao);padding:8px 0">⚠ Entrega parcial: o que faltou foi cancelado e o cliente paga só o que recebeu.</div>' : '')
@@ -5659,7 +5682,7 @@ function verDetalhePedido(id) {
     ${blocoAjustes}
     <div class="separador">Itens</div>
     ${itensHtml}
-    <div style="font-size:13px;color:var(--c2);padding:8px 0">${resumoPeso(p.itens)}</div>
+    <div style="font-size:13px;color:var(--c2);padding:8px 0">${resumoPeso(p.itens, todosOsProdutos)}</div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
       <span style="font-size:14px;font-weight:700;color:var(--creme)">Total</span>
       <span style="font-family:'Cinzel',serif;font-size:16px;font-weight:700;color:var(--o1)">${moeda(p.valor)}</span>
@@ -6488,17 +6511,16 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
     const produto = produtoCatalogo.get(Number(i.produto_id));
     return produtoCatalogo.get(Number(produto?.produto_principal_id)) || produto;
   };
-  const pesoItem = i => {
-    const registrado = Number(i.peso_unitario_kg);
-    const atual = Number(produtoPrincipal(i)?.peso_kg);
-    return Number.isFinite(registrado) && registrado > 0 ? registrado : (Number.isFinite(atual) && atual > 0 ? atual : null);
-  };
+  const pesoItem = i => dadosPesoItem(i, catalogo).peso;
   const chaveProduto = i => ((i.produto_id != null && i.produto_id !== '')
     ? `id:${produtoPrincipal(i)?.id ?? i.produto_id}` : `nome:${i.nome || i.produto_nome || 'Produto'}`) + `|peso:${pesoItem(i) ?? ''}`;
   const nomeProduto = i => {
     const p = produtoPrincipal(i);
-    const nome = p?.nome || i.nome || i.produto_nome || 'Produto';
     const peso = pesoItem(i);
+    const nomeAnterior = i.nome || i.produto_nome || '';
+    const pesoAnterior = nomeAnterior.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+    const nome = pesoAnterior && peso && Number(p?.peso_kg) > 0 && Number(p.peso_kg) !== peso
+      ? nomeAnterior : (p?.nome || nomeAnterior || 'Produto');
     const noNome = nome.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
     return peso && (!noNome || Number(noNome[1].replace(',', '.')) !== peso)
       ? `${nome} · ${peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg` : nome;
@@ -6520,17 +6542,19 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
       const nome = nomeProduto(i);
       const qtd = Number(i.qtd) || 0;
       if (qtd > 0) {
-        const registrado = Number(i.peso_unitario_kg);
-        const atual = Number(produtoPrincipal(i)?.peso_kg);
-        if (Number.isFinite(registrado) && registrado > 0) pesoConfirmado += registrado * qtd;
-        else if (Number.isFinite(atual) && atual > 0) pesoEstimado += atual * qtd;
-        else itensSemPeso++;
+        const { peso, estimado } = dadosPesoItem(i, catalogo);
+        if (!peso) itensSemPeso++;
+        else if (estimado) pesoEstimado += peso * qtd;
+        else pesoConfirmado += peso * qtd;
       }
       const valorC = Math.round((Number(i.preco_unit) || 0) * qtd * 100);
-      if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0, clientes: new Map() });
+      if (!porProduto.has(chave)) porProduto.set(chave, { nome, qtd: 0, valorC: 0, peso: 0, pesoEstimado: 0, semPeso: false, clientes: new Map() });
       const prod = porProduto.get(chave);
       prod.qtd += qtd; prod.valorC += valorC;
       if (qtd > 0) {
+        const peso = dadosPesoItem(i, catalogo);
+        if (!peso.peso) prod.semPeso = true;
+        else { prod.peso += peso.peso * qtd; if (peso.estimado) prod.pesoEstimado += peso.peso * qtd; }
         if (!prod.clientes.has(chaveCliente)) prod.clientes.set(chaveCliente, { nome: cliente, qtd: 0 });
         prod.clientes.get(chaveCliente).qtd += qtd;
         unidadesC += Math.round(qtd * 100);
@@ -6544,7 +6568,7 @@ function calcularDadosRelatorio(pedidos, catalogo = []) {
   });
 
   const produtos = [...porProduto.values()]
-    .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100,
+    .map(p => ({ nome: p.nome, qtd: p.qtd, valor: p.valorC / 100, peso: p.peso, pesoEstimado: p.pesoEstimado, semPeso: p.semPeso,
       clientes: [...p.clientes.values()].sort(ordemNome) }))
     .sort(ordemNome);
 
@@ -6557,10 +6581,15 @@ function textoPesoRelatorio(d) {
   const kg = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + ' kg';
   const total = d.pesoConfirmado + d.pesoEstimado;
   const partes = [!total && (d.itensSemPeso || d.pedidosSemItens) ? 'Peso não informado' : `Peso ${d.itensSemPeso || d.pedidosSemItens ? 'parcial' : 'total'}: ${kg(total)}`];
-  if (d.pesoEstimado) partes.push(`${kg(d.pesoEstimado)} estimados pelo peso atual do cadastro`);
+  if (d.pesoEstimado) partes.push(`${kg(d.pesoEstimado)} estimados pelo nome do pedido ou cadastro atual`);
   if (d.itensSemPeso) partes.push(`${d.itensSemPeso} item(ns) sem peso`);
   if (d.pedidosSemItens) partes.push(`${d.pedidosSemItens} pedido(s) sem itens detalhados`);
   return partes.join(' · ');
+}
+
+function textoPesoProdutoRelatorio(p) {
+  if (p.semPeso) return 'Peso não informado';
+  return `${p.peso.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg${p.pesoEstimado ? ' (inclui estimativa)' : ''}`;
 }
 
 // "Ana (10), Bruno (5)": para quem cada produto foi entregue.
@@ -6880,7 +6909,7 @@ function renderizarRelatorio() {
         <div class="rel-bloco">
           <div class="rel-linha">
             <span class="rel-linha-nome">${esc(p.nome)}</span>
-            <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un</span>
+            <span class="rel-linha-qtd">${qtdTexto(p.qtd)} un · ${esc(textoPesoProdutoRelatorio(p))}</span>
           </div>
           <div class="rel-linha-sub">${esc(textoClientesProduto(p))}</div>
         </div>`).join('') || '<div class="rel-vazio">Pedidos sem itens detalhados</div>'}
@@ -7115,14 +7144,14 @@ async function gerarPdfRelatorio(ini, fim, label) {
     if (cfg.clientesNoProduto) {
       tabela({
         head: [['Produto', 'Quantidade', 'Valor', 'Entregue para (quantidade)']],
-        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`, moeda(p.valor), textoClientesProduto(p, true)]),
+        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un\n${textoPesoProdutoRelatorio(p)}`, moeda(p.valor), textoClientesProduto(p, true)]),
         foot: [['Total', `${qtdTexto(d.unidades)} un`, moeda(somaProdutos), '']],
         columnStyles: { 0: { cellWidth: 46 }, 1: { halign: 'right', cellWidth: 22 }, 2: { halign: 'right', cellWidth: 26 } },
       });
     } else {
       tabela({
         head: [['Produto', 'Quantidade', 'Valor']],
-        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un`, moeda(p.valor)]),
+        body: d.produtos.map(p => [p.nome, `${qtdTexto(p.qtd)} un\n${textoPesoProdutoRelatorio(p)}`, moeda(p.valor)]),
         foot: [['Total', `${qtdTexto(d.unidades)} un`, moeda(somaProdutos)]],
         columnStyles: { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 34 } },
       });

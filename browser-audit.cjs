@@ -123,11 +123,24 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    assert.match(await p.locator('#relatorio-conteudo').innerText(),/ENTREGAS DO PERÍODO/i);
    assert.doesNotMatch(await p.locator('#relatorio-conteudo').innerText(),/Não foi possível consultar os acertos/);
    await p.evaluate(()=>imprimirRelatorio());await p.waitForSelector('#via-pdf-canvas');
+   const textoRelatorioPdf = await p.evaluate(async()=>{
+    const r=montarRelatorio(), gerado=await gerarPdfRelatorio(r.ini,r.fim,r.label);
+    const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await gerado.blob.arrayBuffer())}).promise;
+    let texto=''; for(let n=1;n<=pdf.numPages;n++) texto+=(await (await pdf.getPage(n)).getTextContent()).items.map(i=>i.str).join(' ');
+    URL.revokeObjectURL(gerado.url);return texto;
+   });
+   assert.match(textoRelatorioPdf, /Peso total:.*kg/);assert.match(textoRelatorioPdf, /15 kg/);
    assert.equal(await p.locator('#via-overlay').evaluate(e=>getComputedStyle(e).display), 'flex');
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
    await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-report-${perfil}-${largura}.png`)});
    assert.equal(await p.locator('#via-btn-whatsapp').evaluate(e=>getComputedStyle(e).display), 'none');
    await p.evaluate(()=>{fecharViaPedido();gerarViaPedido(1);});await p.waitForSelector('#via-pdf-canvas');
+   const textoPedidoPdf = await p.evaluate(async()=>{
+    const gerado=await gerarPdfViaPedido(1),pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await gerado.blob.arrayBuffer())}).promise;
+    let texto=''; for(let n=1;n<=pdf.numPages;n++) texto+=(await (await pdf.getPage(n)).getTextContent()).items.map(i=>i.str).join(' ');
+    URL.revokeObjectURL(gerado.url);return texto;
+   });
+   assert.match(textoPedidoPdf, /15 kg por unidade/);assert.match(textoPedidoPdf, /Peso total:.*kg/);
    assert.ok(await p.locator('#via-pdf-canvas').evaluate(c=>c.width>0&&c.height>0));
    await p.screenshot({path:path.join(require("node:os").tmpdir(),`kg-print-order-${perfil}-${largura}.png`)});
    await p.waitForFunction(()=>getComputedStyle(document.getElementById('via-btn-whatsapp')).display !== 'none');

@@ -125,12 +125,12 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v76'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v77'/);
   assert.match(sw, /\.\/ios-like\.css\?v=8/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=2/);
   assert.match(sw, /\.\/styles\/visual-polish\.css\?v=4/);
   assert.match(index, /ios-like\.css\?v=8/);
-  assert.match(index, /app\.js\?v=95/);
+  assert.match(index, /app\.js\?v=96/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /registroServiceWorker\.update\(\)/);
   console.log('Atualização automática e fallback offline validados.');
