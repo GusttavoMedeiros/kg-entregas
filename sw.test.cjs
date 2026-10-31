@@ -125,10 +125,10 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v79'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v80'/);
   assert.match(sw, /\.\/ios-like\.css\?v=8/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=2/);
-  assert.match(sw, /\.\/styles\/visual-polish\.css\?v=4/);
+  assert.match(sw, /\.\/styles\/visual-polish\.css\?v=5/);
   assert.match(index, /ios-like\.css\?v=8/);
   assert.match(index, /app\.js\?v=98/);
   assert.match(app, /updateViaCache:\s*'none'/);
