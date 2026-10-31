@@ -72,6 +72,6 @@ test('A gota vai para a aba ativa e só viaja depois de posicionada', () => {
 });
 
 test('Versões trocadas para o cache atualizar', () => {
-  assert.match(html, /visual-polish\.css\?v=4/);
-  assert.match(fs.readFileSync('sw.js', 'utf8'), /visual-polish\.css\?v=4/);
+  assert.match(html, /visual-polish\.css\?v=5/);
+  assert.match(fs.readFileSync('sw.js', 'utf8'), /visual-polish\.css\?v=5/);
 });

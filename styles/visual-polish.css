@@ -265,3 +265,26 @@ html.modo-economico .aba-gota::after { display: none; }
   html.modo-economico .nav-item.ativo { background: transparent; }
 }
 
+/* Vidro apenas nas barras de navegação, abas e ações. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.modo-economico) :is(.nav-bottom, .abas, .resumo-entregador-abas, .via-acoes) {
+    background: linear-gradient(145deg, rgba(43,77,59,.76), rgba(7,27,17,.86));
+    border-color: rgba(245,221,154,.2);
+    box-shadow: 0 12px 32px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.14);
+    -webkit-backdrop-filter: blur(20px) saturate(1.35);
+    backdrop-filter: blur(20px) saturate(1.35);
+  }
+  html:not(.modo-economico) .resumo-entregador-abas {
+    padding: 4px;
+    border: 1px solid rgba(245,221,154,.2);
+    border-radius: 15px;
+  }
+  @media (update: slow), (prefers-reduced-transparency: reduce) {
+    html:not(.modo-economico) :is(.nav-bottom, .abas, .resumo-entregador-abas, .via-acoes) {
+      background: #102f20;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}
+

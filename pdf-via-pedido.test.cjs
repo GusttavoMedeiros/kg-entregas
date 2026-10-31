@@ -42,7 +42,7 @@ assert.match(html, /id="via-papel"/, 'container #via-papel presente');
 
 // ===== 3) Service Worker registra novos arquivos =====
 const sw = fs.readFileSync('sw.js', 'utf8');
-assert.match(sw, /kg-v79/, 'sw.js deve estar na versão v79');
+assert.match(sw, /kg-v80/, 'sw.js deve estar na versão v80');
 assert.match(sw, /vendor\/pdf\.min\.js/, 'sw.js não cacheia pdf.min.js');
 assert.match(sw, /vendor\/pdf\.worker\.min\.js/, 'sw.js não cacheia pdf.worker.min.js');
 assert.match(sw, /vendor\/Cinzel\.ttf/, 'sw.js não cacheia Cinzel.ttf');

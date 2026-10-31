@@ -55,6 +55,10 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   await p.goto(`http://127.0.0.1:${server.address().port}`);
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
+  const vidro = await p.locator('#nav-bottom').evaluate(e=>getComputedStyle(e).backdropFilter);
+  if(economia) assert.equal(vidro,'none');
+  else assert.match(vidro,/blur\(20px\)/);
+  await p.screenshot({path:path.join(require('node:os').tmpdir(),`kg-vidro-${perfil}-${largura}.png`)});
   if(perfil==='admin') {
    await p.evaluate(()=>{
     todosOsProdutos.push({id:997,nome:'Farelo',preco:100,peso_kg:50}, {id:998,nome:'Farelo 50KG',preco:100,produto_principal_id:997}, {id:996,nome:'Mistura',preco:90,peso_kg:40});
@@ -137,6 +141,8 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    assert.match(await p.locator('#relatorio-conteudo').innerText(),/ENTREGAS DO PERÍODO/i);
    assert.doesNotMatch(await p.locator('#relatorio-conteudo').innerText(),/Não foi possível consultar os acertos/);
    await p.evaluate(()=>imprimirRelatorio());await p.waitForSelector('#via-pdf-canvas');
+   const vidroPdf=await p.locator('.via-acoes').evaluate(e=>getComputedStyle(e).backdropFilter);
+   if(economia) assert.equal(vidroPdf,'none'); else assert.match(vidroPdf,/blur\(20px\)/);
    const textoRelatorioPdf = await p.evaluate(async()=>{
     const r=montarRelatorio(), gerado=await gerarPdfRelatorio(r.ini,r.fim,r.label);
     const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await gerado.blob.arrayBuffer())}).promise;
