@@ -72,17 +72,17 @@ function tokenPara(sub) {
 (async () => {
   // Primeiro acesso offline: a versão exata já foi pré-cacheada.
   cached.set('https://kg-entregas.vercel.app/app.js?v=91', new Response('pre-cache'));
-  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=8', new Response('estilo-pre-cache'));
+  cached.set('https://kg-entregas.vercel.app/ios-like.css?v=9', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
   assert.equal(await (await requestApp('?v=91')).text(), 'pre-cache');
-  assert.equal(await (await requestEstilo('?v=8')).text(), 'estilo-pre-cache');
+  assert.equal(await (await requestEstilo('?v=9')).text(), 'estilo-pre-cache');
   assert.equal((await requestApp('?v=70')).status, 503);
   assert.equal((await requestApp('?v=70&outra=1')).status, 503);
 
   let acessosRede = 0;
   global.fetch = async () => { acessosRede++; return new Response('nova'); };
   assert.equal(await (await requestApp('?v=91')).text(), 'pre-cache');
-  assert.equal(await (await requestEstilo('?v=8')).text(), 'estilo-pre-cache');
+  assert.equal(await (await requestEstilo('?v=9')).text(), 'estilo-pre-cache');
   assert.equal(acessosRede, 0, 'Assets versionados em cache não aguardam a rede');
   assert.equal(await (await requestApp('?v=70')).text(), 'nova');
   assert.equal(acessosRede, 1, 'Nova versão precisa buscar seus próprios bytes');
@@ -125,11 +125,11 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v80'/);
-  assert.match(sw, /\.\/ios-like\.css\?v=8/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v81'/);
+  assert.match(sw, /\.\/ios-like\.css\?v=9/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=2/);
-  assert.match(sw, /\.\/styles\/visual-polish\.css\?v=5/);
-  assert.match(index, /ios-like\.css\?v=8/);
+  assert.match(sw, /\.\/styles\/visual-polish\.css\?v=6/);
+  assert.match(index, /ios-like\.css\?v=9/);
   assert.match(index, /app\.js\?v=98/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /registroServiceWorker\.update\(\)/);

@@ -84,13 +84,37 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    await p.evaluate(()=>{fecharModal('modal-pedido');todosOsProdutos=todosOsProdutos.filter(x=>x.id!==999);});
   }
   if(largura<900){
-   await p.evaluate(()=>{document.body.style.minHeight='2000px';document.documentElement.scrollTop=0;document.body.scrollTop=0;window.scrollTo(0,0);window.dispatchEvent(new Event('scroll'));});
-   await p.waitForFunction(()=>!document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
-   await pause(50);
-   await p.evaluate(()=>{document.documentElement.scrollTop=180;document.body.scrollTop=180;window.scrollTo(0,180);window.dispatchEvent(new Event('scroll'));});
-   await p.waitForFunction(()=>document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
-   await p.evaluate(()=>{document.documentElement.scrollTop=60;document.body.scrollTop=60;window.scrollTo(0,60);window.dispatchEvent(new Event('scroll'));});
-   await p.waitForFunction(()=>!document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
+   const medirRolagem = () => p.evaluate(() => ({
+    fim: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight,
+    y: window.scrollY,
+   }));
+   await p.evaluate(() => {
+    document.documentElement.style.setProperty('--safe-bot', '34px');
+    document.querySelector('.tela.ativa').style.minHeight = '2000px';
+    window.scrollTo(0, 0);
+   });
+   const barraVisivel = () => {
+    const nav = document.getElementById('nav-bottom');
+    return !nav.classList.contains('nav-recolhida') && Math.abs(innerHeight - nav.getBoundingClientRect().bottom - 42) < 1;
+   };
+   await p.waitForFunction(barraVisivel);
+   const { fim } = await medirRolagem();
+   assert.ok(fim > 500);
+   await p.evaluate(y => window.scrollTo(0, y), fim);
+   await p.waitForFunction(() => document.getElementById('nav-bottom').classList.contains('nav-recolhida'));
+   await p.waitForFunction(() => document.getElementById('nav-bottom').getBoundingClientRect().top >= innerHeight);
+   assert.deepEqual(await medirRolagem(), { fim, y: fim }, 'ocultar a barra não deve aumentar o fim da lista');
+   await p.evaluate(() => window.scrollBy(0, -22));
+   await p.waitForFunction(barraVisivel);
+   assert.deepEqual(await medirRolagem(), { fim, y: fim - 22 }, 'mostrar a barra não deve encurtar a lista');
+   assert.ok(await p.evaluate(() =>
+    document.querySelector('.tela.ativa').getBoundingClientRect().bottom <= document.getElementById('nav-bottom').getBoundingClientRect().top
+   ), 'o fim do conteúdo deve ficar acima da barra');
+   await p.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.querySelector('.tela.ativa').style.minHeight = '';
+    document.documentElement.style.removeProperty('--safe-bot');
+   });
   }
   const ids=await p.locator('#nav-bottom button').evaluateAll(es=>es.map(e=>e.id));
   if(largura<900){

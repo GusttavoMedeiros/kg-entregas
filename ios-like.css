@@ -384,7 +384,8 @@ body::after { opacity:.56; }
   }
 
   .conteudo {
-    padding-bottom:calc(28px + var(--safe-bot));
+    /* Espaço para o último cartão ficar acima da navegação flutuante. */
+    padding-bottom:calc(104px + var(--safe-bot));
     overflow-x:clip;
   }
 
@@ -419,10 +420,12 @@ body::after { opacity:.56; }
   .item-acoes > *,.row-gap > * { min-width:0; }
 
   .nav-bottom {
-    width:calc(100% - 24px);
-    max-width:calc(100% - 24px);
-    margin:0 12px calc(8px + var(--safe-bot));
-    bottom:8px;
+    /* A animação da barra não deve alterar a altura rolável da página. */
+    position:fixed;
+    left:calc(12px + var(--safe-left));
+    right:calc(12px + var(--safe-right));
+    bottom:calc(8px + var(--safe-bot));
+    margin:0 auto;
     padding:5px 4px;
     border:1px solid rgba(255,255,255,.085);
     border-radius:24px;
