@@ -119,7 +119,7 @@ select:focus-visible, textarea:focus-visible {
     transition: transform var(--kg-motion-nav) var(--kg-motion-nav-ease);
   }
   .nav-bottom.nav-recolhida {
-    transform: translate3d(0, calc(100% + 12px), 0);
+    transform: translate3d(0, calc(100% + 12px + var(--safe-bot)), 0);
   }
   .nav-bottom:focus-within {
     transform: translate3d(0, 0, 0);

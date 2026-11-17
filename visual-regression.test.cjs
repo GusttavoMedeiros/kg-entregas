@@ -36,9 +36,9 @@ assert.match(css, /#tela-login\s*\{[^}]*overflow-y:auto/s);
 assert.match(css, /max-height:700px[\s\S]*#tela-login[\s\S]*justify-content:flex-start/);
 // Sem content-visibility nos cartões: a altura estimada fazia a lista pular na rolagem.
 assert.doesNotMatch(css, /content-visibility:\s*auto/);
-assert.match(html, /ios-like\.css\?v=8/);
+assert.match(html, /ios-like\.css\?v=9/);
 assert.match(html, /styles\/design-tokens\.css\?v=2/);
-assert.match(html, /styles\/visual-polish\.css\?v=5/);
+assert.match(html, /styles\/visual-polish\.css\?v=6/);
 assert.match(tokens, /--kg-motion-ease/);
 assert.match(tokens, /--kg-motion-screen/);
 assert.match(tokens, /--kg-motion-nav/);
@@ -76,7 +76,7 @@ assert.ok(fs.existsSync('vendor/jspdf-autotable.min.js'), 'jspdf-autotable vendo
 assert.match(sw, /'\.\/vendor\/jspdf\.umd\.min\.js'/);
 assert.match(sw, /'\.\/vendor\/jspdf-autotable\.min\.js'/);
 assert.match(sw, /'\.\/styles\/design-tokens\.css\?v=2'/);
-assert.match(sw, /'\.\/styles\/visual-polish\.css\?v=5'/);
+assert.match(sw, /'\.\/styles\/visual-polish\.css\?v=6'/);
 
 // JS deve usar jsPDF pra gerar a via (não mais HTML inline)
 assert.match(appjs, /function gerarPdfViaPedido/);
