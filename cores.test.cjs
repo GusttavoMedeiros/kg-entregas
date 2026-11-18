@@ -38,9 +38,11 @@ test('Os nomes antigos (--gn, --rm...) apontam para a paleta nova', () => {
     assert.match(cores, new RegExp(`--${antigo}:\\s*var\\(--kg-${novo}\\)`));
 });
 
-test('"Novo pedido" usa um + em texto (o emoji saía roxo sobre o dourado)', () => {
+test('"Novo pedido" usa o ícone do atlas com a cor do atalho', () => {
   assert.doesNotMatch(html, /➕/);
-  assert.match(html, /<span class="atalho-icone" aria-hidden="true">\+<\/span>/);
+  assert.match(html, /class="kg-icone" data-icone="adicionar" aria-hidden="true"/);
+  assert.match(fs.readFileSync('styles/visual-polish.css', 'utf8'), /\.atalho-card\.atalho-novo \.atalho-icone \{ color: var\(--v1\); \}/);
+  assert.match(sw, /'\.\/icones-kg-v1\.png'/);
 });
 
 test('A camada de cores carrega por último e entra no cache offline', () => {

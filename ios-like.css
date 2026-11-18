@@ -372,7 +372,7 @@ body::after { opacity:.56; }
 
 /* Navegação inferior em cápsula flutuante no celular. */
 @media (max-width:899px) {
-  body,#app { touch-action:pan-y; }
+  body,#app { touch-action:pan-y pinch-zoom; }
 
   .header,.conteudo,.conteudo > .tela,
   .grid-resumo,.atalhos-row,.grid-rankings,
@@ -401,20 +401,6 @@ body::after { opacity:.56; }
     min-width:0;
     max-width:100%;
   }
-
-  .item-header {
-    min-width:0;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .item-nome {
-    flex:1 1 160px;
-    min-width:0;
-    overflow-wrap:anywhere;
-  }
-
-  .item-header > .badge { flex:0 1 auto; }
 
   .item-acoes,.row-gap,.resumo-entregador-abas { min-width:0; flex-wrap:wrap; }
   .item-acoes > *,.row-gap > * { min-width:0; }

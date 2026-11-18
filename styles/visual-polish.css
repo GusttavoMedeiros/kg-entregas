@@ -1,5 +1,91 @@
 /* Refinamento visual incremental. Não contém regras de negócio. */
 
+:root { --kg-fundo-perigo: #9f302c; }
+
+/* Pictogramas do KG Entregas. Um único atlas preserva as cores e os estados de cada controle. */
+.kg-icone {
+  display: inline-block;
+  flex: none;
+  inline-size: 1.35em;
+  block-size: 1.35em;
+  vertical-align: -.34em;
+  background: currentColor;
+  -webkit-mask: url("../icones-kg-v1.png") var(--icone-x) var(--icone-y) / 500% 500% no-repeat;
+  mask: url("../icones-kg-v1.png") var(--icone-x) var(--icone-y) / 500% 500% no-repeat;
+}
+
+.kg-icone[data-icone="inicio"] { --icone-x: 0%; --icone-y: 0%; }
+.kg-icone[data-icone="entrega"] { --icone-x: 25%; --icone-y: 0%; }
+.kg-icone[data-icone="clientes"] { --icone-x: 50%; --icone-y: 0%; }
+.kg-icone[data-icone="carteira"] { --icone-x: 75%; --icone-y: 0%; }
+.kg-icone[data-icone="carrinho"] { --icone-x: 100%; --icone-y: 0%; }
+.kg-icone[data-icone="pedidos"] { --icone-x: 0%; --icone-y: 25%; }
+.kg-icone[data-icone="relatorio"] { --icone-x: 25%; --icone-y: 25%; }
+.kg-icone[data-icone="produto"] { --icone-x: 50%; --icone-y: 25%; }
+.kg-icone[data-icone="adicionar"] { --icone-x: 75%; --icone-y: 25%; }
+.kg-icone[data-icone="buscar"] { --icone-x: 100%; --icone-y: 25%; }
+.kg-icone[data-icone="local"] { --icone-x: 0%; --icone-y: 50%; }
+.kg-icone[data-icone="mensagem"] { --icone-x: 25%; --icone-y: 50%; }
+.kg-icone[data-icone="calendario"] { --icone-x: 50%; --icone-y: 50%; }
+.kg-icone[data-icone="feito"] { --icone-x: 75%; --icone-y: 50%; }
+.kg-icone[data-icone="aviso"] { --icone-x: 100%; --icone-y: 50%; }
+.kg-icone[data-icone="cartao"] { --icone-x: 0%; --icone-y: 75%; }
+.kg-icone[data-icone="editar"] { --icone-x: 25%; --icone-y: 75%; }
+.kg-icone[data-icone="detalhes"] { --icone-x: 50%; --icone-y: 75%; }
+.kg-icone[data-icone="excluir"] { --icone-x: 75%; --icone-y: 75%; }
+.kg-icone[data-icone="dinheiro"] { --icone-x: 100%; --icone-y: 75%; }
+.kg-icone[data-icone="documento"] { --icone-x: 0%; --icone-y: 100%; }
+.kg-icone[data-icone="relogio"] { --icone-x: 25%; --icone-y: 100%; }
+.kg-icone[data-icone="empresa"] { --icone-x: 50%; --icone-y: 100%; }
+.kg-icone[data-icone="pessoa"] { --icone-x: 75%; --icone-y: 100%; }
+.kg-icone[data-icone="celular"] { --icone-x: 100%; --icone-y: 100%; }
+
+.nav-icon .kg-icone { display: block; inline-size: 28px; block-size: 28px; }
+.card-icone { color: var(--o2); }
+.card-faturamento .card-icone { color: var(--kg-sucesso); }
+.card-receber .card-icone { color: var(--kg-info); }
+.card-atrasados .card-icone { color: var(--kg-perigo); }
+.atalho-card .atalho-icone { display: flex; color: var(--o2); font-size: 20px; }
+.atalho-card.atalho-novo .atalho-icone { color: var(--v1); }
+.atalho-icone .kg-icone { inline-size: 27px; block-size: 27px; }
+.vazio-icone { font-size: 26px; color: var(--o2); opacity: .85; }
+.item-acoes .kg-icone { inline-size: 24px; block-size: 24px; }
+.perfil-login-ico, .search-icon { color: var(--o2); }
+
+#lista-clientes .item-cliente-card, #lista-financeiro .item-cliente-card {
+  width: 100%;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  text-align: start;
+}
+.item-cliente-card > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.cliente-nome, .cliente-info { display: block; }
+.fin-cliente-devido { display: block; margin-top: 3px; font-size: 13px; color: var(--kg-perigo); font-weight: 700; }
+.tag-perfil { display: inline-flex; align-items: center; gap: 4px; }
+.item-produto-card .row-gap > button { min-height: 44px; }
+.toggle-margem { min-height: 44px; }
+.search-bar input::placeholder { color: var(--c2); }
+.search-clear { min-inline-size: 44px; min-block-size: 44px; }
+#tela-dashboard .atalhos-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 599px) {
+  #tela-dashboard .atalhos-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #tela-dashboard .atalho-card {
+    flex-direction: row;
+    justify-content: start;
+    gap: 8px;
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+  #tela-dashboard .atalho-label { text-align: start; }
+  #tela-dashboard .atalho-cobrar { padding-inline-end: 26px; }
+}
+
+@media (max-width: 899px) {
+  .nav-label { font-size: .6875rem; }
+  .abas > .aba, .aba-rota { min-height: 44px; }
+}
+
 .produto-sem-custo {
   display: flex;
   align-items: center;
@@ -23,6 +109,28 @@
   accent-color: var(--o1);
 }
 #produto-custo:disabled { opacity: .55; cursor: not-allowed; }
+
+.item-status, .entrega-contato {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.entrega-contato { margin-top: 8px; }
+.item-acoes > button, .entrega-contato > a {
+  min-width: 44px;
+  min-height: 44px;
+}
+.item-acoes > :is(.btn-azul, .btn-obs, .btn-perigo) {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  padding: 0;
+}
+.item-acoes > .btn-entregar {
+  text-transform: none;
+  letter-spacing: normal;
+}
 
 button, a, input, select, textarea { outline-offset: 3px; }
 button:focus-visible, a:focus-visible, input:focus-visible,
@@ -223,7 +331,7 @@ select:focus-visible, textarea:focus-visible {
 }
 /* Lista / Rota (entregador): botões separados com destaque dourado cheio. */
 .resumo-entregador-abas.gota-pronta > .aba-gota { opacity: 1; }
-.resumo-entregador-abas.com-gota > .aba-rota.ativa { background: transparent; border-color: transparent; }
+.resumo-entregador-abas.gota-pronta > .aba-rota.ativa { background: transparent; border-color: transparent; }
 .resumo-entregador-abas > .aba-gota::before,
 .resumo-entregador-abas > .aba-gota::after { border-radius: 10px; background: var(--go); }
 

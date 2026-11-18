@@ -2,7 +2,7 @@ const {chromium}=require('playwright');
 const fs=require('node:fs'),http=require('node:http'),path=require('node:path'),assert=require('node:assert/strict');
 const repo=__dirname;
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html';try{res.writeHead(200,{'Content-Type':({'.js':'application/javascript','.css':'text/css','.html':'text/html','.json':'application/json'})[path.extname(f)]||'application/octet-stream'});res.end(fs.readFileSync(path.join(repo,f)));}catch{res.writeHead(404);res.end();}});
+const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html';try{res.writeHead(200,{'Content-Type':({'.js':'application/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.png':'image/png'})[path.extname(f)]||'application/octet-stream'});res.end(fs.readFileSync(path.join(repo,f)));}catch{res.writeHead(404);res.end();}});
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({channel:'msedge',headless:true});const results=[];
@@ -133,7 +133,20 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   }else{
    assert.notEqual(await p.locator('#nav-bottom .nav-indicator').evaluate(e=>getComputedStyle(e).display),'none');
   }
-  for(const id of ids){await p.locator('#'+id).click();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
+  for(const id of ids){
+   const item = p.locator('#'+id);
+   await item.click();
+   assert.equal(await item.getAttribute('aria-current'), 'page');
+   assert.equal(await p.locator('#nav-bottom [aria-current="page"]').count(), 1);
+   assert.match(await item.locator('.kg-icone').evaluate(ico=>getComputedStyle(ico).maskImage), /icones-kg-v1\.png/);
+   assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+   if(id==='nav-clientes' || id==='nav-financeiro'){
+    await p.locator('button.item-cliente-card:visible').first().press('Enter');
+    const modal = id==='nav-clientes' ? '#modal-detalhe-cliente' : '#modal-fin-cliente';
+    await p.locator(modal+'.aberto').waitFor();
+    await p.keyboard.press('Escape');
+   }
+  }
   if(perfil!=='entregador'){
    await p.evaluate(()=>abrirModalNovoPedido(1));
    assert.equal(await p.locator('.carrinho-item').count(),2);assert.match(await p.locator('#carrinho-total').innerText(),/60,00/);assert.match(await p.locator('#carrinho-peso').innerText(),/60 kg/);
@@ -217,7 +230,15 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     assert.equal(produtos[2].preco,40);assert.equal(produtos[2].peso_kg,15);
    }
   }else{
-   await p.locator('.check-item').first().click();await p.evaluate(()=>abrirModalEntrega(1));
+   const checklist = p.locator('button.check-item');
+   await checklist.first().press('Space');
+   assert.deepEqual(await checklist.evaluateAll(items=>items.map(item=>item.getAttribute('aria-pressed'))), ['true','true']);
+   assert.equal(await p.locator('.checklist-contador').first().textContent(), '2/2');
+   await checklist.last().press('Enter');
+   assert.deepEqual(await checklist.evaluateAll(items=>items.map(item=>item.getAttribute('aria-pressed'))), ['false','false']);
+   assert.equal(await p.locator('.checklist-contador').first().textContent(), '0/2');
+   await checklist.first().click();
+   await p.evaluate(()=>abrirModalEntrega(1));
    await p.locator('.pagto-recebido[data-valor="pendente"]').click();
    await context.setOffline(true);
    await p.locator('button[onclick="confirmarEntrega()"]').click();await p.waitForFunction(()=>todosOsPedidos[0].status==='entregue');
