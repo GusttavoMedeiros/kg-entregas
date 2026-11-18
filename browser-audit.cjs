@@ -55,6 +55,21 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   await p.goto(`http://127.0.0.1:${server.address().port}`);
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
+  if(largura<900){
+   await p.evaluate(() => document.documentElement.style.setProperty('--safe-top', '59px'));
+   const cabecalho = await p.locator('#app-header').evaluate(header => {
+    const estilo = getComputedStyle(header);
+    return {
+     filtro: estilo.backdropFilter,
+     fundo: estilo.backgroundColor,
+     topoLogo: header.querySelector('img').getBoundingClientRect().top,
+    };
+   });
+   assert.equal(cabecalho.filtro, 'none', 'o cabeçalho móvel não deve aplicar vidro');
+   assert.match(cabecalho.fundo, /^rgb\(/, 'o fundo do cabeçalho deve ser opaco');
+   assert.ok(cabecalho.topoLogo >= 59, 'a marca deve ficar abaixo da barra de status');
+   await p.evaluate(() => document.documentElement.style.removeProperty('--safe-top'));
+  }
   const vidro = await p.locator('#nav-bottom').evaluate(e=>getComputedStyle(e).backdropFilter);
   if(economia) assert.equal(vidro,'none');
   else assert.match(vidro,/blur\(20px\)/);

@@ -1216,7 +1216,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 /* Mobile pequeno (320-380px) — ajustes para não cortar */
 @media (max-width: 380px) {
-  .header { padding: 11px 12px; }
+  .header { padding: calc(11px + var(--safe-top)) calc(12px + var(--safe-right)) 11px calc(12px + var(--safe-left)); }
   .header-logo-texto { font-size: 13px; }
   .header-titulo { font-size: 9px; }
   .tag-perfil { padding: 3px 7px; font-size: 9px; }
@@ -1280,6 +1280,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   .header {
     padding: 16px 40px;
     border-bottom: 1px solid var(--ob);
+    padding-top: calc(16px + var(--safe-top));
     padding-left: 280px;
     justify-content: space-between;
   }
@@ -1561,7 +1562,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 </style>
 <link rel="stylesheet" href="styles/design-tokens.css?v=2">
-<link rel="stylesheet" href="ios-like.css?v=10">
+<link rel="stylesheet" href="ios-like.css?v=11">
 <link rel="stylesheet" href="styles/visual-polish.css?v=7">
 <link rel="stylesheet" href="styles/cores.css?v=2">
 </head>

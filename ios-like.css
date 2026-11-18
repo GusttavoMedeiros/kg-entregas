@@ -709,6 +709,23 @@ html.modo-economico .modal-overlay.aberto .modal-sheet { animation:none; }
   }
 }
 
+/* Uma borda superior opaca dá ao WebKit uma cor sólida junto à barra de status. */
+@media (max-width:899px), (display-mode:standalone) {
+  .header {
+    background:var(--v1);
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+  }
+  .header.vendedor { background:#14230d; }
+  .header-logo-texto,
+  .header.vendedor .header-logo-texto {
+    background:none;
+    color:var(--o2);
+    -webkit-text-fill-color:currentColor;
+  }
+  .header.vendedor .header-logo-texto { color:#b8e878; }
+}
+
 @media (prefers-reduced-motion:reduce) {
   .logo-login,.card-login,.modal-sheet,.tela.ativa,.stagger-in,
   .nav-item.ativo .nav-icon { animation:none !important; }
