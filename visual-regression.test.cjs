@@ -36,7 +36,7 @@ assert.match(css, /#tela-login\s*\{[^}]*overflow-y:auto/s);
 assert.match(css, /max-height:700px[\s\S]*#tela-login[\s\S]*justify-content:flex-start/);
 // Sem content-visibility nos cartões: a altura estimada fazia a lista pular na rolagem.
 assert.doesNotMatch(css, /content-visibility:\s*auto/);
-assert.match(html, /ios-like\.css\?v=10/);
+assert.match(html, /ios-like\.css\?v=11/);
 assert.match(html, /styles\/design-tokens\.css\?v=2/);
 assert.match(html, /styles\/visual-polish\.css\?v=7/);
 assert.match(tokens, /--kg-motion-ease/);
