@@ -67,7 +67,7 @@ test('Marcar como Pago: Cheque é uma das formas, com ícone, e grava forma "che
   c.verFinanceiroCliente(1);
   const tela = c.el('fin-cliente-conteudo').innerHTML;
   assert.deepEqual([...tela.matchAll(/data-forma="(\w+)"/g)].map(m => m[1]), ['dinheiro', 'pix', 'cheque']);
-  assert.match(tela, /📝<\/span>\s*<span class="pagto-recebido-label">Cheque/);
+  assert.match(tela, /data-forma="cheque"[^>]*>\s*<span class="pagto-recebido-icone"><span class="kg-icone" data-icone="documento"/);
   c.alternarPedidoPago(1, true);
   c.escolherFormaPaga('cheque');
   assert.equal(vm.runInContext('finForma', c), 'cheque');

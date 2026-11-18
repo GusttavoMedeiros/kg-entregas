@@ -89,11 +89,10 @@ function toast(msg, tipo) {
     wrap.id = 'toast-wrap';
     document.body.appendChild(wrap);
   }
-  const icones = { ok:'✅', erro:'⚠️', info:'ℹ️' };
+  const icones = { ok:'feito', erro:'aviso', info:'documento' };
   const el = document.createElement('div');
   el.className = `toast ${tipo}`;
-  el.innerHTML = `<span class="ico"></span><span class="txt"></span>`;
-  el.querySelector('.ico').textContent = icones[tipo] || 'ℹ️';
+  el.innerHTML = `<span class="ico">${icone(icones[tipo] || 'documento')}</span><span class="txt"></span>`;
   el.querySelector('.txt').textContent = texto;   // textContent = seguro contra HTML
   wrap.appendChild(el);
 
@@ -214,6 +213,10 @@ function esc(t) {
   return String(t)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function icone(nome) {
+  return `<span class="kg-icone" data-icone="${nome}" aria-hidden="true"></span>`;
 }
 
 function badgeCategoria(cat) {
@@ -543,7 +546,7 @@ function salvarChecklist(pedidoId, marcadosSet) {
   }
 }
 
-// Toggle de um item do checklist (chamado por onclick no <li>)
+// A conferência é salva por produto, inclusive quando ele aparece em mais de uma linha.
 function toggleChecklistItem(pedidoId, produtoId, btnEl) {
   const marcados = getChecklist(pedidoId);
   produtoId = Number(produtoId);
@@ -551,20 +554,19 @@ function toggleChecklistItem(pedidoId, produtoId, btnEl) {
   else marcados.add(produtoId);
   salvarChecklist(pedidoId, marcados);
 
-  // Atualiza só o <li> clicado (zero re-render do card)
-  if (btnEl) {
-    btnEl.classList.toggle('marcado', marcados.has(produtoId));
-  }
-  // Atualiza o contador no card (se existir)
   const cardEl = btnEl?.closest('.item-card');
-  if (cardEl) {
-    const contadorEl = cardEl.querySelector('.checklist-contador');
-    const totalItens = cardEl.querySelectorAll('.check-item').length;
-    if (contadorEl) {
-      contadorEl.textContent = `${marcados.size}/${totalItens}`;
-      contadorEl.classList.toggle('completo', marcados.size === totalItens && totalItens > 0);
-    }
+  if (!cardEl) return;
+
+  const botoes = cardEl.querySelectorAll('.check-item');
+  let qtdMarcados = 0;
+  for (const botao of botoes) {
+    const marcado = marcados.has(Number(botao.dataset.produtoId));
+    botao.setAttribute('aria-pressed', String(marcado));
+    if (marcado) qtdMarcados++;
   }
+  const contadorEl = cardEl.querySelector('.checklist-contador');
+  contadorEl.textContent = `${qtdMarcados}/${botoes.length}`;
+  contadorEl.classList.toggle('completo', qtdMarcados === botoes.length);
 }
 
 // Limpa o checklist quando o pedido é entregue (não precisa mais)
@@ -1253,7 +1255,9 @@ function selecionarPerfilLogin(perfil) {
   const hidden = document.getElementById('input-usuario');
   if (hidden) hidden.value = perfil;
   document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => {
-    b.classList.toggle('ativo', b.dataset.perfil === perfil);
+    const ativo = b.dataset.perfil === perfil;
+    b.classList.toggle('ativo', ativo);
+    b.setAttribute('aria-pressed', String(ativo));
   });
   document.getElementById('erro-login').style.display = 'none';
   const s = document.getElementById('input-senha');
@@ -1262,7 +1266,10 @@ function selecionarPerfilLogin(perfil) {
 
 // Limpa a escolha de perfil (ao sair)
 function resetarPerfilLogin() {
-  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => b.classList.remove('ativo'));
+  document.querySelectorAll('#perfil-login-grid .perfil-login-btn').forEach(b => {
+    b.classList.remove('ativo');
+    b.setAttribute('aria-pressed', 'false');
+  });
 }
 
 let loginEmAndamento = false;
@@ -1320,9 +1327,9 @@ function entrarNoApp() {
   const appEl = document.getElementById('app');
   appEl.style.display = 'flex';
   appEl.classList.add('ativo-desktop');
-  document.getElementById('tag-perfil').textContent =
-    user.perfil==='admin' ? '👑 Admin' :
-    user.perfil==='vendedor' ? '🤝 Vendedor' : '📦 Entregador';
+  document.getElementById('tag-perfil').innerHTML =
+    user.perfil==='admin' ? `${icone('empresa')} Admin` :
+    user.perfil==='vendedor' ? `${icone('pessoa')} Vendedor` : `${icone('produto')} Entregador`;
 
   // Header verde especial para vendedor
   const hdr = document.getElementById('app-header');
@@ -1341,7 +1348,9 @@ function entrarNoApp() {
 // Listeners de login (defensivos: só registra se o elemento existir)
 const elSenha = document.getElementById('input-senha');
 const elUsuario = document.getElementById('input-usuario');
-if (elSenha) elSenha.addEventListener('keyup', e => { if(e.key==='Enter') fazerLogin(); });
+if (elSenha) elSenha.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.repeat) fazerLogin();
+});
 if (elUsuario) elUsuario.addEventListener('keyup', e => { if(e.key==='Enter') {
   const s = document.getElementById('input-senha');
   if (s) s.focus();
@@ -1425,33 +1434,22 @@ function sair() {
 // ============================================================
 // NAV BOTTOM
 // ============================================================
-// Ícones em SVG (traço, herdam a cor via currentColor) — visual mais
-// profissional e idêntico em qualquer aparelho, ao contrário dos emojis.
-const ICO = {
-  home:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.6V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.6"/><path d="M9.5 21v-6h5v6"/></svg>',
-  truck: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h11v9.5H3z"/><path d="M14 9.5h4l3 3.2V16h-7z"/><circle cx="7" cy="18.5" r="1.7"/><circle cx="17.5" cy="18.5" r="1.7"/></svg>',
-  store: '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3.5 9.5 5 4h14l1.5 5.5a3 3 0 0 1-5.6 0 3 3 0 0 1-5.8 0 3 3 0 0 1-5.6 0Z"/><path d="M9.5 21v-5h5v5"/></svg>',
-  wallet:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/><circle cx="16.5" cy="14.5" r="1.15"/></svg>',
-  cart:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="17.5" cy="20" r="1.5"/><path d="M3 4h2.2l2.1 11a1 1 0 0 0 1 .8h8.4a1 1 0 0 0 1-.8L20 8H6"/></svg>',
-  list:  '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5v-.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg>',
-};
-
 const NAV = {
   admin: [
-    { id:'dashboard',  icone:ICO.home,  label:'Início',     tela:'tela-dashboard'   },
-    { id:'entregas',   icone:ICO.truck, label:'Entregas',   tela:'tela-entregas'    },
-    { id:'clientes',   icone:ICO.store, label:'Clientes',   tela:'tela-clientes'    },
-    { id:'financeiro', icone:ICO.wallet,label:'Financeiro', tela:'tela-financeiro'  },
-    { id:'catalogo',   icone:ICO.cart,  label:'Catálogo',   tela:'tela-catalogo'    },
+    { id:'dashboard',  icone:'inicio',  label:'Início',     tela:'tela-dashboard'   },
+    { id:'entregas',   icone:'entrega', label:'Entregas',   tela:'tela-entregas'    },
+    { id:'clientes',   icone:'clientes', label:'Clientes',   tela:'tela-clientes'    },
+    { id:'financeiro', icone:'carteira',label:'Financeiro', tela:'tela-financeiro'  },
+    { id:'catalogo',   icone:'carrinho',  label:'Catálogo',   tela:'tela-catalogo'    },
   ],
   vendedor: [
-    { id:'inicio-vendedor', icone:ICO.home, label:'Início',       tela:'tela-inicio-vendedor' },
-    { id:'meus-pedidos',    icone:ICO.list, label:'Meus pedidos', tela:'tela-meus-pedidos'    },
-    { id:'catalogo',        icone:ICO.cart, label:'Catálogo',     tela:'tela-catalogo'        },
-    { id:'clientes',        icone:ICO.store,label:'Clientes',     tela:'tela-clientes'        },
+    { id:'inicio-vendedor', icone:'inicio', label:'Início',       tela:'tela-inicio-vendedor' },
+    { id:'meus-pedidos',    icone:'pedidos', label:'Meus pedidos', tela:'tela-meus-pedidos'    },
+    { id:'catalogo',        icone:'carrinho', label:'Catálogo',     tela:'tela-catalogo'        },
+    { id:'clientes',        icone:'clientes',label:'Clientes',     tela:'tela-clientes'        },
   ],
   entregador: [
-    { id:'entregas', icone:ICO.truck, label:'Entregas do dia', tela:'tela-entregas' },
+    { id:'entregas', icone:'entrega', label:'Entregas do dia', tela:'tela-entregas' },
   ],
 };
 
@@ -1608,8 +1606,8 @@ function configurarNav() {
   const inicial = itens[0].id;
   const nav = document.getElementById('nav-bottom');
   nav.innerHTML = `<span class="nav-indicator" aria-hidden="true"></span>${itens.map(i => `
-    <button class="nav-item ${i.id===inicial?'ativo':''}" onclick="navegarPara('${i.id}')" id="nav-${i.id}">
-      <span class="nav-icon">${i.icone}</span>
+    <button type="button" class="nav-item ${i.id===inicial?'ativo':''}" onclick="navegarPara('${i.id}')" id="nav-${i.id}" aria-current="${i.id===inicial?'page':'false'}">
+      <span class="nav-icon">${icone(i.icone)}</span>
       <span class="nav-label">${esc(i.label)}</span>
     </button>`).join('')}`;
 
@@ -1664,9 +1662,11 @@ function navegarPara(id) {
   }
   animarEntradaTela(el);
   document.getElementById('header-titulo').textContent = TITULOS[id] || '';
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('ativo'));
   const btn = document.getElementById(`nav-${id}`);
-  if (btn) btn.classList.add('ativo');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('ativo', n === btn);
+    n.setAttribute('aria-current', n === btn ? 'page' : 'false');
+  });
   posicionarIndicadorNav(id);
 
   if (id==='clientes')     renderizarClientes(todosOsClientes);
@@ -2058,7 +2058,7 @@ function renderizarDashboard() {
   const proximas = pendentesEntrega.slice().sort((a,b)=>(a.data_entrega||'').localeCompare(b.data_entrega||'')).slice(0,5);
   const elProx = document.getElementById('lista-proximas');
   if (!proximas.length) {
-    elProx.innerHTML = `<div class="vazio"><div class="vazio-icone">✅</div><p>Sem entregas pendentes</p></div>`;
+    elProx.innerHTML = `<div class="vazio"><div class="vazio-icone">${icone('feito')}</div><p>Sem entregas pendentes</p></div>`;
   } else {
     elProx.innerHTML = proximas.map(p => cardEntrega(p, false)).join('');
   }
@@ -2591,7 +2591,7 @@ function renderizarEntregas(filtro) {
   });
   const el = document.getElementById('lista-entregas');
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">📭</div><p>Nenhuma entrega aqui</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('entrega')}</div><p>Nenhuma entrega aqui</p></div>`;
     return;
   }
 
@@ -2704,17 +2704,19 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     const completo = qtdMarcados === totalItens && totalItens > 0;
     conteudoLinha = `
       <div class="checklist-header">
-        <span class="checklist-titulo">🚚 Conferência de carga</span>
+        <span class="checklist-titulo">${icone('entrega')} Conferência de carga</span>
         <span class="checklist-contador ${completo ? 'completo' : ''}">${qtdMarcados}/${totalItens}</span>
       </div>
-      <ul class="checklist-itens">
+      <ul class="checklist-itens" role="list" aria-label="Conferência de carga">
         ${p.itens.map(i => {
           const pid = Number(i.produto_id);
           const marcado = marcados.has(pid);
-          return `<li class="check-item ${marcado ? 'marcado' : ''}"
-                       onclick="toggleChecklistItem(${p.id}, ${pid}, this)">
-            <span class="check-box" aria-hidden="true"></span>
-            <span class="check-txt">${esc(`${i.qtd}x ${i.nome || i.produto_nome || ''}`)}</span>
+          return `<li>
+            <button type="button" class="check-item" data-produto-id="${pid}" aria-pressed="${marcado}"
+                    onclick="toggleChecklistItem(${p.id}, ${pid}, this)">
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-txt">${esc(`${i.qtd}x ${i.nome || i.produto_nome || ''}`)}</span>
+            </button>
           </li>`;
         }).join('')}
       </ul>`;
@@ -2731,13 +2733,13 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
   const podeEntregar = p.status==='pendente' && (usuario.perfil==='admin' || usuario.perfil==='entregador');
   const podeExcluir = p.status==='pendente' && podeEditarPedido(p);
   const botaoEditar = podeEditar
-    ? `<button class="btn-azul" onclick="abrirModalNovoPedido(${p.id})" title="Editar pedido">✏️</button>`
+    ? `<button class="btn-azul" onclick="abrirModalNovoPedido(${p.id})" aria-label="Editar pedido" title="Editar pedido">${icone('editar')}</button>`
     : '';
   const botaoEntregar = podeEntregar
-    ? `<button class="btn-entregar" onclick="abrirModalEntrega(${p.id})">✓ Marcar entregue</button>`
+    ? `<button class="btn-entregar" onclick="abrirModalEntrega(${p.id})">Marcar entregue</button>`
     : '';
   const botaoExcluir = podeExcluir
-    ? `<button class="btn-perigo" style="width:auto;padding:8px 12px;font-size:14px" onclick="excluirPedido(${p.id})" title="Excluir pedido">🗑️</button>`
+    ? `<button class="btn-perigo" onclick="excluirPedido(${p.id})" aria-label="Excluir pedido" title="Excluir pedido">${icone('excluir')}</button>`
     : '';
 
   // Botões extras para entregador: Maps e WhatsApp
@@ -2750,21 +2752,21 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     const msgWa = `Olá ${cliente.responsavel || cliente.nome}! Aqui é da KG Agropet. Estou a caminho com seu pedido. Até já! 🚚`;
     const waLink = wa ? `https://wa.me/55${wa}?text=${encodeURIComponent(msgWa)}` : '';
     acoesEntregador = `
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        ${mapsLink ? `<a href="${mapsLink}" target="_blank" rel="noopener" class="btn-maps">🗺️ Abrir no Maps</a>` : ''}
-        ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener" class="btn-whatsapp-aviso">📲 Avisar cliente</a>` : ''}
+      <div class="entrega-contato">
+        ${mapsLink ? `<a href="${mapsLink}" target="_blank" rel="noopener" class="btn-maps">${icone('local')} Abrir no Maps</a>` : ''}
+        ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener" class="btn-whatsapp-aviso">${icone('mensagem')} Avisar cliente</a>` : ''}
       </div>`;
   }
 
   const enderecoHtml = (usuario.perfil === 'entregador' && cliente?.endereco)
-    ? `<div style="font-size:11px;color:var(--c2);margin-top:4px">📍 ${esc(cliente.endereco)}</div>` : '';
+    ? `<div style="font-size:11px;color:var(--c2);margin-top:4px">${icone('local')} ${esc(cliente.endereco)}</div>` : '';
 
   const botoes = (mostrarBotoes && p.status==='pendente') ? `
     ${acoesEntregador}
     <div class="item-acoes">
       ${botaoEntregar}
       ${botaoEditar}
-      <button class="btn-obs" onclick="verDetalhePedido(${p.id})" aria-label="Ver detalhes do pedido" title="Ver detalhes">👁</button>
+      <button class="btn-obs" onclick="verDetalhePedido(${p.id})" aria-label="Ver detalhes do pedido" title="Ver detalhes">${icone('detalhes')}</button>
       ${botaoExcluir}
     </div>` : (mostrarBotoes && p.status==='entregue'
     ? `<div class="item-acoes"><button class="btn-sm" onclick="verDetalhePedido(${p.id})">Ver detalhes</button></div>` : '');
@@ -2773,14 +2775,14 @@ function cardEntrega(p, mostrarBotoes, clienteOpc) {
     <div class="item-card stagger-in ${classe}">
       <div class="item-header">
         <div class="item-nome">${esc(p.cliente_nome)}</div>
-        ${badge}
+        <div class="item-status">${badge}</div>
       </div>
       ${conteudoLinha}
       <div class="item-sub">${esc(resumoPeso(p.itens, todosOsProdutos))}</div>
       ${enderecoHtml}
       <div class="flex-entre" style="margin-top:6px">
         <div>${vendedorHtml}</div>
-        <span style="font-size:12px;color:var(--c3)">📅 ${dataBR(p.data_entrega)}</span>
+        <span style="font-size:12px;color:var(--c3)">${icone('calendario')} ${dataBR(p.data_entrega)}</span>
       </div>
       <div class="flex-entre" style="margin-top:4px">
         <span class="item-valor">${moeda(p.valor)}</span>
@@ -2807,7 +2809,7 @@ function renderizarMeusPedidos(filtro) {
   lista.sort((a,b) => (b.data_entrega||'').localeCompare(a.data_entrega||''));
   const el = document.getElementById('lista-meus-pedidos');
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">📋</div><p>Nenhum pedido aqui</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('pedidos')}</div><p>Nenhum pedido aqui</p></div>`;
     return;
   }
   el.innerHTML = lista.map(p => cardEntrega(p, true)).join('');
@@ -2852,7 +2854,7 @@ function _pintarCatalogo(manterScroll) {
   if (toggle) toggle.style.display = isAdmin ? '' : 'none';
 
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">📦</div><p>Nenhum produto aqui</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('produto')}</div><p>Nenhum produto aqui</p></div>`;
     return;
   }
 
@@ -2907,9 +2909,9 @@ function montarCardProduto(p, isAdmin, termoBusca = '') {
 
   const botoesAdmin = isAdmin ? `
     <div class="row-gap" style="margin-top:10px">
-      <button class="btn-sm" onclick="verDetalheProduto(${p.id})" aria-label="Ver detalhes" title="Ver detalhes e histórico">📊 Detalhes</button>
-      <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">✏️ Editar</button>
-      <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">🗑️</button>
+      <button class="btn-sm" onclick="verDetalheProduto(${p.id})" aria-label="Ver detalhes" title="Ver detalhes e histórico">${icone('detalhes')} Detalhes</button>
+      <button class="btn-sm" onclick="abrirModalProduto(${p.id})" aria-label="Editar produto">${icone('editar')} Editar</button>
+      <button class="btn-perigo" style="width:auto;padding:7px 12px;font-size:12px" onclick="excluirProduto(${p.id})" aria-label="Excluir produto" title="Excluir">${icone('excluir')}</button>
     </div>` : '';
 
   // Aplica highlight no nome se houver termo de busca
@@ -2943,7 +2945,7 @@ function _buscarProdutoImpl(termo) {
   );
   const el = document.getElementById('lista-catalogo');
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">🔍</div><p>Nenhum produto encontrado</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('buscar')}</div><p>Nenhum produto encontrado</p></div>`;
     return;
   }
   const isAdmin = usuario.perfil==='admin';
@@ -3087,7 +3089,7 @@ function renderizarCarrinho() {
           </div>
           <div class="carrinho-acoes">
             <div class="carrinho-subtotal">${moeda(subtotal)}</div>
-            <button class="btn-remover" onclick="removerDoCarrinho(${idx})" aria-label="Remover produto">🗑️</button>
+            <button class="btn-remover" onclick="removerDoCarrinho(${idx})" aria-label="Remover produto">${icone('excluir')}</button>
           </div>
         </div>
       </div>`;
@@ -3205,7 +3207,7 @@ function resetarPrecoCatalogo() {
 function renderizarClientes(lista, termoBusca = '') {
   const el = document.getElementById('lista-clientes');
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">🏪</div><p>Nenhum cliente cadastrado</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('clientes')}</div><p>Nenhum cliente cadastrado</p></div>`;
     return;
   }
   const dividaPorCliente = new Map();
@@ -3224,13 +3226,13 @@ function renderizarClientes(lista, termoBusca = '') {
     const responsavelHtml = termoBusca ? highlightBusca(c.responsavel || '–', termoBusca) : esc(c.responsavel || '–');
     const whatsappHtml = termoBusca ? highlightBusca(c.whatsapp || '–', termoBusca) : esc(c.whatsapp || '–');
     return `
-      <div class="item-cliente-card stagger-in" onclick="verDetalheCliente(${c.id})">
-        <div>
-          <div class="cliente-nome">${nomeHtml}</div>
-          <div class="cliente-info">${responsavelHtml} · ${whatsappHtml}</div>
-        </div>
+      <button type="button" class="item-cliente-card stagger-in" onclick="verDetalheCliente(${c.id})">
+        <span>
+          <span class="cliente-nome">${nomeHtml}</span>
+          <span class="cliente-info">${responsavelHtml} · ${whatsappHtml}</span>
+        </span>
         ${badge}
-      </div>`;
+      </button>`;
   }).join('');
 }
 
@@ -3282,7 +3284,7 @@ function verDetalheCliente(id) {
         <div style="font-size:12px;color:var(--c3);margin-top:3px">${moeda(p.valor)} · ${dataBR(p.data_entrega)}</div>
       </div>`).join('')
     : '<div class="vazio" style="padding:20px"><p>Nenhum pedido ainda</p></div>'}
-    ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="fecharModal('modal-detalhe-cliente'); abrirModalNovoCliente(${c.id})">✏️ Editar cliente</button>` : ''}
+    ${(usuario.perfil==='admin' || usuario.perfil==='vendedor') ? `<button class="btn-azul w100 mt-12" onclick="fecharModal('modal-detalhe-cliente'); abrirModalNovoCliente(${c.id})">${icone('editar')} Editar cliente</button>` : ''}
     ${usuario.perfil==='admin' ? `<button class="btn-perigo w100 mt-8" onclick="fecharModal('modal-detalhe-cliente'); excluirCliente(${c.id})">Excluir cliente</button>` : ''}`;
   abrirModal('modal-detalhe-cliente');
 }
@@ -3323,7 +3325,7 @@ function renderizarFinanceiro(filtro) {
 
   const el = document.getElementById('lista-financeiro');
   if (!lista.length) {
-    el.innerHTML=`<div class="vazio"><div class="vazio-icone">💚</div><p>Nenhum resultado</p></div>`;
+    el.innerHTML=`<div class="vazio"><div class="vazio-icone">${icone('carteira')}</div><p>Nenhum resultado</p></div>`;
     return;
   }
   el.innerHTML = lista.map(({cliente:c, pedidos}) => {
@@ -3337,14 +3339,14 @@ function renderizarFinanceiro(filtro) {
     const info = atras.length ? `${atras.length} pagamento(s) atrasado(s)`
                : dev.length  ? `${dev.length} pagamento(s) em aberto` : 'Sem pendências';
     return `
-      <div class="item-cliente-card stagger-in" onclick="verFinanceiroCliente(${c.id})">
-        <div>
-          <div class="cliente-nome">${esc(c.nome)}</div>
-          <div class="cliente-info">${info}</div>
-          ${totalD>0?`<div style="font-size:13px;color:var(--kg-perigo);font-weight:700;margin-top:3px">${moeda(totalD)} devidos</div>`:''}
-        </div>
+      <button type="button" class="item-cliente-card stagger-in" onclick="verFinanceiroCliente(${c.id})">
+        <span>
+          <span class="cliente-nome">${esc(c.nome)}</span>
+          <span class="cliente-info">${info}</span>
+          ${totalD>0?`<span class="fin-cliente-devido">${moeda(totalD)} devidos</span>`:''}
+        </span>
         ${badge}
-      </div>`;
+      </button>`;
   }).join('');
 }
 
@@ -3360,7 +3362,7 @@ function filtrarFinanceiro(filtro, btn) {
 let finSelecionados = new Set(); // ids dos pedidos marcados como pagos
 let finForma = '';               // 'dinheiro' | 'pix' | 'cheque'
 const FIN_FORMAS = { dinheiro: 'Dinheiro', pix: 'PIX / Cartão', cheque: 'Cheque' };
-const FIN_ICONES = { dinheiro: '💵', pix: '💳', cheque: '📝' };
+const FIN_ICONES = { dinheiro: 'dinheiro', pix: 'cartao', cheque: 'documento' };
 
 function statusPedidoAberto(p) {
   if (isPagamentoAtrasado(p)) return '<span style="color:var(--kg-perigo);font-weight:700">⚠ Atrasado</span>';
@@ -3421,7 +3423,7 @@ function verFinanceiroCliente(id) {
         <div class="pagto-recebido-grupo">
           ${Object.entries(FIN_FORMAS).map(([valor, rotulo]) => `
           <button type="button" class="pagto-recebido pagto-pago${finForma === valor ? ' ativo' : ''}" data-forma="${valor}" onclick="escolherFormaPaga('${valor}')">
-            <span class="pagto-recebido-icone">${FIN_ICONES[valor]}</span>
+            <span class="pagto-recebido-icone">${icone(FIN_ICONES[valor])}</span>
             <span class="pagto-recebido-label">${esc(rotulo)}</span>
           </button>`).join('')}
         </div>
@@ -4614,7 +4616,10 @@ function rerenderizarCatalogoMantendoBusca() {
 function alternarMostrarMargem() {
   mostrarMargem = !mostrarMargem;
   const toggle = document.getElementById('toggle-margem-catalogo');
-  if (toggle) toggle.classList.toggle('ativo', mostrarMargem);
+  if (toggle) {
+    toggle.classList.toggle('ativo', mostrarMargem);
+    toggle.setAttribute('aria-pressed', String(mostrarMargem));
+  }
   rerenderizarCatalogoMantendoBusca();
 }
 
@@ -4756,7 +4761,7 @@ async function verDetalheProduto(id) {
   // Botões de ação
   const botoes = `
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-azul" style="flex:1" onclick="fecharModal('modal-detalhe-produto'); abrirModalProduto(${p.id})">✏️ Editar</button>
+      <button class="btn-azul" style="flex:1" onclick="fecharModal('modal-detalhe-produto'); abrirModalProduto(${p.id})">${icone('editar')} Editar</button>
       <button class="btn-perigo" style="flex:1" onclick="fecharModal('modal-detalhe-produto'); excluirProduto(${p.id})">🗑️ Excluir</button>
     </div>`;
 
@@ -5476,7 +5481,6 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       canvas.focus();
 
       // Botões de ação
-      btnImprimir.textContent = '🖨️ Imprimir';
       btnImprimir.title = 'Abre no visualizador do sistema (AirPrint no iOS, Salvar como PDF no Android/Desktop)';
       btnImprimir.onclick = () => {
         if (!atual()) return;
@@ -5503,7 +5507,6 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
       }
 
       if (btnZap && pedidoId != null) {
-        btnZap.textContent = '📤 Compartilhar';
         btnZap.onclick = async () => {
           if (!atual()) return;
           try {
@@ -5533,7 +5536,6 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
 
   // ===== FALLBACK: iframe (só pra browsers antigos ou PDF.js com bug) =====
   papel.innerHTML = `<iframe id="via-pdf-frame" src="${url}" style="width:100%;height:calc(100vh - 70px);border:0;background:#525659" title="${nomeArquivo}"></iframe>`;
-  btnImprimir.textContent = '🖨️ Imprimir';
   btnImprimir.onclick = () => {
     if (!atual()) return;
     const w = window.open(url, '_blank', 'noopener');
@@ -5552,7 +5554,6 @@ async function showPdfViaOverlay(url, nomeArquivo, blob, pedidoId) {
     btnSalvar.style.display = '';
   }
   if (btnZap && pedidoId != null) {
-    btnZap.textContent = '📤 Compartilhar';
     btnZap.onclick = async () => {
       if (!atual()) return;
       try {
