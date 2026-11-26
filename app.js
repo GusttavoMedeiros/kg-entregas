@@ -1419,7 +1419,7 @@ function sair() {
 
   // Fecha qualquer modal aberto
   document.querySelectorAll('.modal-overlay.aberto').forEach(m => m.classList.remove('aberto'));
-  document.body.classList.remove('modal-aberto');
+  definirTravaFundoModal(false);
 
   document.getElementById('tela-login').style.display='flex';
   const appEl = document.getElementById('app');
@@ -1562,6 +1562,7 @@ else iniciarGotasAbas();
 
 function atualizarVisibilidadeNav() {
   navScrollRaf = 0;
+  if (document.documentElement.classList.contains('modal-aberto')) return;
   const nav = document.getElementById('nav-bottom');
   if (!nav || window.matchMedia('(min-width: 900px)').matches) return;
 
@@ -5815,17 +5816,29 @@ function isPagamentoAtrasado(p) {
   return p.data_vencimento < fmt(new Date());
 }
 
-let _scrollSalvo = 0;
+let _scrollSalvo = null;
+function definirTravaFundoModal(travar) {
+  if (travar === (_scrollSalvo !== null)) return;
+  if (travar) _scrollSalvo = Math.max(0, window.scrollY);
+  document.documentElement.classList.toggle('modal-aberto', travar);
+  document.getElementById('app').inert = travar;
+  document.getElementById('tela-login').inert = travar;
+  if (travar) {
+    // Transfere a rolagem da página para o body fixo e mantém o fundo no lugar.
+    document.body.scrollTop = _scrollSalvo;
+  } else {
+    window.scrollTo({ top: _scrollSalvo, behavior: 'instant' });
+    _scrollSalvo = null;
+  }
+}
+
 function abrirModal(id) {
   const m = document.getElementById(id);
   if (m) {
     m.dataset.abertura = String(Number(m.dataset.abertura || 0) + 1);
-    // Salva a posição de scroll da área que rola (desktop = .conteudo)
-    const sc = document.querySelector('.conteudo');
-    _scrollSalvo = sc ? sc.scrollTop : window.scrollY;
     m.parentElement.appendChild(m); // O último modal aberto fica acima dos anteriores.
     m.classList.add('aberto');
-    document.body.classList.add('modal-aberto'); // congela o app por trás
+    definirTravaFundoModal(true);
   }
 }
 function fecharModal(id) {
@@ -5835,10 +5848,7 @@ function fecharModal(id) {
   if (id === 'modal-pedido') pedidoEmEdicao = null;
   // Só libera a trava do body se NÃO houver outro modal ainda aberto
   if (!document.querySelector('.modal-overlay.aberto')) {
-    document.body.classList.remove('modal-aberto');
-    // Restaura a posição de scroll (evita o "pulo" ao fechar no desktop)
-    const sc = document.querySelector('.conteudo');
-    if (sc && _scrollSalvo) sc.scrollTop = _scrollSalvo;
+    definirTravaFundoModal(false);
   }
   if (sincronizacaoPendente && !formularioDeDadosAberto()) {
     sincronizacaoPendente = false;
