@@ -2974,8 +2974,8 @@ function _buscarProdutoModalImpl(termo) {
     return;
   }
   el.innerHTML = lista.map(p => {
-    const noCarrinho = carrinho.find(c => c.produto.id===p.id);
-    const jaAdicionado = noCarrinho ? `<span style="font-size:11px;color:var(--gn)">✓ ${noCarrinho.qtd}x</span>` : '';
+    const quantidade = carrinho.reduce((soma, c) => soma + (c.produto.id === p.id ? c.qtd : 0), 0);
+    const jaAdicionado = quantidade ? `<span style="font-size:11px;color:var(--gn)">✓ ${quantidade}x</span>` : '';
     const nomeHtml = t ? highlightBusca(p.nome, t) : esc(p.nome);
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;
@@ -3628,7 +3628,7 @@ function abrirModalNovoPedido(idEdit) {
       }
     }
 
-    // Carrinho com os itens atuais do pedido (AGRUPA duplicados de pedidos antigos)
+    // Cada linha mantém o nome, o preço e o peso registrados naquele pedido.
     carrinho = [];
     (p.itens || []).forEach(it => {
       const prod = todosOsProdutos.find(x => x.id === it.produto_id);
@@ -3638,21 +3638,15 @@ function abrirModalNovoPedido(idEdit) {
       const precoCat  = (it.preco_catalogo != null)
         ? Number(it.preco_catalogo)
         : (prod ? Number(prod.preco) : precoUnit);
-      const existente = carrinho.find(c => c.produto.id === produto.id &&
-        c.preco_unit === precoUnit && c.preco_catalogo === precoCat);
-      if (existente) {
-        existente.qtd += Number(it.qtd) || 0;
-        // Mantém preço já carregado (não sobrescreve em duplicatas)
-      } else {
-        carrinho.push({
-          produto,
-          nome: it.nome || it.produto_nome || '',
-          peso_unitario_kg: it.peso_unitario_kg,
-          qtd: Number(it.qtd) || 0,
-          preco_unit: precoUnit,
-          preco_catalogo: precoCat,
-        });
-      }
+      carrinho.push({
+        produto,
+        item_id: it.id,
+        nome: it.nome || it.produto_nome || '',
+        peso_unitario_kg: it.peso_unitario_kg,
+        qtd: Number(it.qtd) || 0,
+        preco_unit: precoUnit,
+        preco_catalogo: precoCat,
+      });
     });
   } else {
     // Modo novo pedido
@@ -3880,6 +3874,7 @@ async function _executarSalvarPedido(cliente_id, data_entrega, data_vencimento, 
   const descricao= carrinho.map(c=>`${c.qtd}x ${c.produto.nome}`).join(', ');
   const cliente  = todosOsClientes.find(c=>c.id===cliente_id);
   const itens    = carrinho.map(c=>({
+    ...(c.item_id != null ? { item_id: c.item_id } : {}),
     produto_id: c.produto.id,
     nome: c.produto.nome,
     qtd: c.qtd,
