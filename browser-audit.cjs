@@ -110,7 +110,34 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   if(perfil!=='entregador') {
    assert.match(await p.evaluate(()=>montarCardProduto(todosOsProdutos.find(x=>x.id===1),false)), /15 kg\/un\./);
    await p.evaluate(()=>{todosOsProdutos.push({id:999,nome:'Duplicado de teste',produto_principal_id:1});});
+   const medirFundo = () => p.evaluate(() => ({
+    tela: document.querySelector('.tela.ativa').getBoundingClientRect().top,
+    cabecalho: document.getElementById('app-header').getBoundingClientRect().top,
+   }));
+   await p.evaluate(largura => {
+    document.querySelector('.tela.ativa').style.minHeight = '1800px';
+    const rolagem = largura < 900 ? document.scrollingElement : document.querySelector('.conteudo');
+    rolagem.scrollTop = 320;
+   }, largura);
+   await p.locator('.tela.ativa').evaluate(el => Promise.all(el.getAnimations().map(animacao => animacao.finished)));
+   const fundoAntes = await medirFundo();
+   assert.ok(fundoAntes.tela < 0);
    await p.evaluate(()=>abrirModalNovoPedido());
+   assert.deepEqual(await medirFundo(), fundoAntes, 'abrir o pedido mantém o fundo na mesma posição');
+   assert.equal(await p.locator('#app').getAttribute('inert'), '', 'o fundo deixa de receber interação');
+   if(largura<900){
+    await p.evaluate(() => window.scrollBy(0, 200));
+    assert.deepEqual(await medirFundo(), fundoAntes, 'a página atrás do pedido fica travada');
+   }
+   const formulario = p.locator('#modal-pedido .modal-sheet');
+   const areaRolavel = await formulario.evaluate(el => el.scrollHeight > el.clientHeight);
+   if (largura <= 393) assert.ok(areaRolavel, 'o pedido é rolável em telas pequenas');
+   if (areaRolavel) {
+    await formulario.locator('.modal-titulo').hover();
+    await p.mouse.wheel(0, 620);
+    await p.waitForFunction(() => document.querySelector('#modal-pedido .modal-sheet').scrollTop > 0);
+    assert.deepEqual(await medirFundo(), fundoAntes, 'rolar o formulário preserva a posição do fundo');
+   }
    if(largura<900){
     const busca=p.locator('#busca-produto-modal');
     await busca.fill('Milho');
@@ -127,7 +154,20 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    assert.doesNotMatch(await p.locator('#lista-produto-modal').innerText(), /Duplicado de teste/);
    await p.evaluate(()=>{adicionarAoCarrinho(1);});
    assert.match(await p.locator('#carrinho-lista').innerText(), /15 kg\/un\./);
-   await p.evaluate(()=>{fecharModal('modal-pedido');todosOsProdutos=todosOsProdutos.filter(x=>x.id!==999);});
+   await p.locator('#carrinho-lista .btn-ajustar-preco').first().click();
+   await p.waitForFunction(() => document.activeElement?.id === 'ajustar-preco-input');
+   await p.keyboard.press('Escape');
+   assert.equal(await p.locator('#modal-ajustar-preco').isVisible(), false);
+   assert.equal(await p.locator('#app').getAttribute('inert'), '', 'fechar o ajuste mantém o pedido isolado');
+   await p.locator('#modal-pedido').getByRole('button', {name:'Cancelar', exact:true}).click();
+   assert.deepEqual(await medirFundo(), fundoAntes, 'fechar o pedido restaura a posição da página');
+   assert.equal(await p.locator('#app').getAttribute('inert'), null);
+   await p.evaluate(largura => {
+    const rolagem = largura < 900 ? document.scrollingElement : document.querySelector('.conteudo');
+    rolagem.scrollTop = 0;
+    document.querySelector('.tela.ativa').style.minHeight = '';
+    todosOsProdutos = todosOsProdutos.filter(x => x.id !== 999);
+   }, largura);
   }
   if(largura<900){
    const medirRolagem = () => p.evaluate(() => ({
@@ -289,7 +329,10 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    await context.setOffline(true);
    await p.locator('button[onclick="confirmarEntrega()"]').click();await p.waitForFunction(()=>todosOsPedidos[0].status==='entregue');
    assert.equal(await p.evaluate(()=>JSON.parse(localStorage.getItem('kg-fila-offline')).length),1);
-   await p.evaluate(()=>sair());assert.equal(await p.evaluate(()=>JSON.parse(localStorage.getItem('kg-fila-offline')).length),1);
+   await p.evaluate(()=>{abrirModal('modal-fila-falhas');sair();});
+   await p.locator('#input-senha:visible').waitFor();
+   assert.equal(await p.locator('#tela-login').getAttribute('inert'), null, 'sair com modal aberto libera o login');
+   assert.equal(await p.evaluate(()=>JSON.parse(localStorage.getItem('kg-fila-offline')).length),1);
    await context.setOffline(false);
   }
   assert.deepEqual(errors,[]);
