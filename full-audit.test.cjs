@@ -25,12 +25,12 @@ test('edição conserva linhas do mesmo produto com preços diferentes e control
   selecionarPagamento(){},buscarProdutoModal(){},abrirModal(){},toast(){},renderizarCarrinho(){}};
  vm.runInNewContext(trecho('let chaveNovoPedido =', '// FORMA DE PAGAMENTO +'),c);
  c.abrirModalNovoPedido(7);
- assert.equal(c.carrinho.length,2);
+ assert.equal(c.carrinho.length,3);
  assert.equal(c.carrinho.reduce((s,i)=>s+i.qtd*i.preco_unit,0),60);
  vm.runInNewContext(trecho('function alterarQtdCarrinho(', 'function renderizarCarrinho(')+trecho('function definirQtdCarrinho(', '// AJUSTE DE PREÇO'),c);
- c.alterarQtdCarrinho(1,1);assert.equal(c.carrinho[1].qtd,3);assert.equal(c.carrinho[0].qtd,2);
+ c.alterarQtdCarrinho(1,1);assert.equal(c.carrinho[1].qtd,3);assert.equal(c.carrinho[0].qtd,1);
  c.definirQtdCarrinho(1,'Infinity');assert.equal(c.carrinho[1].qtd,3);
- c.removerDoCarrinho(0);assert.equal(c.carrinho.length,1);assert.equal(c.carrinho[0].preco_unit,20);
+ c.removerDoCarrinho(0);assert.equal(c.carrinho.length,2);assert.equal(c.carrinho[0].preco_unit,20);
 });
 
 test('ajuste de preço arredonda centavos e rejeita infinito sem alterar pedido',()=>{

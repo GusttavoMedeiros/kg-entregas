@@ -107,6 +107,36 @@ test('peso: migração preserva pedidos e peso do item não muda ao editar o pro
     produto.peso_kg = 20;
     await db.query('select public.salvar_produto($1::jsonb,1)', [JSON.stringify(produto)]);
     assert.equal(Number((await db.query('select peso_unitario_kg from public.itens_pedido where pedido_id=1')).rows[0].peso_unitario_kg), 15);
+    await db.exec('reset role');
+    const migracao = fs.readdirSync('supabase/migrations').find(n => n.endsWith('_preservar_itens_ao_editar_observacao.sql'));
+    await db.exec(lerMigration(migracao));
+    await quem(db, 'vendedor');
+    const editar = async (linhas, versao, observacao) => (await db.query(
+      'select public.salvar_pedido($1::jsonb,$2::jsonb,1,null) r',
+      [JSON.stringify({...pedido, versao, observacao}), JSON.stringify(linhas)]
+    )).rows[0].r;
+    const anterior = r.rows[0].r;
+    const comId = [{...itens[0], item_id: anterior.itens[0].id}];
+    const anotado = await editar(comId, anterior.versao, 'Entregar pela manhã');
+    assert.equal(anotado.observacao, 'Entregar pela manhã');
+    assert.equal(anotado.valor, anterior.valor);
+    assert.deepEqual(anotado.itens, anterior.itens);
+    assert.equal(anotado.itens[0].qtd * anotado.itens[0].peso_unitario_kg, 30);
+    const app = fs.readFileSync('app.js', 'utf8');
+    const relatorio = { foiPago: () => false, dataRealEntrega: () => '' };
+    require('node:vm').runInNewContext(
+      app.slice(app.indexOf('function dadosPesoItem('), app.indexOf('function resumoPeso(')) +
+      app.slice(app.indexOf('function calcularDadosRelatorio('), app.indexOf('// "Ana (10)')), relatorio);
+    const conferir = p => relatorio.calcularDadosRelatorio([p], [{id:1,nome:'Milho',peso_kg:20}]);
+    assert.equal(conferir(anotado).pesoConfirmado, 30);
+    assert.deepEqual(conferir(anotado), conferir(anterior));
+    await assert.rejects(editar(comId, anterior.versao, 'Edição atrasada'), /Conflito/);
+    const linhasDuplicadas = [{...itens[0], qtd: 1}, {...itens[0], qtd: 2}];
+    const alterado = await editar(linhasDuplicadas, anotado.versao, 'Quantidade alterada');
+    assert.equal(Number(alterado.valor), 30);
+    const agrupado = await editar([{...itens[0], qtd: 3}], alterado.versao, 'Aplicativo anterior');
+    assert.deepEqual(agrupado.itens, alterado.itens);
+    await quem(db, 'admin');
     produto.peso_kg = -1;
     await assert.rejects(db.query('select public.salvar_produto($1::jsonb,1)', [JSON.stringify(produto)]), /Peso inválido/);
   } finally { await db.close(); }
