@@ -112,8 +112,9 @@ assert.doesNotMatch(html, /\.via-tabela-ranking\s*\{/);
 assert.doesNotMatch(html, /\.via-indicador b\s*\{/);
 assert.doesNotMatch(html, /\.via-total-valor\s*\{/);
 
-// Truque antigo do Cinzel (media="print" onload) — nunca mais
-assert.doesNotMatch(html, /fonts\.googleapis\.com[^"]*Cinzel[^"]*media="print"/);
+// Uma falha do provedor de fontes não pode bloquear a abertura do login.
+assert.doesNotMatch(html, /<link\b[^>]*fonts\.googleapis\.com/i);
+assert.match(html, /@font-face\s*\{[^}]*vendor\/Cinzel\.ttf[^}]*font-display:\s*swap/s);
 assert.doesNotMatch(html, /this\.media='all'/);
 
 // JS não chama mais window.print() da via (agora é window.open no blob URL)

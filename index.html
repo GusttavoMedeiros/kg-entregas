@@ -15,13 +15,8 @@
 <link rel="icon" href="app-icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="app-icon-180.png">
 <title>KG Entregas</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://eatmzxyckqrsjrlyosfg.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://brasilapi.com.br">
-<!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
-     print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="preload" href="app.js?v=101" as="script">
 <script>
 (function(){
@@ -31,6 +26,12 @@
 })();
 </script>
 <style>
+@font-face {
+  font-family:'Cinzel';
+  src:url('vendor/Cinzel.ttf') format('truetype');
+  font-weight:400 900;
+  font-display:swap;
+}
 :root {
   --v0:#0a1a10;--v1:#0d2218;--v2:#112b1e;--v3:#1a3a2a;--v4:#244d38;
   --o0:#c8960c;--o1:#e4aa14;--o2:#f5cc40;--o3:#f9e4a0;

@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v85';
+const CACHE_VERSION = 'kg-v86';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -102,8 +102,14 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 5) A versão vem do HTML atualizado. Uma URL nova nunca reutiliza
-  // bytes de outra versão; reabrir a mesma versão dispensa outra ida à rede.
+  // O atalho do Android abre /?source=pwa. O HTML dessa mesma versão
+  // já foi instalado sob /index.html, inclusive antes do primeiro uso do atalho.
+  if (event.request.mode === 'navigate' && url.pathname === '/' && url.search === '?source=pwa') {
+    event.respondWith(estrategiaVersaoCacheada(new Request(new URL('./index.html', self.location.href))));
+    return;
+  }
+
+  // Uma URL versionada usa somente os bytes daquela versão.
   if (['script', 'style'].includes(event.request.destination) && url.searchParams.has('v')) {
     event.respondWith(estrategiaVersaoCacheada(event.request));
     return;

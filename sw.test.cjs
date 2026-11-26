@@ -74,6 +74,15 @@ function tokenPara(sub) {
   cached.set('https://kg-entregas.vercel.app/app.js?v=91', new Response('pre-cache'));
   cached.set('https://kg-entregas.vercel.app/ios-like.css?v=11', new Response('estilo-pre-cache'));
   global.fetch = async () => { throw new Error('offline'); };
+  const inicio = JSON.parse(fs.readFileSync('manifest.json', 'utf8')).start_url;
+  const urlInicio = new URL(inicio, self.location.origin).href;
+  cached.set(new URL('/index.html', self.location.origin).href, new Response('login instalado'));
+  let abertura;
+  handlers.fetch({
+    request: { method:'GET', url:urlInicio, mode:'navigate', destination:'document' },
+    respondWith: promessa => { abertura = promessa; },
+  });
+  assert.equal(await (await abertura).text(), 'login instalado');
   assert.equal(await (await requestApp('?v=91')).text(), 'pre-cache');
   assert.equal(await (await requestEstilo('?v=11')).text(), 'estilo-pre-cache');
   assert.equal((await requestApp('?v=70')).status, 503);
@@ -125,7 +134,7 @@ function tokenPara(sub) {
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v85'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v86'/);
   assert.match(sw, /\.\/ios-like\.css\?v=11/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=2/);
   assert.match(sw, /\.\/styles\/visual-polish\.css\?v=7/);
