@@ -22,7 +22,7 @@
 <!-- Cinzel: carregado direto (sem truque media="print") — o truque antigo fazia o iOS Safari
      print preview capturar a página antes da fonte baixar, zerando o TOTAL na impressão. -->
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="app.js?v=99" as="script">
+<link rel="preload" href="app.js?v=100" as="script">
 <script>
 (function(){
   var n=navigator,c=n.connection||n.mozConnection||n.webkitConnection;
@@ -929,7 +929,7 @@ mark.busca-match{background:linear-gradient(135deg,rgba(200,150,12,.4),rgba(200,
 /* Congela o app por trás enquanto um modal está aberto — impede o
    scroll do formulário de "vazar" e mover a página de fundo (iOS) */
 body.modal-aberto #tela-login{overflow:hidden !important}
-body.modal-aberto{overflow:hidden;touch-action:none}
+body.modal-aberto{overflow:hidden}
 /* No mobile, congela o #app (que é quem rola). No desktop quem rola é
    a .conteudo e o #app já é overflow:hidden, então NÃO mexemos nele
    para não causar recálculo de largura do grid (cards saindo do lugar). */
@@ -946,7 +946,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   max-height:calc(100dvh - var(--safe-top) - var(--safe-bot) - 16px);
   overflow-y:auto;overflow-x:hidden;
   overscroll-behavior:contain;
-  touch-action:pan-y;
+  touch-action:pan-y pinch-zoom;
   -webkit-overflow-scrolling:touch;
   animation:fadeScale .25s cubic-bezier(.32,.72,0,1);
   box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(200,150,12,.12),inset 0 1px 0 rgba(200,150,12,.18)}
@@ -1043,7 +1043,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
     margin-bottom: 8px;
     border-radius: 9px;
   }
-  .modal-sheet .search-bar input { font-size: 13px; }
 
   /* Lista de produtos no modal: itens mais compactos */
   #lista-produto-modal {
@@ -1492,7 +1491,7 @@ body.modal-aberto{overflow:hidden;touch-action:none}
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 
@@ -1560,6 +1559,9 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 .perfil-login-btn.ativo .perfil-login-txt{color:var(--o1)}
 .perfil-login-btn.ativo .perfil-login-ico{transform:scale(1.08)}
 
+@media (max-width:899px), (pointer:coarse) {
+  .modal-sheet .search-bar input, .modal-sheet .parcela-select { font-size:16px; }
+}
 </style>
 <link rel="stylesheet" href="styles/design-tokens.css?v=2">
 <link rel="stylesheet" href="ios-like.css?v=11">
@@ -2307,6 +2309,6 @@ body.modal-aberto{overflow:hidden;touch-action:none}
 
 <!-- As bibliotecas de PDF são carregadas sob demanda ao abrir uma via ou
      relatório. Isso mantém o login e o dashboard leves em celulares fracos. -->
-<script src="app.js?v=99"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>

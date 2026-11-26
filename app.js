@@ -1139,11 +1139,23 @@ async function authLogin(email, senha) {
       body: JSON.stringify({ email, password: senha }),
       signal: ctrl.signal,
     });
-    if (!res.ok) return { ok:false };
+    if (!res.ok) {
+      if (res.status === 429) return { ok:false, erro:'Muitas tentativas de entrada. Aguarde alguns minutos e tente novamente.' };
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        const falha = await res.json().catch(() => ({}));
+        if (falha?.error_code === 'invalid_credentials' || falha?.msg === 'Invalid login credentials') {
+          return { ok:false, erro:'Confira o perfil escolhido e a senha.' };
+        }
+      }
+      return { ok:false, erro:'O serviço de login não conseguiu concluir a entrada. Tente novamente em instantes.' };
+    }
     return { ok:true, sessao: montarSessao(await res.json()) };
   } catch(e) {
     // Erro de rede ≠ senha errada — quem chama mostra mensagem apropriada
-    return { ok:false, rede:true, erro:e.message };
+    const erro = e.name === 'AbortError'
+      ? 'O serviço de login demorou a responder. Tente entrar novamente.'
+      : 'Não foi possível conectar ao serviço de login. Confira sua conexão e tente novamente.';
+    return { ok:false, rede:true, erro };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -1293,11 +1305,7 @@ async function fazerLogin() {
   if (geracaoAcesso !== acessoInicial) return;
 
   if (!r.ok) {
-    if (r.rede) {
-      toast('📡 Sem conexão com o servidor. Verifique sua internet e tente novamente.', 'erro');
-    } else {
-      mostrarErroLogin('Senha incorreta. Tente novamente.');
-    }
+    mostrarErroLogin(r.erro);
     return;
   }
 

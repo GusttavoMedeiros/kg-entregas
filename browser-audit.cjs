@@ -16,13 +16,21 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   const context=await browser.newContext({viewport:{width:largura,height:800},reducedMotion:movimento,serviceWorkers:'block'});
   const token='eyJhbGciOiJIUzI1NiJ9.'+Buffer.from(JSON.stringify({sub:'teste',app_metadata:{app_login:perfil,app_role:perfil,app_name:'Teste'}})).toString('base64url')+'.teste';
   await context.addInitScript(({token,perfil,economia})=>{
-   localStorage.setItem('kg-sessao',JSON.stringify({sessao:{access_token:token,refresh_token:'teste',expires_at:Date.now()+3600000},usuario:{login:perfil,perfil}}));
+   if(perfil!=='vendedor') localStorage.setItem('kg-sessao',JSON.stringify({sessao:{access_token:token,refresh_token:'teste',expires_at:Date.now()+3600000},usuario:{login:perfil,perfil}}));
    if(economia){Object.defineProperty(navigator,'deviceMemory',{get:()=>2});Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>2});}
   },{token,perfil,economia});
   let falharLista=perfil==='admin'&&largura===360,gravacoes=0;
+  let respostaLogin = 200;
   await context.route('**/*',async route=>{
    const req=route.request(),u=new URL(req.url());
    if(u.hostname.endsWith('supabase.co')){
+    if(u.pathname==='/auth/v1/token' && u.searchParams.get('grant_type')==='password'){
+     assert.equal(req.postDataJSON().email,'vendedor@kgagropet.local');
+     if(respostaLogin===0) return route.abort('namenotresolved');
+     return route.fulfill({status:respostaLogin,json:respostaLogin===200
+      ? {access_token:token,refresh_token:'teste',expires_in:3600}
+      : {error_code:respostaLogin===400?'invalid_credentials':'erro_simulado'}});
+    }
     if(u.pathname.startsWith('/auth/'))return route.fulfill({json:{}});
     if(u.pathname.includes('historico_precos')){await pause(u.searchParams.get('produto_id')==='eq.1'?450:40);return route.fulfill({json:[]});}
     if(u.pathname.includes('historico_pedidos'))return route.fulfill({json:[]});
@@ -53,6 +61,17 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   });
   const p=await context.newPage(),errors=[];p.setDefaultTimeout(8000);console.log('Iniciando',perfil,largura);p.on('pageerror',e=>errors.push(e.message));
   await p.goto(`http://127.0.0.1:${server.address().port}`);
+  if(perfil==='vendedor'){
+   await p.locator('[data-perfil="vendedor"]').click();
+   await p.locator('#input-senha').fill('senha-ficticia');
+   for(const [status,mensagem] of [[400,'Confira o perfil'],[429,'Muitas tentativas'],[503,'não conseguiu concluir'],[0,'Confira sua conexão']]){
+    respostaLogin=status;
+    await p.getByRole('button',{name:'Entrar',exact:true}).click();
+    await p.locator('#erro-login:visible').filter({hasText:mensagem}).waitFor();
+   }
+   respostaLogin=200;
+   await p.getByRole('button',{name:'Entrar',exact:true}).click();
+  }
   if(perfil==='admin'&&largura===360){await p.getByRole('button',{name:'Tentar novamente',exact:true}).click();}
   await p.waitForFunction(()=>!carregandoDados&&todosOsPedidos.length===2);
   if(largura<900){
@@ -67,7 +86,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    });
    assert.equal(cabecalho.filtro, 'none', 'o cabeçalho móvel não deve aplicar vidro');
    assert.match(cabecalho.fundo, /^rgb\(/, 'o fundo do cabeçalho deve ser opaco');
-   assert.ok(cabecalho.topoLogo >= 59, 'a marca deve ficar abaixo da barra de status');
+   assert.ok(cabecalho.topoLogo >= 59, `a marca deve ficar abaixo da barra de status (topo: ${cabecalho.topoLogo})`);
    await p.evaluate(() => document.documentElement.style.removeProperty('--safe-top'));
   }
   const vidro = await p.locator('#nav-bottom').evaluate(e=>getComputedStyle(e).backdropFilter);
@@ -92,6 +111,18 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
    assert.match(await p.evaluate(()=>montarCardProduto(todosOsProdutos.find(x=>x.id===1),false)), /15 kg\/un\./);
    await p.evaluate(()=>{todosOsProdutos.push({id:999,nome:'Duplicado de teste',produto_principal_id:1});});
    await p.evaluate(()=>abrirModalNovoPedido());
+   if(largura<900){
+    const busca=p.locator('#busca-produto-modal');
+    await busca.fill('Milho');
+    assert.ok(await busca.evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=16));
+    const lista=p.locator('#lista-produto-modal');
+    await lista.locator('button').filter({hasText:'Adicionar'}).last().waitFor();
+    await p.waitForFunction(()=>document.querySelectorAll('#lista-produto-modal button').length===1);
+    await lista.getByRole('button',{name:'+ Adicionar',exact:true}).click();
+    assert.match(await p.locator('#carrinho-lista').innerText(),/Milho/);
+    await busca.fill('');
+    await p.waitForFunction(()=>document.querySelectorAll('#lista-produto-modal button').length===2);
+   }
    assert.match(await p.locator('#lista-produto-modal').innerText(), /15 kg\/un\./);
    assert.doesNotMatch(await p.locator('#lista-produto-modal').innerText(), /Duplicado de teste/);
    await p.evaluate(()=>{adicionarAoCarrinho(1);});
