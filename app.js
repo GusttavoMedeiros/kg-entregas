@@ -1,9 +1,10 @@
 // ============================================================
 // KG ENTREGAS v2 — app.js
 // ============================================================
-const SUPABASE_URL = 'https://eatmzxyckqrsjrlyosfg.supabase.co';
+const SUPABASE_ORIGEM = 'https://eatmzxyckqrsjrlyosfg.supabase.co';
+const SUPABASE_URL = globalThis.location?.pathname === '/acesso' ? '/conexao' : SUPABASE_ORIGEM;
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhdG16eHlja3Fyc2pybHlvc2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MzA0NzQsImV4cCI6MjA5NDMwNjQ3NH0.9Q23iGFuBdBWmag5Gl0KwCdmkCkjfxhq_IYddKClA7k';
-const MODO_DEMO = (SUPABASE_URL === 'SUA_URL_AQUI');
+const MODO_DEMO = (SUPABASE_ORIGEM === 'SUA_URL_AQUI');
 
 // ============================================================
 // USUÁRIOS
@@ -1002,6 +1003,32 @@ const DEMO_PEDIDOS = [
 // ============================================================
 // SUPABASE
 // ============================================================
+// Versões antigas do app tratavam GETs do próprio domínio como arquivos públicos.
+// Consulte dados pelo acesso alternativo só quando o controlador souber isolá-los.
+let controladorComCachePorUsuario;
+async function cacheDaConexaoPronto() {
+  const controlador = navigator.serviceWorker?.controller;
+  if (!controlador || controlador === controladorComCachePorUsuario) return true;
+  const pronto = await new Promise(resolve => {
+    const canal = new MessageChannel();
+    function concluir(valor) {
+      clearTimeout(timer);
+      canal.port1.close();
+      resolve(valor);
+    }
+    const timer = setTimeout(() => concluir(false), 1500);
+    canal.port1.onmessage = evento => concluir(evento.data === 'CACHE_POR_USUARIO');
+    try {
+      controlador.postMessage({ type:'KG_CONEXAO' }, [canal.port2]);
+    } catch { concluir(false); }
+  });
+  if (pronto && controlador === navigator.serviceWorker.controller) {
+    controladorComCachePorUsuario = controlador;
+    return true;
+  }
+  return false;
+}
+
 async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=true, opcoes={}) {
   const acessoInicial = geracaoAcesso;
   if (MODO_DEMO) return { ok:true, dados:null };
@@ -1028,6 +1055,15 @@ async function apiSupabase(tabela, metodo='GET', dados=null, filtros='', _retry=
     }
     const opts = { method:metodo, headers };
     if (dados) opts.body = JSON.stringify(dados);
+
+    if (SUPABASE_URL === '/conexao' && metodo === 'GET') {
+      if (!(await cacheDaConexaoPronto()) ||
+          (navigator.serviceWorker?.controller && navigator.serviceWorker.controller !== controladorComCachePorUsuario)) {
+        verificarAtualizacaoServiceWorker();
+        return { ok:false, status:503, erro:'O aplicativo está atualizando. Aguarde e abra o acesso alternativo novamente.' };
+      }
+      if (geracaoAcesso !== acessoInicial) return { ok:false, status:499, erro:'A sessão foi alterada.' };
+    }
 
     // Timeout de 15s — se a rede do entregador estiver ruim, aborta
     const ctrl = new AbortController();
@@ -1937,6 +1973,8 @@ function carregarSdkRealtime() {
 
 async function iniciarRealtime() {
   if (MODO_DEMO || !usuario || !sessao || !navigator.onLine) return;
+  // Neste acesso, a atualização periódica usa a mesma conexão que o login.
+  if (SUPABASE_URL === '/conexao') return;
   const acessoInicial = geracaoAcesso;
   const loginInicial = usuario.login;
   if ((canalRealtime && loginRealtime === loginInicial) || loginRealtimeIniciando === loginInicial) return;

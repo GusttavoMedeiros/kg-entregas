@@ -23,6 +23,27 @@ function authContext() {
   return { c, timers };
 }
 
+test('O acesso alternativo só consulta dados com um controlador compatível', async () => {
+  let consultas = 0;
+  const c = {
+    SUPABASE_URL:'/conexao', SUPABASE_KEY:'teste', geracaoAcesso:1, MODO_DEMO:false,
+    sessao:{access_token:'teste'}, navigator:{onLine:true, serviceWorker:{controller:{postMessage(){}}}},
+    garantirTokenValido:async()=>{}, verificarAtualizacaoServiceWorker(){},
+    MessageChannel, AbortController, setTimeout, clearTimeout, console,
+    fetch:async () => { consultas++; return new Response('[]'); },
+  };
+  vm.runInNewContext(trecho('let controladorComCachePorUsuario', '// AUTENTICAÇÃO'), c);
+  assert.equal((await c.apiSupabase('pedidos')).status,503);
+  assert.equal(consultas,0);
+  c.navigator.serviceWorker.controller = { postMessage(msg,[porta]) {
+    assert.equal(msg.type,'KG_CONEXAO');
+    porta.postMessage('CACHE_POR_USUARIO');
+    porta.close();
+  }};
+  assert.equal((await c.apiSupabase('pedidos')).ok,true);
+  assert.equal(consultas,1);
+});
+
 test('Login com rede travada tem prazo e libera nova tentativa', async () => {
   const { c, timers } = authContext();
   const resultado = c.authLogin('teste', 'teste');

@@ -1,5 +1,24 @@
 {
+  "rewrites": [
+    { "source": "/acesso", "destination": "/index.html" },
+    { "source": "/conexao/auth/v1/token", "destination": "https://eatmzxyckqrsjrlyosfg.supabase.co/auth/v1/token" },
+    { "source": "/conexao/auth/v1/logout", "destination": "https://eatmzxyckqrsjrlyosfg.supabase.co/auth/v1/logout" },
+    { "source": "/conexao/rest/v1/:path*", "destination": "https://eatmzxyckqrsjrlyosfg.supabase.co/rest/v1/:path*" }
+  ],
   "headers": [
+    {
+      "source": "/conexao/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; frame-ancestors 'none'; sandbox" }
+      ]
+    },
+    {
+      "source": "/acesso",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
     {
       "source": "/(.*)\\.(html|js)",
       "headers": [

@@ -7,7 +7,7 @@
 //   - Versão do cache muda → SW antigo é removido automaticamente
 // ============================================================
 
-const CACHE_VERSION = 'kg-v87';
+const CACHE_VERSION = 'kg-v88';
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 // O formato por usuário é compatível com v23. Atualizar assets não deve apagar
 // a única cópia disponível das rotas offline. Logout continua removendo -data.
@@ -17,7 +17,7 @@ const DATA_CACHE   = 'kg-v23-data';
 const ASSETS_PARA_CACHEAR = [
   './',
   './index.html',
-  './app.js?v=102',
+  './app.js?v=103',
   './styles/design-tokens.css?v=2',
   './ios-like.css?v=11',
   './styles/visual-polish.css?v=7',
@@ -82,6 +82,8 @@ self.addEventListener('fetch', event => {
   const ehSupabase  = url.hostname.endsWith('supabase.co');
   const ehBrasilAPI = url.hostname === 'brasilapi.com.br';
   const ehMesmaOrigem = url.origin === self.location.origin;
+  const ehDadosAlternativos = ehMesmaOrigem && url.pathname.startsWith('/conexao/rest/v1/');
+  if (ehMesmaOrigem && url.pathname.startsWith('/conexao/') && !ehDadosAlternativos) return;
 
   if (!ehMesmaOrigem && !ehSupabase && !ehBrasilAPI) {
     return; // navegador trata normalmente
@@ -95,16 +97,20 @@ self.addEventListener('fetch', event => {
   }
 
   // 4) Supabase: SEMPRE tenta rede primeiro. Cache só como último recurso (offline)
-  if (ehSupabase) {
+  if (ehSupabase || ehDadosAlternativos) {
+    const urlDados = ehDadosAlternativos
+      ? 'https://eatmzxyckqrsjrlyosfg.supabase.co' + url.pathname.slice('/conexao'.length) + url.search
+      : url.href;
     event.respondWith(estrategiaNetworkPrimeiro(
-      event.request, DATA_CACHE, 8000, chaveCacheSupabase(event.request)
+      event.request, DATA_CACHE, 8000, chaveCacheSupabase(event.request, urlDados)
     ));
     return;
   }
 
   // O atalho do Android abre /?source=pwa. O HTML dessa mesma versão
   // já foi instalado sob /index.html, inclusive antes do primeiro uso do atalho.
-  if (event.request.mode === 'navigate' && url.pathname === '/' && url.search === '?source=pwa') {
+  if (event.request.mode === 'navigate' &&
+      (url.pathname === '/acesso' || (url.pathname === '/' && url.search === '?source=pwa'))) {
     event.respondWith(estrategiaVersaoCacheada(new Request(new URL('./index.html', self.location.href))));
     return;
   }
@@ -154,7 +160,7 @@ async function estrategiaStaleWhileRevalidate(request, cacheName) {
 
 // O Cache API normalmente compara só URL/método, não o Authorization. Cria uma
 // chave local por usuário (sub do JWT), sem persistir o token no Cache Storage.
-function chaveCacheSupabase(request) {
+function chaveCacheSupabase(request, urlDados) {
   let usuarioId = 'sem-usuario';
   try {
     const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
@@ -165,7 +171,7 @@ function chaveCacheSupabase(request) {
       usuarioId = claims.sub || claims.app_metadata?.app_login || usuarioId;
     }
   } catch (e) { /* token inválido: usa chave isolada sem usuário */ }
-  const url = new URL(request.url);
+  const url = new URL(urlDados);
   url.searchParams.set('__kg_cache_user', usuarioId);
   return new Request(url.toString(), { method: 'GET' });
 }
@@ -217,6 +223,7 @@ async function estrategiaNetworkPrimeiro(request, cacheName, timeoutMs = 8000, c
 // MENSAGENS: o app pode pedir ao SW para skipWaiting (atualizar)
 // ============================================================
 self.addEventListener('message', event => {
+  if (event.data?.type === 'KG_CONEXAO') event.ports[0]?.postMessage('CACHE_POR_USUARIO');
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

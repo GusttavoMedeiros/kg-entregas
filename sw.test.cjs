@@ -44,10 +44,10 @@ async function requestEstilo(search = '') {
   return response;
 }
 
-async function requestSupabase(token) {
+async function requestSupabase(token, origem = 'https://eatmzxyckqrsjrlyosfg.supabase.co') {
   let response;
   handlers.fetch({
-    request: new Request('https://eatmzxyckqrsjrlyosfg.supabase.co/rest/v1/pedidos?select=*', {
+    request: new Request(origem + '/rest/v1/pedidos?select=*', {
       headers: { Authorization: `Bearer ${token}` },
     }),
     respondWith: promise => { response = promise; },
@@ -125,21 +125,34 @@ function tokenPara(sub) {
   assert.equal(await (await requestSupabase(tokenA)).text(), 'dados-a');
   assert.equal(await (await requestSupabase(tokenB)).text(), 'dados-b');
 
+  const alternativo = self.location.origin + '/conexao';
+  assert.equal(await (await requestSupabase(tokenA, alternativo)).text(), 'dados-a');
+  assert.equal(await (await requestSupabase(tokenB, alternativo)).text(), 'dados-b');
+  let capacidade;
+  handlers.message({data:{type:'KG_CONEXAO'},ports:[{postMessage:valor=>{capacidade=valor;}}]});
+  assert.equal(capacidade, 'CACHE_POR_USUARIO');
+  handlers.fetch({
+    request: new Request(alternativo + '/auth/v1/token'),
+    respondWith: () => assert.fail('O login deve seguir direto para a rede'),
+  });
+
   global.fetch = async () => { throw new Error('offline'); };
   assert.equal(await (await requestSupabase(tokenA)).text(), 'dados-a');
   assert.equal(await (await requestSupabase(tokenB)).text(), 'dados-b');
   const chavesSupabase = cachePutRequests.filter(r => r.url.includes('supabase.co'));
+  assert.equal(await (await requestSupabase(tokenB, alternativo)).text(), 'dados-b');
+  assert.equal((await requestSupabase(tokenPara('terceiro'), alternativo)).status, 503);
   assert.ok(chavesSupabase.every(r => !r.headers.get('Authorization')));
   assert.equal(new Set(chavesSupabase.map(r => r.url)).size, 2);
 
   const app = fs.readFileSync('app.js', 'utf8');
   const index = fs.readFileSync('index.html', 'utf8');
-  assert.match(sw, /CACHE_VERSION = 'kg-v87'/);
+  assert.match(sw, /CACHE_VERSION = 'kg-v88'/);
   assert.match(sw, /\.\/ios-like\.css\?v=11/);
   assert.match(sw, /\.\/styles\/design-tokens\.css\?v=2/);
   assert.match(sw, /\.\/styles\/visual-polish\.css\?v=7/);
   assert.match(index, /ios-like\.css\?v=11/);
-  assert.match(index, /app\.js\?v=102/);
+  assert.match(index, /app\.js\?v=103/);
   assert.match(app, /updateViaCache:\s*'none'/);
   assert.match(app, /registroServiceWorker\.update\(\)/);
   console.log('Atualização automática e fallback offline validados.');
