@@ -7,7 +7,7 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({channel:'msedge',headless:true});const results=[];
  try{
- for(const [perfil,largura,movimento,economia] of [['admin',360,'no-preference',false],['vendedor',320,'no-preference',true],['entregador',390,'reduce',false],['admin',1280,'no-preference',false]]){
+ for(const [perfil,largura,movimento,economia,alternativo] of [['admin',360,'no-preference',false],['vendedor',320,'no-preference',true],['vendedor',360,'no-preference',true,true],['entregador',390,'reduce',false],['admin',1280,'no-preference',false]]){
   const itens=[{id:1,produto_id:1,nome:'Ração + (Teste)',qtd:2,preco_unit:10,preco_catalogo:20},{id:2,produto_id:1,nome:'Ração + (Teste)',qtd:2,preco_unit:20,preco_catalogo:20}];
   const clientes=[{id:1,nome:'Cliente teste',whatsapp:'81999999999',cnpj_cpf:'11144477735',tipo_pessoa:'fisica',endereco:'Rua A, 1, Centro, Recife, PE'}];
   const produtos=[{id:1,nome:'Ração + (Teste)',preco:20,peso_kg:15,categoria:'Ração',produto_custos:{preco_custo:10}},{id:2,nome:'Milho',preco:30,categoria:'Agropecuário',produto_custos:{preco_custo:15}}];
@@ -23,7 +23,11 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
   let respostaLogin = 200;
   await context.route('**/*',async route=>{
    const req=route.request(),u=new URL(req.url());
-   if(u.hostname.endsWith('supabase.co')){
+   if(alternativo && u.hostname.endsWith('supabase.co')) return route.abort('namenotresolved');
+   const viaAlternativa = u.hostname==='127.0.0.1' && u.pathname.startsWith('/conexao/');
+   if(viaAlternativa || u.hostname.endsWith('supabase.co')){
+    assert.equal(viaAlternativa,Boolean(alternativo));
+    if(viaAlternativa) u.pathname=u.pathname.slice('/conexao'.length);
     if(u.pathname==='/auth/v1/token' && u.searchParams.get('grant_type')==='password'){
      assert.equal(req.postDataJSON().email,'vendedor@kgagropet.local');
      if(respostaLogin===0) return route.abort('namenotresolved');
@@ -56,11 +60,12 @@ const server=http.createServer((req,res)=>{const f=new URL(req.url,'http://local
     return route.fulfill({status:500,json:{erro:'Gravação não esperada no teste'}});
    }
    if(u.hostname!=='127.0.0.1')return route.abort();
+   if(u.pathname==='/acesso')return route.fulfill({path:path.join(repo,'index.html'),contentType:'text/html'});
    if(u.pathname==='/supabase.min.js')return route.fulfill({contentType:'application/javascript',body:''});
    return route.continue();
   });
   const p=await context.newPage(),errors=[];p.setDefaultTimeout(8000);console.log('Iniciando',perfil,largura);p.on('pageerror',e=>errors.push(e.message));
-  await p.goto(`http://127.0.0.1:${server.address().port}`);
+  await p.goto(`http://127.0.0.1:${server.address().port}${alternativo?'/acesso':'/'}`);
   if(perfil==='vendedor'){
    await p.locator('[data-perfil="vendedor"]').click();
    await p.locator('#input-senha').fill('senha-ficticia');
